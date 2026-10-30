@@ -2,6 +2,7 @@ import 'package:get_it/get_it.dart';
 import 'package:injectable/injectable.dart';
 import 'package:llama_pulse_core/llama_pulse_core.dart';
 
+import '../../../presentation/inference/bloc/inference_bloc.dart';
 import 'injection.config.dart';
 
 /// Service locator shared by the whole app.
@@ -53,5 +54,14 @@ Future<void> configureDependencies({
   if (engine != null) {
     getIt.registerLazySingleton<LlamaEngine>(() => engine);
   }
-  getIt.init();
+  getIt
+    ..registerFactory<InferenceBloc>(
+      () => InferenceBloc(
+        getIt<LoadModelParams>(),
+        getIt<SaveModelParams>(),
+        getIt<ModelParamsValidator>(),
+        getIt.isRegistered<LlamaEngine>() ? getIt<LlamaEngine>() : null,
+      ),
+    )
+    ..init();
 }
