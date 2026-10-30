@@ -16,9 +16,13 @@ Future<void> runLlamaPulse() async {
   };
 
   // Compile-time opt-in only, so a release build can never silently emit
-  // synthetic tokens.
+  // synthetic tokens or run a fake server.
   const bool stubEngineEnabled = bool.fromEnvironment('LLAMAPULSE_STUB_ENGINE');
-  await configureDependencies(useStubEngine: stubEngineEnabled);
+  const bool stubServerEnabled = bool.fromEnvironment('LLAMAPULSE_STUB_SERVER');
+  await configureDependencies(
+    useStubEngine: stubEngineEnabled,
+    useStubServer: stubServerEnabled,
+  );
 
   runApp(LlamaPulseApp(demoEngine: stubEngineEnabled));
 }
