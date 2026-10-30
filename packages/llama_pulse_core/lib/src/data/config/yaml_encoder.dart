@@ -121,13 +121,66 @@ abstract final class YamlEncoder {
   }
 
   static String _string(String value) {
-    if (!_needsQuotes(value)) {
+    if (_needsDoubleQuotes(value)) {
+      return _doubleQuoted(value);
+    }
+    if (!_needsSingleQuotes(value)) {
       return value;
     }
     return "'${value.replaceAll("'", "''")}'";
   }
 
-  static bool _needsQuotes(String value) {
+  /// Whether [value] must use double quotes so it round-trips.
+  ///
+  /// A plain or single-quoted scalar cannot carry line breaks, control
+  /// characters or a literal backslash in a readable way, so those values are
+  /// escaped inside double quotes instead.
+  static bool _needsDoubleQuotes(String value) {
+    if (value.contains(r'\')) {
+      return true;
+    }
+    for (final rune in value.runes) {
+      if (rune <= 0x1f ||
+          (rune >= 0x7f && rune <= 0x9f) ||
+          rune == 0x2028 ||
+          rune == 0x2029) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  static String _doubleQuoted(String value) {
+    final buffer = StringBuffer('"');
+    for (final rune in value.runes) {
+      switch (rune) {
+        case 0x5c:
+          buffer.write(r'\\');
+        case 0x22:
+          buffer.write(r'\"');
+        case 0x0a:
+          buffer.write(r'\n');
+        case 0x0d:
+          buffer.write(r'\r');
+        case 0x09:
+          buffer.write(r'\t');
+        default:
+          if (rune <= 0x1f || (rune >= 0x7f && rune <= 0x9f)) {
+            buffer.write(r'\x');
+            buffer.write(rune.toRadixString(16).padLeft(2, '0'));
+          } else if (rune == 0x2028 || rune == 0x2029) {
+            buffer.write(r'\u');
+            buffer.write(rune.toRadixString(16).padLeft(4, '0'));
+          } else {
+            buffer.writeCharCode(rune);
+          }
+      }
+    }
+    buffer.write('"');
+    return buffer.toString();
+  }
+
+  static bool _needsSingleQuotes(String value) {
     if (value.isEmpty) {
       return true;
     }
@@ -146,7 +199,7 @@ abstract final class YamlEncoder {
     if (value.contains("'")) {
       return true;
     }
-    return value.contains(': ') || value.contains(' #');
+    return value.contains(': ') || value.contains(' #') || value.endsWith(':');
   }
 
   static bool _looksNumeric(String value) {
@@ -191,7 +244,9 @@ abstract final class YamlEncoder {
   };
 
   static final RegExp _numberPattern = RegExp(
-    r'^[-+]?(?:0[xX][0-9a-fA-F]+|0[oO][0-7]+|(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][-+]?[0-9]+)?)$',
+    r'^[-+]?(?:0[xX][0-9a-fA-F]+|0[oO][0-7]+|'
+    r'(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)'
+    r'(?:[eE][-+]?[0-9]+)?)$',
   );
   static final RegExp _specialNumberPattern = RegExp(
     r'^[-+]?\.(?:inf|nan)$',

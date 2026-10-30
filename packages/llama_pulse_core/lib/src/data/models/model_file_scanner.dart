@@ -86,7 +86,8 @@ final class ModelFileScanner implements ModelScanner {
       final info = await _readInfo(file);
       byPath.putIfAbsent(info.path, () => info);
     } on FileSystemException {
-      // The file vanished or became unreadable after it was listed.
+      // The file vanished or became unreadable after it was listed; skip it.
+      return;
     }
   }
 

@@ -64,6 +64,14 @@ void main() {
     );
   });
 
+  test('returns lists that reject mutation', () async {
+    final result = await scanner.scan(directories: [root.path]);
+
+    expect(result.files, isNotEmpty);
+    expect(result.files.clear, throwsUnsupportedError);
+    expect(() => result.warnings.add('x'), throwsUnsupportedError);
+  });
+
   test('warns about a missing directory without throwing', () async {
     final missing = p.join(root.path, 'missing');
 

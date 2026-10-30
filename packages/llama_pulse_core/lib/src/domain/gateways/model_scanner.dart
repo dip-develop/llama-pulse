@@ -15,9 +15,10 @@ abstract interface class ModelScanner {
 /// Model files found by a scan, together with human-readable warnings.
 ///
 /// Transient: produced on demand and never persisted, so it is a plain class
-/// rather than a built_value. The lists are unmodifiable.
+/// rather than a built_value. Producers must pass unmodifiable lists;
+/// [ModelFileScanner] does.
 final class ModelScanResult {
-  /// Wraps [files] and [warnings]; the scanner passes frozen lists.
+  /// Wraps [files] and [warnings]; callers must supply unmodifiable lists.
   const ModelScanResult({required this.files, required this.warnings});
 
   /// Matching model files, sorted by file name and then path.

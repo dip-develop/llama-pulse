@@ -8,7 +8,7 @@
 PRODUCT_NAME = llama_pulse
 
 // The application's bundle identifier
-PRODUCT_BUNDLE_IDENTIFIER = com.example.llamaPulse
+PRODUCT_BUNDLE_IDENTIFIER = de.dipdev.llamapulse
 
 // The copyright displayed in application information
 PRODUCT_COPYRIGHT = Copyright © 2026 com.example. All rights reserved.

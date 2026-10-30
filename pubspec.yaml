@@ -5,6 +5,12 @@ version: 0.1.0+1
 homepage: https://github.com/dip-develop/llama-pulse
 repository: https://github.com/dip-develop/llama-pulse
 issue_tracker: https://github.com/dip-develop/llama-pulse/issues
+topics:
+  - llama
+  - llamacpp
+  - localinference
+  - desktop
+  - monorepo
 
 environment:
   sdk: ^3.13.0
@@ -27,6 +33,7 @@ melos:
     gen:
       description: Run build_runner in dependency order (core, then app).
       run: |
+        set -e
         cd "$MELOS_ROOT_PATH/packages/llama_pulse_core" && dart run build_runner build
         cd "$MELOS_ROOT_PATH/apps/llama_pulse" && dart run build_runner build
     format:check:
@@ -44,6 +51,7 @@ melos:
     check:
       description: Local gate - gen, analyze, test, format check, CLI build.
       run: |
+        set -e
         dart run melos run gen
         dart run melos analyze
         dart run melos test

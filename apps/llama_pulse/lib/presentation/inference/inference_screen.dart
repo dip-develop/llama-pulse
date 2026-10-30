@@ -198,7 +198,7 @@ class _OutputCard extends StatelessWidget {
               constraints: const BoxConstraints(minHeight: 120),
               child: const _EmptyState(
                 icon: Icons.notes_outlined,
-                message: 'No output yet. Load a model to start generating.',
+                message: 'No output yet. Inference is not wired in yet.',
               ),
             ),
           ],

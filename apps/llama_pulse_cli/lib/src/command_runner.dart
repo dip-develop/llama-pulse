@@ -32,6 +32,11 @@ final class LlamaPulseCommandRunner extends CommandRunner<int> {
         ..writeln('error: ${error.message}')
         ..writeln(usage);
       return ExitCodes.usage;
+    } catch (error) {
+      // The CLI is the process-level error boundary: a failure in a command
+      // must become a non-zero exit code, never an uncaught exception.
+      services.err.writeln('error: $error');
+      return ExitCodes.failure;
     }
   }
 

@@ -1,4 +1,7 @@
-import '../../llama_pulse_cli.dart';
+import '../command_runner.dart';
+import '../exit_codes.dart';
+import '../output.dart';
+import '../version.dart';
 
 /// Prints the CLI version.
 final class VersionCommand extends LlamaPulseCommand {

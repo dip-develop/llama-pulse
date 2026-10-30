@@ -108,6 +108,29 @@ void main() {
     expect(err.toString(), isEmpty);
   });
 
+  test('models inspect --json prints one parseable object', () async {
+    await writeModel('a.gguf');
+    final path = _join(tempDirectory.path, 'a.gguf');
+
+    expect(
+      await runner.run(['models', 'inspect', path, '--json']),
+      ExitCodes.ok,
+    );
+
+    final lines = out.toString().split('\n').where((line) => line.isNotEmpty);
+    expect(lines.length, 1);
+    final decoded = jsonDecode(out.toString().trim()) as Map<String, Object?>;
+    expect(
+      decoded.keys,
+      unorderedEquals(['path', 'fileName', 'sizeMiB', 'modified']),
+    );
+    expect(decoded['path'], endsWith('a.gguf'));
+    expect(decoded['fileName'], 'a.gguf');
+    expect(decoded['sizeMiB'], 0.0);
+    expect(decoded['modified'], endsWith('Z'));
+    expect(err.toString(), isEmpty);
+  });
+
   test('models inspect exits with not-found for a missing file', () async {
     final path = _join(tempDirectory.path, 'nope.gguf');
 

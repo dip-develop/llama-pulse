@@ -158,6 +158,15 @@ void main() {
     },
   );
 
+  test('round-trips a model path containing a newline', () async {
+    final params = ModelParams.defaults().copyWith(modelPath: 'a\nb.gguf');
+
+    await repository.save(params);
+
+    expect(await paramsFile.readAsString(), contains('"a\\nb.gguf"'));
+    expect(await repository.load(), params);
+  });
+
   test('preserves a temperature of 1.0 as a double', () async {
     final params = ModelParams.defaults().copyWith(temperature: 1.0);
 

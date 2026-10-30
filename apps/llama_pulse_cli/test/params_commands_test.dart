@@ -154,6 +154,42 @@ void main() {
     });
   });
 
+  test('params set --json prints one parseable object', () async {
+    expect(
+      await runner.run(['params', 'set', '--threads', '2', '--json']),
+      ExitCodes.ok,
+    );
+
+    final lines = out.toString().split('\n').where((line) => line.isNotEmpty);
+    expect(lines.length, 1);
+    final decoded = jsonDecode(out.toString().trim()) as Map<String, Object?>;
+    expect(decoded['schemaVersion'], ModelParams.schemaVersion);
+    final params = decoded['params'] as Map<String, Object?>;
+    expect(params['threads'], 2);
+    expect(params['contextSize'], 2048);
+    expect(err.toString(), isEmpty);
+  });
+
+  test('a store failure exits with failure and reports on stderr', () async {
+    final failingErr = StringBuffer();
+    final failingRunner = LlamaPulseCommandRunner(
+      CliServices(
+        paths: AppPaths(configDirectory: tempDirectory.path),
+        configStore: const _ThrowingConfigStore(),
+        out: StringBuffer(),
+        err: failingErr,
+      ),
+    );
+
+    expect(
+      await failingRunner.run(['params', 'set', '--threads', '2']),
+      ExitCodes.failure,
+    );
+
+    expect(failingErr.toString(), contains('error:'));
+    expect(failingErr.toString(), contains('disk unavailable'));
+  });
+
   test('a model path with spaces round-trips', () async {
     const modelPath = '/models/my model.gguf';
 
@@ -170,4 +206,20 @@ void main() {
     final params = decoded['params'] as Map<String, Object?>;
     expect(params['modelPath'], modelPath);
   });
+}
+
+final class _ThrowingConfigStore implements ConfigStore {
+  const _ThrowingConfigStore();
+
+  @override
+  Future<Map<String, Object?>?> read(String name) async =>
+      throw StateError('disk unavailable');
+
+  @override
+  Future<void> write(String name, Map<String, Object?> data) async =>
+      throw StateError('disk unavailable');
+
+  @override
+  Future<void> delete(String name) async =>
+      throw StateError('disk unavailable');
 }

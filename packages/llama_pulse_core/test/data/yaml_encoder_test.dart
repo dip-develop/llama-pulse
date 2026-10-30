@@ -47,7 +47,16 @@ void main() {
       "it's": "'it''s'",
       '-x': "'-x'",
       'x #c': "'x #c'",
+      'foo:': "'foo:'",
       'plain': 'plain',
+      'emoji 🦙': 'emoji 🦙',
+      'a\nb': '"a\\nb"',
+      'a\tb': '"a\\tb"',
+      'a\rb': '"a\\rb"',
+      'a\x01b': '"a\\x01b"',
+      'a\x7fb': '"a\\x7fb"',
+      'a\u2028b': '"a\\u2028b"',
+      r'a\"b': '"a\\\\\\"b"',
     };
 
     for (final entry in cases.entries) {
@@ -55,6 +64,17 @@ void main() {
         expect(YamlEncoder.encode({'v': entry.key}), 'v: ${entry.value}\n');
       });
     }
+
+    test('every quoted case round-trips through the decoder', () {
+      for (final key in cases.keys) {
+        final encoded = YamlEncoder.encode({'v': key});
+        expect(
+          YamlDecoder.decode(encoded)['v'],
+          key,
+          reason: 'value ${key.codeUnits}',
+        );
+      }
+    });
   });
 
   test('round-trips double and int without losing the type', () {

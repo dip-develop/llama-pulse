@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import 'app.dart';
 import 'di/injection.dart';
 
-/// Starts LlamaPulse after binding the engine and installing a global error
+/// Starts LlamaPulse, wiring dependencies and installing a global error
 /// handler that reports failures instead of tearing down the frame loop.
 Future<void> runLlamaPulse() async {
   WidgetsFlutterBinding.ensureInitialized();

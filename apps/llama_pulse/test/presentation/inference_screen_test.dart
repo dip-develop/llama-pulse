@@ -10,7 +10,7 @@ void main() {
     expect(find.text('LlamaPulse'), findsOneWidget);
     expect(find.text('Idle'), findsOneWidget);
     expect(
-      find.text('No output yet. Load a model to start generating.'),
+      find.text('No output yet. Inference is not wired in yet.'),
       findsOneWidget,
     );
     expect(

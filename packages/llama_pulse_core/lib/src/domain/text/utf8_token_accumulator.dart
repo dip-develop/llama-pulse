@@ -77,7 +77,7 @@ final class Utf8TokenAccumulator {
     return output.toString();
   }
 
-  /// Returns the sequence length implied by [lead], `0` when it is invalid.
+  // Returns the sequence length implied by [lead], `0` when it is invalid.
   int _sequenceLength(int lead) {
     if (lead <= 0x7F) {
       return 1;
