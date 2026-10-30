@@ -1,0 +1,10 @@
+schemaVersion: 1
+params:
+  modelPath: /models/llama-3.2-3b-instruct.Q4_K_M.gguf
+  contextSize: 2048
+  gpuLayers: 0
+  threads: 4
+  temperature: 0.8
+  topP: 0.95
+  topK: 40
+  maxTokens: 256
