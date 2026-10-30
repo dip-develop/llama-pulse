@@ -16,7 +16,7 @@ final class YamlFileConfigStore implements ConfigStore {
 
   final String _directory;
 
-  static final RegExp _namePattern = RegExp(r'^[a-z0-9_]+$');
+  static final RegExp _namePattern = RegExp(r'^[a-z0-9_-]+$');
 
   @override
   Future<Map<String, Object?>?> read(String name) async {
@@ -63,7 +63,7 @@ final class YamlFileConfigStore implements ConfigStore {
       throw ArgumentError.value(
         name,
         'name',
-        'must be a lowercase file stem matching ^[a-z0-9_]+\$',
+        'must be a lowercase file stem matching ^[a-z0-9_-]+\$',
       );
     }
     return File(p.join(_directory, '$name.yaml'));

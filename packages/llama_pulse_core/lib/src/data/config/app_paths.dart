@@ -40,6 +40,19 @@ final class AppPaths {
   /// The YAML file holding startup parameters.
   String get paramsYamlFile => p.join(configDirectory, 'params.yaml');
 
+  /// The YAML file holding the supervised server configuration.
+  String get serverYamlFile => p.join(configDirectory, 'server.yaml');
+
+  /// The YAML file holding the supervised server state snapshot.
+  String get serverStateYamlFile =>
+      p.join(configDirectory, 'server-state.yaml');
+
+  /// The log file the supervisor appends `llama-server` output to.
+  String get serverLogFile => p.join(configDirectory, 'server.log');
+
+  /// Directory the supervisor looks for `llama-server` binaries in.
+  String get binDirectory => p.join(configDirectory, 'bin');
+
   /// Directory holding locally available model files.
   String get modelsDirectory => p.join(configDirectory, 'models');
 

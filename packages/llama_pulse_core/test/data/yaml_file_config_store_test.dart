@@ -98,6 +98,17 @@ void main() {
       );
     });
 
+    test('accepts a hyphenated document name', () async {
+      final directory = await createTempDirectory();
+      final store = YamlFileConfigStore(directory: directory.path);
+
+      await store.write('server-state', <String, Object?>{'schemaVersion': 1});
+
+      final file = File(p.join(directory.path, 'server-state.yaml'));
+      expect(await file.exists(), isTrue);
+      expect(await store.read('server-state'), {'schemaVersion': 1});
+    });
+
     test('throws FormatException for unparsable YAML', () async {
       final directory = await createTempDirectory();
       final file = File(p.join(directory.path, 'params.yaml'));
