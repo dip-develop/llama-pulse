@@ -27,7 +27,8 @@ import 'package:llama_pulse_core/llama_pulse_core.dart';
 
 ## Configuration
 
-Configuration is YAML. `params.yaml` is shared by the desktop app and the CLI:
+Configuration is YAML. `params.yaml` is written by the CLI today; the desktop
+app will use the same file:
 
 ```yaml
 schemaVersion: 1
@@ -57,7 +58,7 @@ await repository.save(ModelParams.defaults().copyWith(threads: 8));
 final loaded = await repository.load();
 ```
 
-`InMemoryConfigStore` is useful in tests and the CLI. In the app, pass a
+`InMemoryConfigStore` is for tests (including CLI tests). In the app, pass a
 `YamlFileConfigStore` rooted at `AppPaths.resolve().configDirectory`.
 
 ## Status

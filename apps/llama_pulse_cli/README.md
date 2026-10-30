@@ -1,9 +1,10 @@
 # llamapulse CLI
 
 A small command-line companion to the LlamaPulse desktop app. It reads and
-writes the same `params.yaml` the app uses and lists the `.gguf` files in the
-local models directory. Inference is not part of the CLI yet: `run` and `bench`
-arrive together with the worker engine.
+writes the same `params.yaml` the desktop app will use (the app's parameter form
+is not wired yet) and lists the `.gguf` files in the local models directory.
+Inference is not part of the CLI yet: `run` and `bench` arrive together with the
+worker engine.
 
 Run it from source with `dart run bin/llamapulse.dart <command>` or build a
 native executable with `dart compile exe bin/llamapulse.dart`. From the
@@ -21,7 +22,7 @@ llamapulse 0.1.0
 
 ### `params get`
 
-Print the stored parameters as the exact YAML document the app persists. The
+Print the stored parameters as the exact document the repository writes. The
 output can be redirected straight into the config file:
 
 ```
@@ -41,8 +42,8 @@ params:
 ### `params set`
 
 Update one or more fields and write the document. Values are validated against
-the same limits the app uses; an invalid value exits with code 2 and leaves the
-file untouched.
+the same limits the shared validator enforces; an invalid value exits with code
+2 and leaves the file untouched.
 
 ```
 $ llamapulse params set --context-size 4096 --temperature 0.5
@@ -81,9 +82,11 @@ modified: 2026-10-30T12:00:00.000Z
 
 ## `--json`
 
-Every command accepts `--json` and prints a single-line JSON object instead of
-human-readable text. The YAML document used by `params get` and `params set`
-stays YAML on disk; `--json` only changes the presentation.
+Every leaf command (`version`, `params get`, `params set`, `models list`,
+`models inspect`) accepts `--json` and prints a single-line JSON object instead
+of human-readable text. The `params` and `models` groups are not invocable and
+have no `--json` of their own. The YAML document used by `params get` and
+`params set` stays YAML on disk; `--json` only changes the presentation.
 
 ```
 $ llamapulse version --json
@@ -111,7 +114,7 @@ location.
 | 0 | Success |
 | 1 | Unexpected failure |
 | 2 | Invalid arguments or parameters that failed validation |
-| 3 | The requested model file was not found |
+| 3 | The requested model file was not found or is not a readable `.gguf` file |
 
 ## Help
 

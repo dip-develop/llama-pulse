@@ -5,8 +5,10 @@
 LlamaPulse is a workspace for running local LLMs through llama.cpp: a Flutter
 desktop GUI (`apps/llama_pulse`), a command-line companion
 (`apps/llama_pulse_cli`) and a shared Dart package (`packages/llama_pulse_core`).
-Pick a model and a llama.cpp library, tune the startup parameters, watch the run.
-The CLI reads and writes the same configuration and lists local model files.
+The MVP goal: pick a model and a llama.cpp library, tune the startup parameters,
+watch the run. Today the GUI renders `ModelParams.defaults()` and the engine is
+not wired in yet; the CLI reads and writes the shared configuration and lists
+local model files.
 
 MVP:
 
@@ -46,7 +48,7 @@ Flutter/Dart, Clean Architecture. Dart `>=3.13.0 <4.0.0`, Flutter `>=3.44`
 (baseline: Flutter 3.47.7 / Dart 3.13.5). Shared logic lives in the pure-Dart
 core. State management with bloc returns with the editable parameter UI. DI:
 `get_it` + `injectable` in the app, a hand-written composition root in the CLI.
-Immutable models, state and entities: `built_value` + `built_collections`.
+Immutable models, state and entities: `built_value` + `built_collection`.
 Configuration: YAML through the hand-written codec in core.
 
 Pins are deliberate; do not loosen them without reproducing the resolution:
@@ -60,7 +62,7 @@ Pins are deliberate; do not loosen them without reproducing the resolution:
 | `injectable_generator` | `3.1.3` | exact; paired with `injectable ^3.0.0` |
 | `get_it` | `^9.3.0` | DI container in the app |
 | `injectable` | `^3.0.0` | annotations for app-owned registrations |
-| `ffi` | `^2.2.0` | `Utf8`, `calloc`, native helpers (FFI milestone) |
+| `ffi` | `^2.2.0` | `Utf8`, `calloc`, native helpers; arrives with the FFI milestone, nothing declares it yet |
 | `path` | `^1.9.1` | cross-platform paths |
 | `melos` (dev) | `^8.10.0` | workspace scripts and task runner |
 | `yaml` | `^3.1.4` | YAML decoding in core |
@@ -68,13 +70,12 @@ Pins are deliberate; do not loosen them without reproducing the resolution:
 | `flutter_launcher_icons` (dev) | `^0.14.4` | Windows/macOS launcher icons |
 | `lints` (dev) | `^6.1.0` | lint baseline for core and CLI |
 | `test` (dev) | `^1.31.1` | core and CLI tests |
-| `meta` | `^1.18.3` | annotations |
 | `flutter_lints` (dev) | `^6.0.0` | lint baseline for the Flutter app |
 
 The root also sets `dependency_overrides: cli_util: ^0.6.0`.
-`flutter_launcher_icons` pins `cli_util ^0.4.1`, while Melos 8 needs
-`BaseDirectories` from 0.5+. The override is safe because both packages only use
-`cli_logging`, whose API is identical across 0.4.2/0.5.0/0.6.0.
+`flutter_launcher_icons` only needs `cli_logging` (API-identical in
+0.4.2/0.5.0/0.6.0), while Melos 8 needs `BaseDirectories` from `cli_util`
+0.5.0+. `cli_util 0.6.0` satisfies both.
 
 `packages/llama_pulse_core/LICENSE` is a copy of the root MIT license so the
 package is self-contained.
@@ -90,7 +91,7 @@ must leave the tree clean when run twice.
 apps/llama_pulse/
   lib/main.dart
   lib/app/          bootstrap.dart, app.dart, di/, theme/
-  lib/presentation/inference/   screen, widgets, bloc/ (next)
+  lib/presentation/inference/   screen, bloc/ (next)
   test/             app/, presentation/, support/
 apps/llama_pulse_cli/
   bin/llamapulse.dart
@@ -108,7 +109,9 @@ Dependency rule:
 - `presentation -> domain` (entities, gateways, use cases from core)
 - `data -> domain`; data implements the core gateways
 - `app` may import all of them; `presentation` never imports `data` directly
-- core's `domain/` imports only `dart:` core libraries and core's own domain
+- core's `domain/` may use Dart core libraries, `built_value`,
+  `built_collection` and core's own domain types; it never imports Flutter,
+  `dart:io` or plugins
 - `package:flutter/` is imported only by `apps/llama_pulse`
 
 `packages/llama_pulse_core` must stay Flutter-free. The import rules are enforced
@@ -116,9 +119,10 @@ by `packages/llama_pulse_core/test/architecture/core_imports_test.dart`.
 `dart:ffi` **is** allowed in core because it only runs inside the worker isolate;
 Flutter-specific code stays in the app.
 
-Feature folders keep the same name in every layer: `inference` today,
-`models`/`downloads` later. New code goes into its layer, never a new top-level
-folder.
+Core is organised as `domain/{entities,gateways,usecases,text}` and
+`data/{config,models,serialization}`; new domain and data code goes under those
+existing subfolders. Feature folders (`inference/`) are used only where they
+already exist.
 
 ## 5. Immutability
 
@@ -154,13 +158,14 @@ The YAML layer sits above the `built_value` serializers:
   keeps doubles with a decimal point (`0.0`, not `0`) and quotes strings that
   would otherwise reparse as another scalar.
 - `YamlFileConfigStore` writes one document per file through a temporary file
-  and rename; `InMemoryConfigStore` backs tests and the CLI.
+  and rename; `InMemoryConfigStore` backs tests (including CLI tests). CLI
+  production wires `YamlFileConfigStore`.
 - `YamlModelParamsRepository` maps `params.yaml` through the shared serializers
   and falls back to `ModelParams.defaults()` for missing, malformed or stale
   documents. Saving validates first.
 
 `params.yaml` starts with `schemaVersion: 1` and a `params` mapping; the CLI's
-`params get` prints exactly the document the app persists.
+`params get` prints exactly the document the repository writes.
 
 ## 7. FFI and isolates
 
@@ -168,7 +173,7 @@ The engine is **not implemented yet**. These are the rules for the milestone
 that adds it:
 
 - One long-lived worker isolate per engine, spawned lazily on the first
-  `loadModel`. No engine state on the UI isolate.
+  `LlamaEngine.load`. No engine state on the UI isolate.
 - Never `dart:ffi` on the UI isolate — not even to probe a symbol.
 - Symbols via `DynamicLibrary.open` + `lookupFunction`, never `@Native`; the
   app must start with no native library present.
@@ -213,14 +218,17 @@ Core has no annotations and no `get_it`; it only defines gateways.
 Commands: `version`, `params get`, `params set`, `models list`,
 `models inspect`. `run` and `bench` do not exist yet.
 
-- Every command accepts `--json` and prints one single-line JSON object. The
-  configuration file on disk stays YAML.
+- Every leaf command (`version`, `params get`, `params set`, `models list`,
+  `models inspect`) accepts `--json` and prints one single-line JSON object. The
+  `params` and `models` groups are not invocable. The configuration file on disk
+  stays YAML.
 - Exit codes: `0` success, `1` unexpected failure, `2` invalid arguments or
-  validation failure, `3` requested model not found.
+  validation failure, `3` requested model not found or not a readable `.gguf`
+  file.
 - stdout carries command data; stderr carries diagnostics, warnings and usage
   errors.
-- Command help includes the active `params.yaml` path, because the platform
-  directory varies.
+- The `params get` and `params set` leaf commands include the active
+  `params.yaml` path in their help, because the platform directory varies.
 - Once `run` lands it must use the real engine and fail loudly. The CLI never
   silently falls back to a stub engine.
 
@@ -243,6 +251,10 @@ params; primary constructors only on plain classes, never on `built_value`.
 
 Formatting: `dart format`, 80 columns, single quotes, trailing commas.
 
+YAML output: strings with newlines or control characters are emitted
+double-quoted with escapes; everything else stays plain or single-quoted. The
+YAML layer must round-trip through `YamlDecoder`; the tests enforce it.
+
 Analysis must be clean under `strict-casts`, `strict-inference`,
 `strict-raw-types`, plus `always_declare_return_types`, `avoid_dynamic_calls`,
 `directives_ordering`, `prefer_final_locals`, `unawaited_futures`,
@@ -253,7 +265,7 @@ APIs, no `!` on nullable values, no empty `catch` blocks.
 
 From the root, `dart run melos test`. Melos picks `flutter test` for the app and
 `dart test` for core and CLI. Test the critical seams, not every line. Coverage
-is not a target.
+is not a target. The suites hold 135 tests today: 107 core, 21 CLI, 7 app.
 
 Must test today:
 
@@ -271,8 +283,9 @@ Must test when they land:
   streaming, completion, cancellation, `engineBusy`.
 - `InferenceBloc` state machine, including terminal events and cancellation.
 
-Tests mirror the package layout. Fakes live in `test/support/`. Never call
-platform plugins; inject the dependency. No `pumpAndSettle` against
+Tests mirror the package layout. Most core fakes are declared inline in the
+test file that uses them; the app keeps shared fakes in `test/support/`. Never
+call platform plugins; inject the dependency. No `pumpAndSettle` against
 never-ending fake streams. Every PR touches tests or states why not.
 
 ## 12. Codegen
@@ -302,10 +315,10 @@ merge, tag or force-push.
 Commits are small, single-purpose, imperative:
 `feat(inference): add worker transport`.
 
-Roadmap in GitHub issues; current work in `TODO.md` (one line per item, newest
-first, ~20 items), riding in the feature branch. Close an issue only after its
-PR merges. Any change to architecture, pins or these rules updates `AGENT.md`
-in the same PR.
+Roadmap and current work live in GitHub issues: one tracking issue per
+multi-step plan, its steps as a checklist. A PR body carries `Refs #<n>`. Close
+an issue only after its PR merges. Any change to architecture, pins or these
+rules updates `AGENT.md` in the same PR.
 
 ## 14. Extending
 
@@ -352,15 +365,18 @@ dart format lib test
 ```
 
 `dart run melos run check` runs gen, analyze, test, the format check and the CLI
-build. The CLI executable is `llamapulse`; the desktop app binary is
-`llama_pulse`. From the root, `dart run llama_pulse_cli:llamapulse …` also
-works. `LLAMA_PULSE_LIB` points at a llama.cpp shared library in the future
-FFI milestone. Never commit `.env` files, secrets or absolute local paths.
+build. The multi-command scripts start with `set -e`, so it is a genuine gate; a
+masked failure means the script is buggy. The CLI executable is `llamapulse`;
+the desktop app binary is `llama_pulse`. From the root,
+`dart run llama_pulse_cli:llamapulse …` also works. `LLAMA_PULSE_LIB` points at
+a llama.cpp shared library in the future FFI milestone. Never commit `.env`
+files, secrets or absolute local paths.
 
 ## 16. Definition of done for a change
 
 - [ ] The workspace resolves with one lockfile (`flutter pub get` at the root).
-- [ ] `dart run melos run check` is green.
+- [ ] `pubspec.lock` stays untracked.
+- [ ] `dart run melos run check` is green (135 tests: 107 core, 21 CLI, 7 app).
 - [ ] Layers respected; no Flutter imports in core, no `dart:ffi` on the UI
   isolate.
 - [ ] Immutability rules from section 5 followed.
@@ -368,5 +384,5 @@ FFI milestone. Never commit `.env` files, secrets or absolute local paths.
 - [ ] Codegen re-run and generated output committed.
 - [ ] Tests added for the critical seam touched (or the gap justified).
 - [ ] No new dependency without a one-line justification.
-- [ ] `TODO.md`/issues updated.
-- [ ] PR base matches the branch type.
+- [ ] GitHub issues updated; the tracking issue checklist reflects the change.
+- [ ] PR body carries `Refs #<n>`; the PR base matches the branch type.
