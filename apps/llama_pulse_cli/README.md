@@ -1,11 +1,13 @@
 # llamapulse CLI
 
-A small command-line companion to the LlamaPulse desktop app. It reads and
-writes the same `params.yaml` the desktop app uses and lists the `.gguf` files
-in the local models directory. `run` and `bench` generate text against the
-deterministic `StubLlamaSession` when `--stub` is passed; `--stub` selects it
-explicitly and is not a fallback. The native llama.cpp session is the next
-milestone, and until it lands both commands require `--stub`.
+The command-line companion to LlamaPulse. Its primary job is to configure,
+start and inspect a local `llama-server` that other tools can use through an
+OpenAI-compatible endpoint; `status`, `stop` and `logs` work from a second
+terminal because the supervisor records `server-state.yaml`.
+
+The embedded chat path (`run`, `bench` and the `params` it uses) is the older,
+experimental path. `run` and `bench` still require `--stub`; the native embedded
+session is deferred.
 
 Run it from source with `dart run bin/llamapulse.dart <command>` or build a
 native executable with `dart compile exe bin/llamapulse.dart`. From the
@@ -21,10 +23,171 @@ $ llamapulse version
 llamapulse 0.1.0
 ```
 
-### `params get`
+### `server get`
 
-Print the stored parameters as the exact document the repository writes. The
-output can be redirected straight into the config file:
+Print the stored `server.yaml` document. With no stored document (or a stale
+`schemaVersion`) it prints the defaults and writes nothing.
+
+```
+$ llamapulse server get
+schemaVersion: 1
+server:
+  modelPath: /models/llama-3.2-3b-instruct.Q4_K_M.gguf
+  host: 127.0.0.1
+  port: 8080
+  contextSize: 4096
+  threads: 4
+  gpuLayers: 0
+  parallelSlots: 1
+  modelAlias: llama-pulse
+  apiKey: ''
+  flashAttention: auto
+  mlock: false
+  mmap: true
+  extraArgs: []
+  binaryPath: ''
+  startupTimeoutSeconds: 120
+```
+
+`--json` prints the same document as one line.
+
+### `server set`
+
+Update one or more server settings and write `server.yaml`. Values are
+validated before writing; an invalid value exits `2`, prints the violations on
+stderr and leaves the file untouched. The resulting document is printed on
+stdout.
+
+```
+$ llamapulse server set --model-path /models/llama-3.2-3b-instruct.Q4_K_M.gguf \
+    --context-size 8192 --parallel 2 --alias local-llama
+$ llamapulse server set --flash-attn on --mlock --no-mmap
+$ llamapulse server set --reset
+```
+
+Options: `--model-path` (alias `--model`), `--host`, `--port`,
+`--context-size`, `--threads`, `--gpu-layers`, `--parallel`, `--alias`,
+`--api-key`, `--flash-attn` (`on`, `off`, `auto`), `--[no-]mlock`,
+`--[no-]mmap`, repeatable `--extra-arg`, `--binary`, `--startup-timeout`,
+`--reset` and `--json`. Omitted flags keep the stored value. `--mlock` and
+`--mmap` are negatable, and `--extra-arg` replaces the stored list.
+`--reset` restores the defaults and cannot be combined with other options.
+
+`--extra-arg` must not repeat a flag LlamaPulse manages (`-m`, `--host`,
+`--port`, `-c`, `-t`, `-ngl`, `-np`, `-a`, `--api-key`, `-fa`, `--metrics`,
+`--slots`, `-lm`, `--mlock`, `--mmap` and their long forms); such an argument is
+rejected with exit `2`.
+
+### `serve`
+
+Start and supervise `llama-server` in the foreground. `serve` applies the same
+flags as `server set` on top of the stored configuration for this run, validates
+that the model path is a `.gguf` file, locates the binary and waits for
+`/health`. It does not daemonize: child stdout is mirrored to stdout, child and
+supervisor diagnostics go to stderr, and SIGINT/SIGTERM stop the child.
+
+```
+$ llamapulse serve --model /models/llama-3.2-3b-instruct.Q4_K_M.gguf --port 8080
+```
+
+The command refuses to start when `server-state.yaml` records a server that
+still answers `/health`; run `stop` first. From another terminal, `status` shows
+the run and `stop` ends it.
+
+`serve --json` writes NDJSON on stdout, one schema-v1 object per line:
+
+```console
+$ llamapulse serve --model /models/llama-3.2-3b-instruct.Q4_K_M.gguf --json
+{"schemaVersion":1,"type":"starting","supervisorPid":38601,"modelPath":"/models/llama-3.2-3b-instruct.Q4_K_M.gguf","host":"127.0.0.1","port":8080,"binaryPath":"/usr/local/bin/llama-server","binaryVersion":"b6250"}
+{"schemaVersion":1,"type":"ready","serverPid":38612,"baseUrl":"http://127.0.0.1:8080/v1","startupMs":4312}
+{"schemaVersion":1,"type":"metrics","metrics":{"tokensPerSecond":0.0,"promptTokensPerSecond":0.0,"activeSlots":0,"totalSlots":1,"requestsProcessing":0,"requestsDeferred":0,"promptTokensTotal":0,"tokensPredictedTotal":0,"contextUsageRatio":null,"uptimeSeconds":4,"capturedAtEpochMs":1790000000000}}
+{"schemaVersion":1,"type":"log","stream":"stdout","line":"main: server is listening on http://127.0.0.1:8080"}
+{"schemaVersion":1,"type":"stopping","reason":"sigint"}
+{"schemaVersion":1,"type":"stopped","exitCode":0}
+```
+
+Event types and their extra keys:
+
+| `type` | Extra keys |
+|---|---|
+| `starting` | `supervisorPid`, `modelPath`, `host`, `port`, `binaryPath`, `binaryVersion` |
+| `ready` | `serverPid`, `baseUrl`, `startupMs` |
+| `metrics` | `metrics` object: `tokensPerSecond`, `promptTokensPerSecond`, `activeSlots`, `totalSlots`, `requestsProcessing`, `requestsDeferred`, `promptTokensTotal`, `tokensPredictedTotal`, `contextUsageRatio`, `uptimeSeconds`, `capturedAtEpochMs` |
+| `log` | `stream` (`stdout`, `stderr`, `supervisor`), `line` |
+| `stopping` | `reason` (`sigint`, `sigterm`, `child-exit`) |
+| `stopped` | `exitCode` |
+| `failed` | `failure` object (`code`, `message`, `details`), `lastExitCode` |
+
+SIGINT exits `130`; SIGTERM exits `0`. Startup failures (model missing, port
+taken, bind error on stderr, readiness timeout) emit `failed` and exit `1`, `2`
+or `3` as appropriate.
+
+### `status`
+
+Read `server-state.yaml` and probe the recorded server's `/health`.
+
+```
+$ llamapulse status
+status: running
+pid: 38612
+supervisorPid: 38601
+endpoint: http://127.0.0.1:8080/v1
+model: /models/llama-3.2-3b-instruct.Q4_K_M.gguf
+binary: /usr/local/bin/llama-server (b6250, build 6250)
+health: ok
+uptime: 128s
+```
+
+Human `status` is `running`, `stopped`, `stale` or a phase name. `stale` means
+the state file is active but `/health` does not answer. The command exits `0`
+only when the phase is `running` **and** the probe succeeded; every other state
+exits `1`.
+
+`--json` prints one object:
+
+```json
+{"schemaVersion":1,"type":"serverStatus","running":true,"status":"running","health":"ok","pid":38612,"supervisorPid":38601,"host":"127.0.0.1","port":8080,"baseUrl":"http://127.0.0.1:8080/v1","modelPath":"/models/llama-3.2-3b-instruct.Q4_K_M.gguf","binary":{"path":"/usr/local/bin/llama-server","version":"b6250","buildNumber":6250,"supported":true,"warning":null},"uptimeSeconds":128,"lastExitCode":null,"failure":null}
+```
+
+### `stop`
+
+Stop the server recorded in `server-state.yaml`. The command signals the
+recorded supervisor first, waits for the state file to release the pids, then
+sends a forced kill if the process lingers. `--force` skips the graceful phase.
+Stopping when nothing is recorded is a success.
+
+```
+$ llamapulse stop
+stopped
+$ llamapulse stop --json
+{"schemaVersion":1,"type":"serverStop","stopped":true,"pid":38601,"forced":false}
+```
+
+`pid` is the supervisor pid when recorded, otherwise the server pid. A process
+that cannot be stopped exits `1` with `stopped: false`.
+
+### `logs`
+
+Print the newest supervisor and `llama-server` lines from the log store.
+
+```
+$ llamapulse logs --lines 3
+[supervisor] starting /usr/local/bin/llama-server on 127.0.0.1:8080
+[stdout] main: server is listening on http://127.0.0.1:8080
+[stderr] all slots are idle
+```
+
+`--lines` accepts `1..1000` (default 100). `--follow` keeps printing new lines
+until interrupted, then exits `130`. `--json` prints one object per line with
+`sequence`, `timestampEpochMs`, `stream` and `line`.
+
+The on-disk file is `server.log` in the configuration directory, rotated at
+1 MiB to `server.log.1`.
+
+### `params get` and `params set` (embedded)
+
+The chat parameters live in `params.yaml`. `params get` prints the exact
+document and `params set` validates and writes it:
 
 ```
 $ llamapulse params get
@@ -38,15 +201,6 @@ params:
   topP: 0.95
   topK: 40
   maxTokens: 256
-```
-
-### `params set`
-
-Update one or more fields and write the document. Values are validated against
-the same limits the shared validator enforces; an invalid value exits with code
-2 and leaves the file untouched.
-
-```
 $ llamapulse params set --context-size 4096 --temperature 0.5
 $ llamapulse params set --model-path "/models/my model.gguf"
 $ llamapulse params set --reset
@@ -56,24 +210,11 @@ Options: `--model-path`, `--context-size`, `--gpu-layers`, `--threads`,
 `--temperature`, `--top-p`, `--top-k`, `--max-tokens`, `--reset`. `--reset`
 cannot be combined with another parameter option.
 
-### `models list`
-
-List `.gguf` files in the models directory, or in the directories passed with
-the repeatable `--dir` option.
+### `models list` and `models inspect`
 
 ```
 $ llamapulse models list
 llama-3.2-3b-instruct.Q4_K_M.gguf  1918.42  /home/me/.config/llamapulse/models/llama-3.2-3b-instruct.Q4_K_M.gguf
-```
-
-Directories that cannot be read produce a warning on stderr; the command still
-exits with code 0.
-
-### `models inspect`
-
-Print metadata for one model file.
-
-```
 $ llamapulse models inspect /models/llama-3.2-3b-instruct.Q4_K_M.gguf
 path: /models/llama-3.2-3b-instruct.Q4_K_M.gguf
 fileName: llama-3.2-3b-instruct.Q4_K_M.gguf
@@ -81,87 +222,52 @@ sizeMiB: 1918.42
 modified: 2026-10-30T12:00:00.000Z
 ```
 
-### `run`
+`models list` takes a repeatable `--dir`; unreadable directories warn on stderr
+and still exit `0`.
 
-Generate one prompt. The native engine is not implemented yet, so `--stub` is
-mandatory: it selects the deterministic stub session inside the worker. Without
-it the command exits 1 with
-`error: engineUnavailable: the native session is unavailable; pass --stub` and
-never falls back silently. In stub mode the model path is echoed into the
-request but not read, so no file-existence check happens.
+### `run` and `bench` (embedded, experimental)
+
+Both generate against the embedded worker path and require `--stub`. The stub
+selects the deterministic `StubLlamaSession`; it is not a fallback. Without it
+they exit `1` with `engineUnavailable: the native session is unavailable; pass
+--stub`. In stub mode the model path is echoed but not read.
 
 ```
 $ llamapulse run --stub --model /models/demo.gguf --prompt "Hello" --max-tokens 8
 Local models run on your machine. No
 $ echo "Hello" | llamapulse run --stub --model /models/demo.gguf --file - --stream
-```
-
-Flags: `--model`, `--prompt`, `--file` (`-` reads stdin), `--stream`, `--json`,
-`--threads`, `--temperature`, `--top-p`, `--top-k`, `--max-tokens` and
-`--context-size`. `--prompt` and `--file` are mutually exclusive; one is
-required. `--json` and `--stream` cannot be combined.
-
-`--stream` writes NDJSON: one schema-v1 object per line. Event types are
-`started`, `token`, `metrics`, `completed`, `cancelled` and `failed`. A
-`metrics` object carries `promptTokenCount`, `generatedTokenCount`,
-`promptEvalMs`, `evalMs`, `tokensPerSecond` and `promptTokensPerSecond`; a
-`failure` object carries `code`, `message` and `details`.
-
-```console
-$ llamapulse run --stub --model /models/demo.gguf --prompt "Hello" --max-tokens 8 --stream
-{"schemaVersion":1,"type":"started","requestId":1}
-{"schemaVersion":1,"type":"token","requestId":1,"text":"Local"}
-{"schemaVersion":1,"type":"token","requestId":1,"text":" models"}
-{"schemaVersion":1,"type":"metrics","requestId":1,"metrics":{"promptTokenCount":1,"generatedTokenCount":8,"promptEvalMs":3,"evalMs":189,"tokensPerSecond":42.33,"promptTokensPerSecond":333.33}}
-{"schemaVersion":1,"type":"completed","requestId":1,"text":"Local models run on your machine. No","metrics":{"promptTokenCount":1,"generatedTokenCount":8,"promptEvalMs":3,"evalMs":189,"tokensPerSecond":42.33,"promptTokensPerSecond":333.33}}
-```
-
-`run --json` prints exactly one final JSON object instead of the stream.
-
-### `bench`
-
-Run the fixed prompt `The quick brown fox jumps over the lazy dog.` several
-times and report aggregate throughput. `--stub` is mandatory, as for `run`, and
-selects the same deterministic stub session; without it the same
-`engineUnavailable` message exits 1. With no configured model, stub mode uses the
-`<stub>` placeholder path.
-
-```
 $ llamapulse bench --stub --runs 3
 runs: 3  generatedTokens: 36  evalMs: 818  tokensPerSecond: 44.01
-$ llamapulse bench --stub --runs 3 --json
-{"schemaVersion":1,"type":"bench","runs":3,"modelPath":"<stub>","promptChars":44,"promptTokenCount":11,"generatedTokenCount":36,"evalMs":818,"tokensPerSecond":44.01,"perRun":[{"requestId":1,"generatedTokenCount":12,"evalMs":274,"tokensPerSecond":43.8},{"requestId":2,"generatedTokenCount":12,"evalMs":272,"tokensPerSecond":44.12},{"requestId":3,"generatedTokenCount":12,"evalMs":272,"tokensPerSecond":44.12}]}
 ```
 
-Flags: `--runs` (1..50, default 3), `--json`, `--max-tokens` (default 32), plus
-the shared `--model`, `--threads`, `--temperature`, `--top-p`, `--top-k` and
-`--context-size` overrides. Without `--json`, per-run progress lines go to
-stderr and the aggregate line goes to stdout.
-
-### stdout and stderr
-
-stdout carries command data only: generated text, NDJSON events or the final
-JSON object. stderr carries diagnostics, the human completion summary, per-run
-bench progress and usage errors.
+`run` flags: `--model`, `--prompt`, `--file` (`-` reads stdin), `--stream`,
+`--json`, `--threads`, `--temperature`, `--top-p`, `--top-k`, `--max-tokens`
+and `--context-size`. `--prompt` and `--file` are mutually exclusive; one is
+required. `--json` and `--stream` cannot be combined. `--stream` writes NDJSON
+with `started`, `token`, `metrics`, `completed`, `cancelled` and `failed`.
+`bench` flags: `--runs` (1..50, default 3), `--json`, `--max-tokens` (default
+32) and the shared overrides.
 
 ## `--json`
 
-Every leaf command (`version`, `params get`, `params set`, `models list`,
-`models inspect`, `run`, `bench`) accepts `--json` and prints a single-line JSON
-object instead of human-readable text. `run` also accepts `--stream`. The
-`params` and `models` groups are not invocable and have no `--json` of their
-own. The YAML document used by `params get` and `params set` stays YAML on disk;
-`--json` only changes the presentation.
-
-```
-$ llamapulse version --json
-{"name":"llama_pulse_cli","version":"0.1.0"}
-```
+Every leaf command accepts `--json`. `server get`, `server set`, `status`,
+`stop` and `version` print one single-line JSON object; `serve` and
+`logs --follow` emit NDJSON. The `params`, `models` and `server` groups are not
+invocable and have no `--json` of their own. Configuration files on disk stay
+YAML.
 
 ## Configuration paths
 
-`params.yaml` lives in the configuration directory; `models/` is its default
-model directory.
+All files live in one directory:
+
+```
+<config>/server.yaml          supervised server configuration
+<config>/server-state.yaml    phases, pids, health, last exit
+<config>/server.log           supervisor and child output (rotated at 1 MiB)
+<config>/params.yaml          embedded chat parameters
+<config>/models/              default model directory
+<config>/bin/                 optional llama-server location
+```
 
 | Platform | Directory |
 |---|---|
@@ -172,20 +278,43 @@ model directory.
 Set `LLAMA_PULSE_CONFIG_DIR` to an absolute path to override the platform
 location.
 
+## `llama-server` discovery
+
+`serve`, `status` and the dashboard resolve the executable in this order:
+
+1. `server.yaml`'s `binaryPath`
+2. `LLAMA_PULSE_SERVER` (absolute path, path containing a separator, or a bare
+   name looked up on `PATH`)
+3. `<exeDir>/data/llama-server`
+4. `<exeDir>/llama-server`
+5. `<config>/bin/llama-server`
+6. `PATH`
+
+On Windows the name is `llama-server.exe`. The version comes from
+`llama-server --version`; the supported floor is build `b4000`. A lower or
+unreadable version only produces a warning (`unsupported or unknown llama.cpp
+build; supported from b4000`) — it never blocks a start. Builds `b10875` and
+newer (and unknown builds) get `--load-mode`; older builds get
+`--mlock`/`--no-mmap`.
+
 ## Exit codes
 
 | Code | Meaning |
 |---|---|
-| 0 | Success |
-| 1 | Unexpected failure, including `engineUnavailable` without `--stub` |
-| 2 | Invalid arguments or parameters that failed validation |
+| 0 | Success; `status` only when running and healthy; `stop` also when nothing was running |
+| 1 | Unexpected failure, any non-running `status`, `serve` when a server is already recorded, `engineUnavailable` without `--stub` |
+| 2 | Invalid arguments, invalid values, or a server configuration that failed validation |
 | 3 | The requested model file was not found or is not a readable `.gguf` file |
-| 130 | Generation cancelled by SIGINT |
+| 130 | Interrupted by SIGINT (`serve`, `logs --follow`, a generation) |
 
 ## Help
 
 ```
 $ llamapulse --help
-$ llamapulse params --help
-$ llamapulse params set --help
+$ llamapulse server --help
+$ llamapulse server set --help
+$ llamapulse serve --help
+$ llamapulse status --help
+$ llamapulse stop --help
+$ llamapulse logs --help
 ```
