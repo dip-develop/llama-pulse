@@ -11,6 +11,7 @@ export 'src/data/config/yaml_encoder.dart';
 export 'src/data/config/yaml_file_config_store.dart';
 export 'src/data/config/yaml_model_params_repository.dart';
 export 'src/data/inference/stub_llama_session.dart';
+export 'src/data/inference/unavailable_llama_session.dart';
 export 'src/data/inference/worker_config.dart';
 export 'src/data/inference/worker_entrypoint.dart';
 export 'src/data/inference/worker_llama_engine.dart';

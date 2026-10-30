@@ -3,7 +3,9 @@ import 'dart:isolate';
 
 import '../../domain/entities/worker_request.dart';
 import '../../domain/entities/worker_request_kind.dart';
+import '../../domain/gateways/llama_session.dart';
 import 'stub_llama_session.dart';
+import 'unavailable_llama_session.dart';
 import 'worker_config.dart';
 import 'worker_loop.dart';
 
@@ -19,9 +21,12 @@ void llamaWorkerMain(WorkerConfig config) {
 }
 
 Future<void> _serve(WorkerConfig config, ReceivePort port) async {
-  // The next change replaces the stub with the native session, which opens the
-  // library named by LLAMA_PULSE_LIB; the stub ignores the path.
-  final session = StubLlamaSession();
+  // The next change replaces the unavailable placeholder with the native
+  // session, which opens the library named by LLAMA_PULSE_LIB. The stub
+  // ignores the path and is only selected explicitly through the config.
+  final LlamaSession session = config.useStubSession
+      ? StubLlamaSession()
+      : const UnavailableLlamaSession();
   await session.open('');
   final loop = WorkerLoop(session: session, send: config.mainPort.send);
   port.listen((Object? message) {

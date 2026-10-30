@@ -100,7 +100,7 @@ final class RunCommand extends LlamaPulseCommand {
       return ExitCodes.usage;
     }
 
-    final engine = services.engineFactory();
+    final engine = services.createEngine(useStubSession: true);
     try {
       try {
         await engine.load(params);

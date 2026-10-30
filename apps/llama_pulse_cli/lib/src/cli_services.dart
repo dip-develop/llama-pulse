@@ -74,9 +74,15 @@ final class CliServices {
     return _watchedInterrupts ??= io.ProcessSignal.sigint.watch();
   }
 
-  /// Creates the inference engine; defaults to [WorkerLlamaEngine].
-  LlamaEngine Function() get engineFactory =>
-      _engineFactory ?? WorkerLlamaEngine.new;
+  /// Creates the inference engine.
+  ///
+  /// An injected factory always wins. Otherwise this builds a
+  /// [WorkerLlamaEngine], forwarding [useStubSession] so the caller decides
+  /// whether the worker runs the deterministic stub or the unavailable native
+  /// placeholder.
+  LlamaEngine createEngine({bool useStubSession = false}) =>
+      _engineFactory?.call() ??
+      WorkerLlamaEngine(useStubSession: useStubSession);
 
   /// Loads and saves `params.yaml`; built once from [configStore].
   YamlModelParamsRepository get paramsRepository => _paramsRepository ??=

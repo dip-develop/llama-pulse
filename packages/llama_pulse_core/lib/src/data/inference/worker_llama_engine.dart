@@ -22,9 +22,15 @@ import 'worker_transport.dart';
 final class WorkerLlamaEngine implements LlamaEngine {
   /// Creates an engine that spawns [entryPoint], or the production worker when
   /// none is given.
+  ///
+  /// [useStubSession] selects the session implementation inside the worker:
+  /// `true` runs the deterministic stub, `false` (the default) runs the
+  /// unavailable native placeholder, whose `load` fails with
+  /// `engineUnavailable`.
   WorkerLlamaEngine({
     this.loadTimeout = const Duration(seconds: 30),
     this.requestTimeout = const Duration(minutes: 5),
+    this.useStubSession = false,
     void Function(WorkerConfig)? entryPoint,
   }) : _entryPoint = entryPoint; // ignore: prefer_initializing_formals
 
@@ -33,6 +39,9 @@ final class WorkerLlamaEngine implements LlamaEngine {
 
   /// Upper bound for one generation, measured from [generate] to its terminal.
   final Duration requestTimeout;
+
+  /// Whether the worker should run the deterministic stub session.
+  final bool useStubSession;
 
   final void Function(WorkerConfig)? _entryPoint;
   final _controls = <int, _PendingControl>{};
@@ -106,9 +115,25 @@ final class WorkerLlamaEngine implements LlamaEngine {
   /// Caller ids must be non-negative and unique while a request is in flight;
   /// responses for any other id are ignored. The returned stream emits
   /// [GenerationEvent.started] immediately, then tokens and metrics, then
-  /// exactly one terminal event, and never a stream error.
+  /// exactly one terminal event, and never a stream error. Reusing the id of a
+  /// request that is still in flight is rejected with a single `failed` event
+  /// carrying `engineBusy`; the live request is left untouched.
   @override
   Stream<GenerationEvent> generate(GenerationRequest request) {
+    if (_channels.containsKey(request.requestId)) {
+      final rejected = StreamController<GenerationEvent>();
+      rejected.add(
+        GenerationEvent.failed(
+          request.requestId,
+          _failure(
+            InferenceFailureCode.engineBusy,
+            'A request with id ${request.requestId} is already in flight.',
+          ),
+        ),
+      );
+      unawaited(rejected.close());
+      return rejected.stream;
+    }
     final controller = StreamController<GenerationEvent>();
     final channel = _GenerationChannel(
       requestId: request.requestId,
@@ -235,6 +260,15 @@ final class WorkerLlamaEngine implements LlamaEngine {
     try {
       return await future.timeout(loadTimeout);
     } on TimeoutException {
+      // The timeout abandons `future` while spawning continues. Attach cleanup
+      // to the underlying future: a transport that finishes after this point
+      // would otherwise keep a live isolate and ports forever.
+      unawaited(
+        future.then<void>(
+          (transport) => transport.close(),
+          onError: (Object _) {},
+        ),
+      );
       throw InferenceFailureException(
         _timedOut('Starting the inference worker', loadTimeout),
       );
@@ -254,7 +288,10 @@ final class WorkerLlamaEngine implements LlamaEngine {
     if (previousFailures != null) {
       await previousFailures.cancel();
     }
-    final transport = WorkerTransport(entryPoint: _entryPoint);
+    final transport = WorkerTransport(
+      entryPoint: _entryPoint,
+      useStubSession: useStubSession,
+    );
     try {
       await transport.start();
     } catch (error) {
@@ -314,10 +351,11 @@ final class WorkerLlamaEngine implements LlamaEngine {
   }
 
   void _completeControl(WorkerResponse response) {
-    final control = _controls.remove(response.requestId);
+    final control = _controls[response.requestId];
     if (control == null || control.expectedKind != response.kind) {
       return;
     }
+    _controls.remove(response.requestId);
     control.completer.complete();
   }
 

@@ -40,7 +40,8 @@ Naming: app `llama_pulse`, CLI `llamapulse`, package `llama_pulse_core`.
 - Core entities, validation, YAML config storage, model-file scanning and the
   worker-isolate inference layer (`WorkerRequest`/`WorkerResponse`,
   `WorkerTransport`, `WorkerLlamaEngine`, `WorkerLoop`, `StubLlamaSession`).
-  The worker is hard-wired to the stub; there is no `dart:ffi` code yet.
+  The worker selects the stub session only when asked; the default fails
+  `load` with `engineUnavailable`. There is no `dart:ffi` code yet.
 - Demo-mode GUI: editable parameters persisted to the shared `params.yaml`, a
   prompt editor, Generate/Cancel/Unload, streamed output, a live tokens/sec
   metrics panel and a failure banner. A normal build ships no engine and says

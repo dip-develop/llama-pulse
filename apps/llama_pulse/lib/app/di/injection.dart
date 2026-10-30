@@ -64,7 +64,9 @@ Future<void> configureDependencies({
   if (engine != null) {
     getIt.registerLazySingleton<LlamaEngine>(() => engine);
   } else if (useStubEngine ?? _stubEngineEnabled) {
-    getIt.registerLazySingleton<LlamaEngine>(WorkerLlamaEngine.new);
+    getIt.registerLazySingleton<LlamaEngine>(
+      () => WorkerLlamaEngine(useStubSession: true),
+    );
   }
   getIt
     ..registerFactory<InferenceBloc>(

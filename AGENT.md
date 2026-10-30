@@ -182,11 +182,13 @@ The YAML layer sits above the `built_value` serializers:
 
 ## 7. FFI and isolates
 
-A worker isolate exists and is stub-backed. Core's `data/inference/` holds the
-protocol (`WorkerRequest`/`WorkerResponse` and their kinds), `WorkerTransport`,
-`WorkerLlamaEngine`, `WorkerLoop`, `StubLlamaSession` and the
-`@pragma('vm:entry-point')` `llamaWorkerMain` entrypoint. There is no
-`dart:ffi` code yet; the worker is hard-wired to `StubLlamaSession`.
+A worker isolate exists. Core's `data/inference/` holds the protocol
+(`WorkerRequest`/`WorkerResponse` and their kinds), `WorkerTransport`,
+`WorkerLlamaEngine`, `WorkerLoop`, `StubLlamaSession`, the
+`UnavailableLlamaSession` placeholder and the `@pragma('vm:entry-point')`
+`llamaWorkerMain` entrypoint. There is no `dart:ffi` code yet;
+`WorkerConfig.useStubSession` selects the stub inside the worker and defaults to
+the unavailable placeholder.
 
 - One long-lived worker isolate per engine, spawned lazily on the first
   `load`/`unload`/`generate`. A failed start is retried on the next call. No

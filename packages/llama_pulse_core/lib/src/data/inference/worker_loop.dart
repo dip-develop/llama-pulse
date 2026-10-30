@@ -68,7 +68,7 @@ final class WorkerLoop {
         case WorkerRequestKind.generate:
           _generate(request);
         case WorkerRequestKind.cancel:
-          _cancellation = _cancel(request);
+          _queueCancel(request);
         case WorkerRequestKind.unload:
           _enqueue(request.requestId, () => _unload(request));
         case WorkerRequestKind.dispose:
@@ -142,6 +142,13 @@ final class WorkerLoop {
     if (generation != null) {
       await generation;
     }
+    // A cancel may still be awaiting the session; disposing underneath it would
+    // overlap cancel() and dispose(). This snapshot is final because handling a
+    // dispose request sets `_closing`, which drops every later cancel.
+    final cancellation = _cancellation;
+    if (cancellation != null) {
+      await cancellation;
+    }
     try {
       await _session.dispose();
       _send(WorkerResponse.disposed(request.requestId));
@@ -170,13 +177,23 @@ final class WorkerLoop {
   Future<void> _trackGeneration(Future<void> task) async {
     try {
       await task;
-    } catch (error) {
+    } catch (_) {
       // The loop must not leave an unhandled error behind.
     } finally {
       _generation = null;
       _generationRequestId = null;
       _cancelRequested = false;
     }
+  }
+
+  void _queueCancel(WorkerRequest request) {
+    final previous = _cancellation;
+    // Chain instead of overwriting: a second cancel that arrives while the
+    // session is still cancelling must still be observed.
+    final next = previous == null
+        ? _cancel(request)
+        : previous.then((_) => _cancel(request));
+    _cancellation = next;
   }
 
   Future<void> _cancel(WorkerRequest request) async {
@@ -186,7 +203,7 @@ final class WorkerLoop {
     _cancelRequested = true;
     try {
       await _session.cancel();
-    } catch (error) {
+    } catch (_) {
       // Cancellation is best effort; the session ends generation on its own.
     }
   }

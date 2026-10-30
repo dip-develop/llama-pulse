@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:llama_pulse_core/llama_pulse_core.dart';
 import 'package:test/test.dart';
 
@@ -70,6 +72,124 @@ Future<_Harness> _loaded({Duration tokenDelay = Duration.zero}) async {
   harness.sentAtMs.clear();
   harness.stopwatch.reset();
   return harness;
+}
+
+/// Emits exactly [tokens] text steps, is not stopped by cancel and keeps
+/// producing metrics so interval behaviour can be asserted.
+final class _TickSession implements LlamaSession {
+  _TickSession({required this.tokens, this.stepDelay = Duration.zero});
+
+  final int tokens;
+  final Duration stepDelay;
+
+  int _emitted = 0;
+
+  @override
+  Future<void> open(String libraryPath) async {}
+
+  @override
+  Future<void> load(ModelParams params) async {
+    _emitted = 0;
+  }
+
+  @override
+  void begin(GenerationRequest request) {
+    _emitted = 0;
+  }
+
+  @override
+  Future<GenerationStep?> next() async {
+    await Future<void>.delayed(stepDelay);
+    final metrics = GenerationMetrics(
+      (b) => b
+        ..promptTokenCount = 1
+        ..generatedTokenCount = _emitted
+        ..promptEvalMs = 1
+        ..evalMs = _emitted,
+    );
+    if (_emitted < tokens) {
+      _emitted++;
+      return GenerationStep(text: 'x', metrics: metrics);
+    }
+    return GenerationStep(metrics: metrics, done: true);
+  }
+
+  @override
+  Future<void> cancel() async {}
+
+  @override
+  Future<void> unload() async {}
+
+  @override
+  Future<void> dispose() async {}
+}
+
+/// A session whose `cancel()` completes only when the test completes the
+/// matching [cancels] entry.
+final class _ManualCancelSession implements LlamaSession {
+  _ManualCancelSession({
+    this.steps = 3,
+    this.stepDelay = const Duration(milliseconds: 10),
+  });
+
+  final int steps;
+  final Duration stepDelay;
+  final cancels = <Completer<void>>[];
+  int disposeCalls = 0;
+
+  int _emitted = 0;
+  bool _cancelled = false;
+
+  @override
+  Future<void> open(String libraryPath) async {}
+
+  @override
+  Future<void> load(ModelParams params) async {
+    _emitted = 0;
+    _cancelled = false;
+  }
+
+  @override
+  void begin(GenerationRequest request) {
+    _emitted = 0;
+    _cancelled = false;
+  }
+
+  @override
+  Future<GenerationStep?> next() async {
+    await Future<void>.delayed(stepDelay);
+    if (_cancelled) {
+      return null;
+    }
+    final metrics = GenerationMetrics(
+      (b) => b
+        ..promptTokenCount = 1
+        ..generatedTokenCount = _emitted
+        ..promptEvalMs = 1
+        ..evalMs = _emitted * 10,
+    );
+    if (_emitted < steps) {
+      _emitted++;
+      return GenerationStep(text: 'x', metrics: metrics);
+    }
+    return GenerationStep(metrics: metrics, done: true);
+  }
+
+  @override
+  Future<void> cancel() {
+    _cancelled = true;
+    final completer = Completer<void>();
+    cancels.add(completer);
+    return completer.future;
+  }
+
+  @override
+  Future<void> unload() async {}
+
+  @override
+  Future<void> dispose() async {
+    disposeCalls++;
+  }
 }
 
 bool _isTerminal(WorkerResponse response) =>
@@ -193,25 +313,140 @@ void main() {
     });
 
     test('interim metrics respect the 250 ms interval', () async {
-      final harness = await _loaded(
-        tokenDelay: const Duration(milliseconds: 60),
+      const tokens = 20;
+      final session = _TickSession(
+        tokens: tokens,
+        stepDelay: const Duration(milliseconds: 60),
       );
+      await session.open('');
+      final harness = _Harness(session: session);
+      await harness.load();
+      harness.responses.clear();
+      harness.sentAtMs.clear();
+      harness.stopwatch.reset();
       harness.loop.handle(
-        WorkerRequest.generate(_request('hello', requestId: 5, maxTokens: 6)),
+        WorkerRequest.generate(
+          _request('hello', requestId: 5, maxTokens: tokens),
+        ),
       );
       await harness.loop.idle;
       final metrics = harness.ofKind(WorkerResponseKind.metrics);
-      // One final marker plus at least one interim sample on a ~360 ms run.
-      expect(metrics.length, greaterThanOrEqualTo(2));
-      expect(metrics.length, lessThanOrEqualTo(4));
+      // 20 tokens at 60 ms is ~1.2 s: several interim samples plus the final
+      // marker. The loop can emit at most one interval marker per step.
+      expect(metrics.length, greaterThanOrEqualTo(3));
+      expect(metrics.length, lessThanOrEqualTo(tokens + 2));
       final marks = <int>[
         for (var index = 0; index < harness.responses.length; index++)
           if (harness.responses[index].kind == WorkerResponseKind.metrics)
             harness.sentAtMs[index],
       ];
+      // The last mark is the final marker emitted by `finish`; all earlier
+      // marks are interval samples and must be at least ~250 ms apart.
       for (var index = 1; index < marks.length - 1; index++) {
         expect(marks[index] - marks[index - 1], greaterThanOrEqualTo(200));
       }
+    });
+
+    test('a second generate during the first is rejected', () async {
+      final session = _ManualCancelSession(
+        steps: 3,
+        stepDelay: const Duration(milliseconds: 10),
+      );
+      await session.open('');
+      final harness = _Harness(session: session);
+      await harness.load();
+      harness.responses.clear();
+      harness.loop.handle(
+        WorkerRequest.generate(_request('hello', requestId: 15, maxTokens: 40)),
+      );
+      harness.loop.handle(
+        WorkerRequest.generate(_request('bye', requestId: 16, maxTokens: 40)),
+      );
+      await harness.loop.idle;
+
+      final failure = harness.ofKind(WorkerResponseKind.failure).single;
+      expect(failure.requestId, 16);
+      expect(failure.failure!.code, InferenceFailureCode.engineBusy);
+      final firstTerminals = harness.responses.where(
+        (response) => response.requestId == 15 && _isTerminal(response),
+      );
+      expect(firstTerminals, hasLength(1));
+      expect(firstTerminals.single.kind, WorkerResponseKind.completed);
+    });
+
+    test('dispose during generation waits for the terminal', () async {
+      final session = _ManualCancelSession(
+        steps: 2,
+        stepDelay: const Duration(milliseconds: 10),
+      );
+      await session.open('');
+      final harness = _Harness(session: session);
+      await harness.load();
+      harness.responses.clear();
+      harness.loop.handle(
+        WorkerRequest.generate(_request('hello', requestId: 17, maxTokens: 40)),
+      );
+      harness.loop.handle(WorkerRequest.dispose(-9));
+      await harness.loop.idle;
+
+      expect(session.disposeCalls, 1);
+      expect(harness.ofKind(WorkerResponseKind.completed), hasLength(1));
+      expect(harness.ofKind(WorkerResponseKind.disposed), hasLength(1));
+      expect(harness.responses.where(_isTerminal).length, 1);
+    });
+
+    test('dispose waits for an in-flight cancel before disposing', () async {
+      final session = _ManualCancelSession(
+        steps: 10,
+        stepDelay: const Duration(milliseconds: 20),
+      );
+      await session.open('');
+      final harness = _Harness(session: session);
+      await harness.load();
+      harness.responses.clear();
+      harness.loop.handle(
+        WorkerRequest.generate(_request('hello', requestId: 18, maxTokens: 40)),
+      );
+      harness.loop.handle(WorkerRequest.cancel(-3, 18));
+      harness.loop.handle(WorkerRequest.dispose(-9));
+
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      expect(session.cancels, hasLength(1));
+      // The generation is over, but dispose must wait for cancel() to finish.
+      expect(session.disposeCalls, 0);
+
+      session.cancels.single.complete();
+      await harness.loop.idle;
+      expect(session.disposeCalls, 1);
+      expect(harness.ofKind(WorkerResponseKind.cancelled), hasLength(1));
+      expect(harness.ofKind(WorkerResponseKind.disposed), hasLength(1));
+    });
+
+    test('a second cancel while one is pending is queued', () async {
+      final session = _ManualCancelSession(
+        steps: 10,
+        stepDelay: const Duration(milliseconds: 50),
+      );
+      await session.open('');
+      final harness = _Harness(session: session);
+      await harness.load();
+      harness.responses.clear();
+      harness.loop.handle(
+        WorkerRequest.generate(_request('hello', requestId: 19, maxTokens: 40)),
+      );
+      harness.loop.handle(WorkerRequest.cancel(-3, 19));
+      harness.loop.handle(WorkerRequest.cancel(-4, 19));
+
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+      expect(session.cancels, hasLength(1));
+      session.cancels.first.complete();
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+      // The second cancel ran only after the first completed, and was observed.
+      expect(session.cancels, hasLength(2));
+
+      session.cancels.last.complete();
+      await harness.loop.idle;
+      expect(harness.ofKind(WorkerResponseKind.cancelled), hasLength(1));
     });
   });
 

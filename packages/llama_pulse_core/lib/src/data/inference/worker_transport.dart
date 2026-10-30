@@ -17,20 +17,27 @@ import 'worker_entrypoint.dart';
 final class WorkerTransport {
   /// Creates a transport that spawns [entryPoint], or [llamaWorkerMain] when
   /// none is given.
+  ///
+  /// [useStubSession] is forwarded to the worker in [WorkerConfig] and selects
+  /// the session implementation inside the worker.
   WorkerTransport({
     void Function(WorkerConfig)? entryPoint,
     this.handshakeTimeout = const Duration(seconds: 10),
+    this.useStubSession = false,
   }) : _entryPoint = entryPoint ?? llamaWorkerMain;
 
   /// How long [start] waits for the worker's [WorkerReady] handshake.
   final Duration handshakeTimeout;
+
+  /// Whether the worker should run the deterministic stub session.
+  final bool useStubSession;
 
   static const _exitGrace = Duration(seconds: 2);
 
   final void Function(WorkerConfig) _entryPoint;
   final _responses = StreamController<WorkerResponse>.broadcast();
   final _failures = StreamController<InferenceFailure>.broadcast();
-  final _exitSignal = Completer<void>();
+  Completer<void> _exitSignal = Completer<void>();
 
   Isolate? _isolate;
   ReceivePort? _port;
@@ -75,6 +82,13 @@ final class WorkerTransport {
   Future<void> close() => _closing ??= _close();
 
   Future<void> _start() async {
+    // A transport aborted after a handshake timeout can be started again; the
+    // exit completer is single-use, so reset it together with the exit flag.
+    if (_exitSignal.isCompleted) {
+      _exitSignal = Completer<void>();
+    }
+    _exitReported = false;
+
     final port = ReceivePort();
     _port = port;
     final handshake = Completer<SendPort?>();
@@ -85,13 +99,13 @@ final class WorkerTransport {
     try {
       isolate = await Isolate.spawn(
         _entryPoint,
-        WorkerConfig(mainPort: port.sendPort),
+        WorkerConfig(mainPort: port.sendPort, useStubSession: useStubSession),
         debugName: 'llamapulse-worker',
         errorsAreFatal: false,
         onError: port.sendPort,
         onExit: port.sendPort,
       );
-    } catch (error) {
+    } catch (_) {
       _starting = null;
       port.close();
       _port = null;
@@ -99,6 +113,19 @@ final class WorkerTransport {
       rethrow;
     }
     _isolate = isolate;
+
+    // `close()` may have been requested while `Isolate.spawn` was awaiting; it
+    // cannot see the isolate yet, so the spawned worker is killed here instead
+    // of leaking.
+    if (_closeRequested) {
+      isolate.kill(priority: Isolate.immediate);
+      _isolate = null;
+      _handshake = null;
+      _port?.close();
+      _port = null;
+      _starting = null;
+      throw StateError('The inference worker was closed before it started.');
+    }
 
     final SendPort? responsePort;
     try {
@@ -112,6 +139,8 @@ final class WorkerTransport {
       );
     }
     if (responsePort == null) {
+      _starting = null;
+      await _abortStart();
       throw StateError('The inference worker was closed before it started.');
     }
     _workerPort = responsePort;
@@ -122,6 +151,16 @@ final class WorkerTransport {
     final handshake = _handshake;
     if (handshake != null && !handshake.isCompleted) {
       handshake.complete(null);
+    }
+    // Wait for an in-flight spawn so a worker that appears late is killed by
+    // `_start` instead of outliving this close.
+    final starting = _starting;
+    if (starting != null) {
+      try {
+        await starting;
+      } catch (_) {
+        // The start already reported its own failure.
+      }
     }
     final isolate = _isolate;
     if (isolate != null) {
@@ -143,10 +182,10 @@ final class WorkerTransport {
 
   Future<void> _abortStart() async {
     final isolate = _isolate;
+    _starting = null;
     _isolate = null;
     _workerPort = null;
     _handshake = null;
-    _closed = true;
     isolate?.kill(priority: Isolate.immediate);
     _port?.close();
     _port = null;

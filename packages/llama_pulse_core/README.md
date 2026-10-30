@@ -46,10 +46,13 @@ Guarantees the worker loop provides:
 - Load failures throw `InferenceFailureException`; every other engine failure
   surfaces as an `InferenceFailure` value.
 
-The native session is **not** included yet. The worker is hard-wired to
-`StubLlamaSession`, which produces deterministic text and respects the token
-cap. The native llama.cpp session will implement the same `LlamaSession`
-interface and slot in without changing `LlamaEngine` or its callers.
+The native session is **not** included yet. `WorkerConfig.useStubSession`
+selects the session inside the worker: `true` runs `StubLlamaSession`, which
+produces deterministic text and respects the token cap; the default runs
+`UnavailableLlamaSession`, whose `load` fails with `engineUnavailable` so a
+normal build can never emit synthetic output silently. The native llama.cpp
+session replaces the placeholder and implements the same `LlamaSession`
+interface without changing `LlamaEngine` or its callers.
 
 ## Configuration
 

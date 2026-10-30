@@ -6,11 +6,19 @@ import 'dart:isolate';
 /// cannot be serialized, and this object never leaves the isolate plumbing.
 final class WorkerConfig {
   /// Creates a config whose worker answers on [mainPort].
-  const WorkerConfig({required this.mainPort});
+  ///
+  /// [useStubSession] selects the session implementation inside the worker:
+  /// `true` uses the deterministic stub, `false` (the default) leaves the
+  /// worker on the unavailable native placeholder, whose `load` reports
+  /// `engineUnavailable` until the native session lands.
+  const WorkerConfig({required this.mainPort, this.useStubSession = false});
 
   /// Port of the spawning isolate: the worker sends [WorkerReady] and every
   /// worker response to it.
   final SendPort mainPort;
+
+  /// Whether the worker should run the deterministic stub session.
+  final bool useStubSession;
 }
 
 /// First message a spawned worker sends back to its spawner.

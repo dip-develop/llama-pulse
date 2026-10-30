@@ -101,7 +101,7 @@ final class BenchCommand extends LlamaPulseCommand {
       return ExitCodes.usage;
     }
 
-    final engine = services.engineFactory();
+    final engine = services.createEngine(useStubSession: true);
     var loaded = false;
     try {
       try {
