@@ -17,10 +17,13 @@ MVP:
 Out of scope for now: binary downloader/updater, Hugging Face CLI, model file
 manager. The architecture leaves room for all three; section 11 says where.
 
+LlamaPulse is developed and maintained by DIP Dev., which also holds the
+copyright; the project is released under the MIT license (see `LICENSE`).
+
 ## 2. Stack (locked)
 
-Flutter/Dart, Clean Architecture. Dart `>=3.12`, Flutter `>=3.44` (baseline:
-Flutter 3.47.7 / Dart 3.13.5). State: `flutter_bloc`. DI: `get_it` +
+Flutter/Dart, Clean Architecture. Dart `>=3.13.0 <4.0.0`, Flutter `>=3.44`
+(baseline: Flutter 3.47.7 / Dart 3.13.5). State: `flutter_bloc`. DI: `get_it` +
 `injectable`. Light prefs: `shared_preferences` (`SharedPreferencesAsync`).
 Structured storage when needed: `hive_ce`. Immutable models, state and
 entities: `built_value` + `built_collections`.
@@ -31,14 +34,14 @@ Pins are deliberate; do not loosen them without reproducing the resolution:
 |---|---|---|
 | `built_value` | `8.13.0` | exact; generator and runtime move together |
 | `built_collection` | `^5.1.2` | 6.x is incompatible with `built_value 8.13` |
-| `build_runner` | `2.16.0` | exact; 2.17 needs `build 5.x`, which conflicts with `injectable_generator 3.1.3` |
+| `build_runner` | `2.16.1` | exact; 2.17.x requires `build 5.x`, while `built_value_generator 8.13.0` declares `build <5.0.0` and `injectable_generator 3.1.3` declares `build ^4.0.4` |
 | `built_value_generator` | `8.13.0` | exact; must match the `built_value` runtime |
 | `injectable_generator` | `3.1.3` | exact; paired with `injectable ^3.0.0` |
 | `get_it` | `^9.3.0` | DI container |
 | `injectable` | `^3.0.0` | annotations and generated registrations |
 | `flutter_bloc` | `^9.1.1` | presentation state management |
-| `ffi` | `^2.1.4` | `Utf8`, `calloc`, native type helpers |
-| `path` | `^1.9.0` | cross-platform paths |
+| `ffi` | `^2.2.0` | `Utf8`, `calloc`, native type helpers |
+| `path` | `^1.9.1` | cross-platform paths |
 | `file_selector` | `^1.1.0` | native model/library pickers |
 | `hive_ce` | `^2.22.0` | structured local storage (post-MVP) |
 | `flutter_lints`, `mocktail`, `bloc_test` (dev) | `^6.0.0`, `^1.0.5`, `^10.0.0` | lint, fakes, bloc tests |
@@ -136,7 +139,8 @@ does, do not comment every member, no commented-out code, no TODOs without an
 issue reference.
 
 `///` doc comments only on public API contracts: gateway interfaces, entities'
-derived getters, the bloc's public surface.
+derived getters, the bloc's public surface. Document sparingly: doc comments
+explain contracts and non-obvious reasons, not restate signatures.
 
 Prefer modern Dart 3 where it genuinely simplifies: `sealed` hierarchies with
 exhaustive `switch` expressions; class modifiers (`abstract interface class`,
