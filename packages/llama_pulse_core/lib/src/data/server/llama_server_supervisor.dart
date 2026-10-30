@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io' show File, FileSystemEntityType, Platform, pid;
 
 import '../../domain/entities/server_binary_info.dart';
@@ -29,6 +30,7 @@ import 'dart_process_launcher.dart';
 import 'server_argument_builder.dart';
 import 'server_binary_locator_impl.dart';
 import 'server_log_store.dart';
+import 'server_monitor.dart';
 import 'socket_port_probe.dart';
 import 'supervisor_tuning.dart';
 
@@ -38,7 +40,8 @@ int _nowEpochMs() => DateTime.now().millisecondsSinceEpoch;
 ///
 /// The supervisor validates the configuration, locates the binary, spawns the
 /// child, waits for `/health` and publishes every lifecycle transition to
-/// [states]. It never retries on its own: a failed or exited server stays
+/// [states]. While the server runs it samples [metrics] and keeps the health
+/// field current. It never retries on its own: a failed or exited server stays
 /// failed until the caller starts it again.
 final class LlamaServerSupervisor implements ServerController {
   /// Creates a supervisor; every collaborator is injected, no globals.
@@ -50,6 +53,7 @@ final class LlamaServerSupervisor implements ServerController {
     required this._stateRepository,
     required this._logStore,
     required this._validator,
+    this._monitor,
     this._argumentBuilder = const ServerArgumentBuilder(),
     this._tuning = const SupervisorTuning(),
     this._clock = _nowEpochMs,
@@ -67,21 +71,28 @@ final class LlamaServerSupervisor implements ServerController {
   factory LlamaServerSupervisor.production({
     required AppPaths paths,
     required ConfigStore configStore,
-  }) => LlamaServerSupervisor(
-    launcher: const DartProcessLauncher(),
-    httpClient: DartServerHttpClient(),
-    portProbe: const SocketPortProbe(),
-    binaryLocator: ServerBinaryLocatorImpl(
-      paths: paths,
-      executablePath: Platform.resolvedExecutable,
-    ),
-    stateRepository: YamlServerStateRepository(
-      store: configStore,
-      serializers: serializers,
-    ),
-    logStore: ServerLogStore(filePath: paths.serverLogFile),
-    validator: const ServerConfigValidator(),
-  );
+  }) {
+    final httpClient = DartServerHttpClient();
+    final logStore = ServerLogStore(filePath: paths.serverLogFile);
+    // Best effort: a restarted app or CLI should show the previous log lines.
+    unawaited(logStore.loadExisting());
+    return LlamaServerSupervisor(
+      launcher: const DartProcessLauncher(),
+      httpClient: httpClient,
+      portProbe: const SocketPortProbe(),
+      binaryLocator: ServerBinaryLocatorImpl(
+        paths: paths,
+        executablePath: Platform.resolvedExecutable,
+      ),
+      stateRepository: YamlServerStateRepository(
+        store: configStore,
+        serializers: serializers,
+      ),
+      logStore: logStore,
+      validator: const ServerConfigValidator(),
+      monitor: ServerMonitor(httpClient: httpClient),
+    );
+  }
 
   /// Builds before this one use the legacy `--mlock` / `--no-mmap` flags.
   static const int loadModeMinimumBuild = 10875;
@@ -98,6 +109,7 @@ final class LlamaServerSupervisor implements ServerController {
   final ServerStateRepository _stateRepository;
   final ServerLogStore _logStore;
   final ServerConfigValidator _validator;
+  final ServerMonitor? _monitor;
   final ServerArgumentBuilder _argumentBuilder;
   final SupervisorTuning _tuning;
   final int Function() _clock;
@@ -112,17 +124,25 @@ final class LlamaServerSupervisor implements ServerController {
   ServerConfig? _config;
   ServerBinaryInfo? _binary;
   ServerProcess? _process;
-  Completer<int> _exitCompleter = Completer<int>();
+  Completer<int>? _exitCompleter;
   StreamSubscription<String>? _stdoutSubscription;
   StreamSubscription<String>? _stderrSubscription;
   Future<void> _saveChain = Future<void>.value();
+  Future<void>? _startFuture;
 
+  Timer? _metricsTimer;
+  Timer? _healthTimer;
+  bool _sampling = false;
+  bool _healthPolling = false;
+
+  int _runGeneration = 0;
   int? _startedAtEpochMs;
   int? _lastExitCode;
   bool _starting = false;
   bool _stopping = false;
   bool _ready = false;
   bool _bindFailed = false;
+  bool _stopRequested = false;
   bool _disposed = false;
 
   @override
@@ -158,22 +178,41 @@ final class LlamaServerSupervisor implements ServerController {
   }
 
   @override
-  Future<void> start(ServerConfig config) async {
+  Future<void> start(ServerConfig config) {
     if (_disposed) {
-      throw _error(
-        ServerFailureCode.invalidConfig,
-        'the supervisor is disposed',
+      return Future<void>.error(
+        _error(ServerFailureCode.invalidConfig, 'the supervisor is disposed'),
       );
     }
     if (_starting || _state.isActive) {
-      throw _error(
-        ServerFailureCode.invalidConfig,
-        'a server is already running',
+      return Future<void>.error(
+        _error(ServerFailureCode.invalidConfig, 'a server is already running'),
       );
     }
 
+    _stopRequested = false;
+    final generation = ++_runGeneration;
+    final future = _runStart(config, generation);
+    final tracked = future.then<void>(
+      (_) {},
+      onError: (Object error, StackTrace stackTrace) {},
+    );
+    _startFuture = tracked;
+    unawaited(
+      tracked.whenComplete(() {
+        if (identical(_startFuture, tracked)) {
+          _startFuture = null;
+        }
+      }),
+    );
+    return future;
+  }
+
+  Future<void> _runStart(ServerConfig config, int generation) async {
     _starting = true;
     try {
+      _throwIfAborted(generation);
+
       final violations = _validator.validateForStart(config);
       if (violations.isNotEmpty) {
         throw _error(
@@ -182,6 +221,9 @@ final class LlamaServerSupervisor implements ServerController {
           details: violations.join('\n'),
         );
       }
+
+      await _logStore.loadExisting();
+      _throwIfAborted(generation);
 
       final ServerBinaryInfo binary;
       try {
@@ -195,11 +237,13 @@ final class LlamaServerSupervisor implements ServerController {
           details: '$error',
         );
       }
+      _throwIfAborted(generation);
 
       final model = File(config.modelPath);
       final modelIsFile =
           await model.exists() &&
           (await model.stat()).type == FileSystemEntityType.file;
+      _throwIfAborted(generation);
       if (!modelIsFile) {
         throw _error(
           ServerFailureCode.modelNotFound,
@@ -208,6 +252,7 @@ final class LlamaServerSupervisor implements ServerController {
       }
 
       final available = await _portProbe.isAvailable(config.host, config.port);
+      _throwIfAborted(generation);
       if (!available) {
         throw _error(
           ServerFailureCode.portInUse,
@@ -243,6 +288,7 @@ final class LlamaServerSupervisor implements ServerController {
       try {
         process = await _launcher.start(binary.path, arguments);
       } catch (error) {
+        _throwIfAborted(generation);
         final failure = ServerFailure(
           (b) => b
             ..code = ServerFailureCode.processExited
@@ -264,14 +310,15 @@ final class LlamaServerSupervisor implements ServerController {
       }
 
       _process = process;
-      _exitCompleter = Completer<int>();
-      unawaited(_watchExit(process));
+      final exit = _exitCompleter = Completer<int>();
+      unawaited(_watchExit(process, generation, exit));
       _stdoutSubscription = process.stdoutLines.listen(
         (line) => _onLine(ServerLogStream.stdout, line),
       );
       _stderrSubscription = process.stderrLines.listen(
         (line) => _onLine(ServerLogStream.stderr, line),
       );
+      _throwIfAborted(generation);
 
       _emit(
         _stateFor(
@@ -281,15 +328,18 @@ final class LlamaServerSupervisor implements ServerController {
         ),
       );
 
-      await _awaitReady(config, process);
+      await _awaitReady(config, process, generation, exit);
+      _throwIfAborted(generation);
       await _probeProps(config);
+      _throwIfAborted(generation);
 
-      if (_exitCompleter.isCompleted) {
-        await _failOnExitBeforeReady(config);
+      if (exit.isCompleted) {
+        await _failOnExitBeforeReady(config, exit, generation);
       }
       if (_bindFailed) {
-        await _failOnBind(config, process);
+        await _failOnBind(config, process, exit, generation);
       }
+      _throwIfAborted(generation);
 
       _ready = true;
       _emit(
@@ -299,13 +349,56 @@ final class LlamaServerSupervisor implements ServerController {
         ServerLogStream.supervisor,
         'llama-server is ready on http://${config.clientHost}:${config.port}',
       );
+      _startMonitors(config, generation);
+    } on _Aborted {
+      await _abortStart(generation);
     } finally {
       _starting = false;
     }
   }
 
+  Future<void> _abortStart(int generation) async {
+    if (generation != _runGeneration) {
+      return;
+    }
+    await _cancelSubscriptions();
+    _stopMonitors();
+    final process = _process;
+    final exit = _exitCompleter;
+    if (process != null) {
+      try {
+        if (exit != null) {
+          await _terminate(process, exit);
+        }
+        _process = null;
+        _exitCompleter = null;
+      } on ServerException {
+        // The child survived SIGKILL: keep it and the failed state so a later
+        // command can still signal it.
+        return;
+      }
+    }
+    _ready = false;
+    if (_stopRequested) {
+      _emit(
+        _stateFor(
+          ServerPhase.stopped,
+          ServerHealth.unknown,
+          lastExitCode: _lastExitCode,
+        ),
+      );
+      _logStore.append(ServerLogStream.supervisor, 'llama-server stopped');
+      await _saveChain;
+    }
+  }
+
   @override
   Future<void> stop() async {
+    _stopRequested = true;
+    final inFlight = _startFuture;
+    if (inFlight != null) {
+      await inFlight;
+    }
     if (_stopping) {
       return;
     }
@@ -317,13 +410,20 @@ final class LlamaServerSupervisor implements ServerController {
     _stopping = true;
     try {
       _ready = false;
+      _stopMonitors();
       _emit(_stateFor(ServerPhase.stopping, _state.health));
-      await _terminate(process);
+      final exit = _exitCompleter;
+      if (exit == null) {
+        throw _error(
+          ServerFailureCode.processExited,
+          'the server process has no exit watcher',
+        );
+      }
+      await _terminate(process, exit);
 
-      final exitCode = _exitCompleter.isCompleted
-          ? await _exitCompleter.future
-          : _lastExitCode;
+      final exitCode = exit.isCompleted ? await exit.future : _lastExitCode;
       _process = null;
+      _exitCompleter = null;
       _lastExitCode = exitCode ?? _lastExitCode;
       await _cancelSubscriptions();
       _emit(
@@ -356,6 +456,9 @@ final class LlamaServerSupervisor implements ServerController {
       if (health.statusCode == 401 || health.statusCode == 403) {
         return result(false, 'unauthorized');
       }
+      if (health.statusCode != 200 || !_isOkBody(health.body)) {
+        return result(false, 'HTTP ${health.statusCode}');
+      }
 
       if (config.apiKey.isNotEmpty) {
         final models = await _httpClient
@@ -374,10 +477,7 @@ final class LlamaServerSupervisor implements ServerController {
         }
       }
 
-      if (health.statusCode >= 200 && health.statusCode < 300) {
-        return result(true, 'ok');
-      }
-      return result(false, 'HTTP ${health.statusCode}');
+      return result(true, 'ok');
     } catch (_) {
       return result(false, 'unreachable');
     }
@@ -391,6 +491,7 @@ final class LlamaServerSupervisor implements ServerController {
     _disposed = true;
     await stop();
     await _cancelSubscriptions();
+    _stopMonitors();
     await _saveChain;
     _httpClient.close();
     await _logStore.dispose();
@@ -398,26 +499,33 @@ final class LlamaServerSupervisor implements ServerController {
     await _metricsController.close();
   }
 
-  Future<void> _awaitReady(ServerConfig config, ServerProcess process) async {
+  Future<void> _awaitReady(
+    ServerConfig config,
+    ServerProcess process,
+    int generation,
+    Completer<int> exit,
+  ) async {
     final deadline =
         (_startedAtEpochMs ?? _clock()) + config.startupTimeoutSeconds * 1000;
 
     while (true) {
-      if (_exitCompleter.isCompleted) {
-        await _failOnExitBeforeReady(config);
+      _throwIfAborted(generation);
+      if (exit.isCompleted) {
+        await _failOnExitBeforeReady(config, exit, generation);
       }
       if (_bindFailed) {
-        await _failOnBind(config, process);
+        await _failOnBind(config, process, exit, generation);
       }
 
       final health = await _probeHealth(config);
+      _throwIfAborted(generation);
       if (health == ServerHealth.ok) {
         return;
       }
       _setHealth(health);
 
       if (_clock() >= deadline) {
-        await _failStartupTimeout(config, process);
+        await _failStartupTimeout(config, process, exit, generation);
       }
       await _delay(_tuning.healthPollInterval);
     }
@@ -429,7 +537,7 @@ final class LlamaServerSupervisor implements ServerController {
           .get(_healthUri(config))
           .timeout(_tuning.httpTimeout);
       if (response.statusCode == 200) {
-        return response.body.contains('"ok"')
+        return _isOkBody(response.body)
             ? ServerHealth.ok
             : ServerHealth.degraded;
       }
@@ -439,6 +547,20 @@ final class LlamaServerSupervisor implements ServerController {
       return ServerHealth.degraded;
     } catch (_) {
       return ServerHealth.loading;
+    }
+  }
+
+  Future<ServerHealth> _probeLiveHealth(ServerConfig config) async {
+    try {
+      final response = await _httpClient
+          .get(_healthUri(config))
+          .timeout(_tuning.httpTimeout);
+      if (response.statusCode == 200 && _isOkBody(response.body)) {
+        return ServerHealth.ok;
+      }
+      return ServerHealth.degraded;
+    } catch (_) {
+      return ServerHealth.unreachable;
     }
   }
 
@@ -453,8 +575,13 @@ final class LlamaServerSupervisor implements ServerController {
     }
   }
 
-  Future<Never> _failOnExitBeforeReady(ServerConfig config) async {
-    final exitCode = await _exitCompleter.future;
+  Future<Never> _failOnExitBeforeReady(
+    ServerConfig config,
+    Completer<int> exit,
+    int generation,
+  ) async {
+    final exitCode = await exit.future;
+    _throwIfAborted(generation);
     _process = null;
     _lastExitCode = exitCode;
     final details = _tail();
@@ -488,11 +615,15 @@ final class LlamaServerSupervisor implements ServerController {
     throw ServerException(failure);
   }
 
-  Future<Never> _failOnBind(ServerConfig config, ServerProcess process) async {
-    await _terminate(process);
-    final exitCode = _exitCompleter.isCompleted
-        ? await _exitCompleter.future
-        : null;
+  Future<Never> _failOnBind(
+    ServerConfig config,
+    ServerProcess process,
+    Completer<int> exit,
+    int generation,
+  ) async {
+    await _terminate(process, exit);
+    _throwIfAborted(generation);
+    final exitCode = exit.isCompleted ? await exit.future : null;
     _process = null;
     _lastExitCode = exitCode ?? _lastExitCode;
     final failure = ServerFailure(
@@ -520,11 +651,12 @@ final class LlamaServerSupervisor implements ServerController {
   Future<Never> _failStartupTimeout(
     ServerConfig config,
     ServerProcess process,
+    Completer<int> exit,
+    int generation,
   ) async {
-    await _terminate(process);
-    final exitCode = _exitCompleter.isCompleted
-        ? await _exitCompleter.future
-        : null;
+    await _terminate(process, exit);
+    _throwIfAborted(generation);
+    final exitCode = exit.isCompleted ? await exit.future : null;
     _process = null;
     _lastExitCode = exitCode ?? _lastExitCode;
     final failure = ServerFailure(
@@ -551,48 +683,74 @@ final class LlamaServerSupervisor implements ServerController {
     throw ServerException(failure);
   }
 
-  Future<void> _terminate(ServerProcess process) async {
-    if (_exitCompleter.isCompleted) {
+  Future<void> _terminate(ServerProcess process, Completer<int> exit) async {
+    if (exit.isCompleted) {
       return;
     }
     process.kill(ServerKillMode.graceful);
-    if (await _waitForExit(_tuning.shutdownGrace)) {
+    if (await _waitForExit(_tuning.shutdownGrace, exit)) {
       return;
     }
     process.kill(ServerKillMode.force);
-    await _waitForExit(_tuning.shutdownGrace);
+    if (await _waitForExit(_tuning.shutdownGrace, exit)) {
+      return;
+    }
+    final failure = ServerFailure(
+      (b) => b
+        ..code = ServerFailureCode.processExited
+        ..message = 'server did not exit after SIGKILL'
+        ..details = _tail(),
+    );
+    _emit(
+      _stateFor(
+        ServerPhase.failed,
+        ServerHealth.unreachable,
+        serverPid: process.pid,
+        lastExitCode: _lastExitCode,
+        failure: failure,
+      ),
+    );
+    throw ServerException(failure);
   }
 
-  Future<bool> _waitForExit(Duration timeout) async {
-    if (_exitCompleter.isCompleted) {
+  Future<bool> _waitForExit(Duration timeout, Completer<int> exit) async {
+    if (exit.isCompleted) {
       return true;
     }
     final deadline = _clock() + timeout.inMilliseconds;
-    while (!_exitCompleter.isCompleted && _clock() < deadline) {
+    while (!exit.isCompleted && _clock() < deadline) {
       await _delay(_tuning.stopPollInterval);
     }
-    return _exitCompleter.isCompleted;
+    return exit.isCompleted;
   }
 
-  Future<void> _watchExit(ServerProcess process) {
+  Future<void> _watchExit(
+    ServerProcess process,
+    int generation,
+    Completer<int> exit,
+  ) {
+    Future<void> handle(int code) async {
+      if (generation != _runGeneration || !identical(_process, process)) {
+        return;
+      }
+      if (!exit.isCompleted) {
+        exit.complete(code);
+      }
+      await _handleExit(process, code, generation);
+    }
+
     return process.exitCode.then<void>(
-      (code) {
-        if (!_exitCompleter.isCompleted) {
-          _exitCompleter.complete(code);
-        }
-        return _handleExit(process, code);
-      },
-      onError: (Object error, StackTrace stackTrace) {
-        if (!_exitCompleter.isCompleted) {
-          _exitCompleter.complete(-1);
-        }
-        return _handleExit(process, -1);
-      },
+      handle,
+      onError: (Object error, StackTrace stackTrace) => handle(-1),
     );
   }
 
-  Future<void> _handleExit(ServerProcess process, int code) async {
-    if (!identical(_process, process)) {
+  Future<void> _handleExit(
+    ServerProcess process,
+    int code,
+    int generation,
+  ) async {
+    if (generation != _runGeneration || !identical(_process, process)) {
       return;
     }
     _process = null;
@@ -602,6 +760,7 @@ final class LlamaServerSupervisor implements ServerController {
     }
 
     _ready = false;
+    _stopMonitors();
     final details = _tail();
     final failure = ServerFailure(
       (b) => b
@@ -623,14 +782,98 @@ final class LlamaServerSupervisor implements ServerController {
     );
   }
 
+  void _startMonitors(ServerConfig config, int generation) {
+    _stopMonitors();
+    final monitor = _monitor;
+    if (monitor != null) {
+      _metricsTimer = Timer.periodic(
+        _tuning.metricsInterval,
+        (_) => unawaited(_sampleMetrics(config, generation, monitor)),
+      );
+    }
+    _healthTimer = Timer.periodic(
+      _tuning.monitorInterval,
+      (_) => unawaited(_pollHealth(config, generation)),
+    );
+  }
+
+  void _stopMonitors() {
+    _metricsTimer?.cancel();
+    _healthTimer?.cancel();
+    _metricsTimer = null;
+    _healthTimer = null;
+  }
+
+  Future<void> _sampleMetrics(
+    ServerConfig config,
+    int generation,
+    ServerMonitor monitor,
+  ) async {
+    if (_sampling) {
+      return;
+    }
+    _sampling = true;
+    try {
+      if (!_isRunning(generation)) {
+        return;
+      }
+      final sample = await monitor.sample(
+        config,
+        startedAtEpochMs: _startedAtEpochMs,
+      );
+      if (!_isRunning(generation) || _metricsController.isClosed) {
+        return;
+      }
+      _metricsController.add(sample);
+    } on ServerException {
+      if (_isRunning(generation)) {
+        _setHealth(ServerHealth.degraded);
+      }
+    } catch (_) {
+      // A monitor bug must not take down the supervisor.
+    } finally {
+      _sampling = false;
+    }
+  }
+
+  Future<void> _pollHealth(ServerConfig config, int generation) async {
+    if (_healthPolling) {
+      return;
+    }
+    _healthPolling = true;
+    try {
+      if (!_isRunning(generation)) {
+        return;
+      }
+      final health = await _probeLiveHealth(config);
+      if (!_isRunning(generation)) {
+        return;
+      }
+      _setHealth(health);
+    } finally {
+      _healthPolling = false;
+    }
+  }
+
+  bool _isRunning(int generation) =>
+      generation == _runGeneration && _state.phase == ServerPhase.running;
+
   void _onLine(ServerLogStream stream, String line) {
-    _logStore.append(stream, line);
+    _logStore.append(stream, _redact(line));
     if (stream != ServerLogStream.stderr || _ready) {
       return;
     }
     if (_state.phase == ServerPhase.starting && _bindFailure.hasMatch(line)) {
       _bindFailed = true;
     }
+  }
+
+  String _redact(String value) {
+    final apiKey = _config?.apiKey ?? '';
+    if (apiKey.isEmpty) {
+      return value;
+    }
+    return value.replaceAll(apiKey, '***');
   }
 
   void _setHealth(ServerHealth health) {
@@ -681,11 +924,13 @@ final class LlamaServerSupervisor implements ServerController {
   }) {
     final config = _config;
     final binary = _binary;
+    final terminal =
+        phase == ServerPhase.stopped || phase == ServerPhase.failed;
     return ServerState((b) {
       b
         ..phase = phase
         ..health = health
-        ..supervisorPid = pid
+        ..supervisorPid = terminal ? null : pid
         ..serverPid = serverPid
         ..host = config?.host ?? _state.host
         ..port = config?.port ?? _state.port
@@ -710,7 +955,7 @@ final class LlamaServerSupervisor implements ServerController {
         ? entries.sublist(entries.length - _tuning.maxLogTail)
         : entries;
     return selected
-        .map((entry) => '${entry.stream.name}: ${entry.line}')
+        .map((entry) => '${entry.stream.name}: ${_redact(entry.line)}')
         .join('\n');
   }
 
@@ -719,6 +964,21 @@ final class LlamaServerSupervisor implements ServerController {
     await _stderrSubscription?.cancel();
     _stdoutSubscription = null;
     _stderrSubscription = null;
+  }
+
+  bool _isOkBody(String body) {
+    try {
+      final decoded = jsonDecode(body);
+      return decoded is Map<Object?, Object?> && decoded['status'] == 'ok';
+    } on FormatException {
+      return false;
+    }
+  }
+
+  void _throwIfAborted(int generation) {
+    if (_disposed || _stopRequested || generation != _runGeneration) {
+      throw const _Aborted();
+    }
   }
 
   Uri _healthUri(ServerConfig config) =>
@@ -739,4 +999,8 @@ final class LlamaServerSupervisor implements ServerController {
         ..details = details,
     ),
   );
+}
+
+final class _Aborted implements Exception {
+  const _Aborted();
 }

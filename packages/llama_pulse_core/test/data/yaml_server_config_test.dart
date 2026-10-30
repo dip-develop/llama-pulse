@@ -88,7 +88,7 @@ void main() {
       extraArgs: BuiltList<String>([
         '--lora',
         '/models/my adapter #1.gguf',
-        '-fa=on',
+        '--lora-scaled=1.0',
       ]),
     );
 

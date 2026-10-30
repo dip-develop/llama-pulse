@@ -168,6 +168,9 @@ final class FakeHttpClient implements ServerHttpClient {
       throw StateError('no fake response for ${uri.path}');
     }
     final value = queue.length > 1 ? queue.removeAt(0) : queue.first;
+    if (value is Future<ServerHttpResponse>) {
+      return value;
+    }
     if (value is ServerHttpResponse) {
       return value;
     }

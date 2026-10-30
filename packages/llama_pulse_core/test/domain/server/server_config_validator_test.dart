@@ -39,6 +39,16 @@ void main() {
       expect(validator.validate(config), ['modelPath must not be blank']);
     });
 
+    test('rejects a model path with a control character', () {
+      final config = ServerConfig.defaults().copyWith(
+        modelPath: '/models/llama\x7f.gguf',
+      );
+
+      expect(validator.validate(config), [
+        'modelPath must not contain control characters',
+      ]);
+    });
+
     test('rejects an empty host', () {
       final config = ServerConfig.defaults().copyWith(host: '');
 
@@ -55,6 +65,14 @@ void main() {
       final config = ServerConfig.defaults().copyWith(host: '0.0.0.0/8');
 
       expect(validator.validate(config), ['host must not contain /']);
+    });
+
+    test('rejects a host with a control character', () {
+      final config = ServerConfig.defaults().copyWith(host: '127.0.0.1\x00');
+
+      expect(validator.validate(config), [
+        'host must not contain control characters',
+      ]);
     });
 
     test('rejects a host longer than 255 characters', () {
@@ -234,14 +252,33 @@ void main() {
         );
 
         expect(validator.validate(config), [
-          'extraArgs must not repeat the managed flag $flag',
+          '$flag is managed by the server configuration',
         ], reason: flag);
       }
     });
 
-    test('only exact tokens are treated as managed flags', () {
+    test('rejects managed flags in flag=value form', () {
+      for (final argument in <String>[
+        '--model=/models/x.gguf',
+        '--api-key=secret',
+        '--port=1',
+        '-m=x',
+        '--metrics=true',
+      ]) {
+        final flag = argument.split('=').first;
+        final config = withModel().copyWith(
+          extraArgs: BuiltList<String>([argument]),
+        );
+
+        expect(validator.validate(config), [
+          '$flag is managed by the server configuration',
+        ], reason: argument);
+      }
+    });
+
+    test('accepts unmanaged flags in flag=value form', () {
       final config = withModel().copyWith(
-        extraArgs: BuiltList<String>(['-m=/models/x.gguf', '--metrics=true']),
+        extraArgs: BuiltList<String>(['--verbose=true', '--chat-template=x']),
       );
 
       expect(validator.validate(config), isEmpty);
@@ -308,7 +345,7 @@ void main() {
         'modelAlias must not contain control characters',
         'apiKey must not contain line breaks',
         'extraArgs must contain 1..1024 characters per item',
-        'extraArgs must not repeat the managed flag --port',
+        '--port is managed by the server configuration',
         'binaryPath must not contain control characters',
         'startupTimeoutSeconds must be in 10..600',
       ]);

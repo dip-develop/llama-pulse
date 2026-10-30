@@ -77,6 +77,31 @@ void main() {
     expect(entries.first.timestampEpochMs, greaterThan(0));
   });
 
+  test('stores the sequence on disk and returns it from tail', () async {
+    store.append(ServerLogStream.stdout, 'one');
+    store.append(ServerLogStream.stderr, 'two');
+    await store.flush();
+
+    final lines = await File(filePath).readAsLines();
+    expect(lines, hasLength(2));
+    expect(lines.first.split('\t'), hasLength(4));
+
+    final entries = await store.tail(2);
+    expect(entries.map((entry) => entry.sequence), [1, 2]);
+    expect(entries.map((entry) => entry.line), ['one', 'two']);
+  });
+
+  test('reads the legacy three-field format with sequence zero', () async {
+    await File(filePath)
+        .writeAsString('100\tstdout\talpha\n200\tstderr\tbeta\n');
+
+    final entries = await store.tail(2);
+
+    expect(entries.map((entry) => entry.line), ['alpha', 'beta']);
+    expect(entries.map((entry) => entry.sequence), [0, 0]);
+    expect(entries.map((entry) => entry.timestampEpochMs), [100, 200]);
+  });
+
   test('skips unparsable lines and caps loadExisting', () async {
     await File(filePath).writeAsString(
       'garbage\n'

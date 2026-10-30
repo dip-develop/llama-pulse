@@ -61,6 +61,36 @@ void main() {
       expect(names, ['params.yaml']);
     });
 
+    test(
+      'concurrent writes leave a valid document and no temp files',
+      () async {
+        final directory = await createTempDirectory();
+        final store = YamlFileConfigStore(directory: directory.path);
+
+        await Future.wait<void>([
+          store.write('params', <String, Object?>{
+            'schemaVersion': 1,
+            'writer': 'a',
+          }),
+          store.write('params', <String, Object?>{
+            'schemaVersion': 1,
+            'writer': 'b',
+          }),
+        ]);
+
+        final document = await store.read('params');
+        expect(document?['schemaVersion'], 1);
+        expect(document?['writer'], anyOf('a', 'b'));
+
+        final names = await directory
+            .list()
+            .map((entity) => p.basename(entity.path))
+            .toList();
+        expect(names.where((name) => name.contains('.tmp')), isEmpty);
+        expect(names, ['params.yaml']);
+      },
+    );
+
     test('delete removes the document', () async {
       final directory = await createTempDirectory();
       final store = YamlFileConfigStore(directory: directory.path);

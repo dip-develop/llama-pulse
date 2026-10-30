@@ -12,11 +12,44 @@ const _tuning = SupervisorTuning(
   shutdownGrace: Duration(milliseconds: 10),
   stopPollInterval: Duration(milliseconds: 5),
   monitorInterval: Duration(milliseconds: 10),
+  metricsInterval: Duration(milliseconds: 10),
   httpTimeout: Duration(milliseconds: 50),
   maxLogTail: 5,
 );
 
 const _healthy = ServerHttpResponse(statusCode: 200, body: '{"status":"ok"}');
+
+const _metricsTuning = SupervisorTuning(
+  healthPollInterval: Duration(milliseconds: 5),
+  shutdownGrace: Duration(milliseconds: 10),
+  stopPollInterval: Duration(milliseconds: 5),
+  monitorInterval: Duration(hours: 1),
+  metricsInterval: Duration(milliseconds: 5),
+  httpTimeout: Duration(milliseconds: 50),
+  maxLogTail: 5,
+);
+
+/// A monitor returning one canned sample, or throwing the configured error.
+final class _FakeMonitor extends ServerMonitor {
+  _FakeMonitor({this.value, this.error}) : super(httpClient: FakeHttpClient());
+
+  final ServerMetrics? value;
+  final Object? error;
+  int calls = 0;
+
+  @override
+  Future<ServerMetrics> sample(
+    ServerConfig config, {
+    int? startedAtEpochMs,
+  }) async {
+    calls++;
+    final failure = error;
+    if (failure != null) {
+      throw failure;
+    }
+    return value ?? ServerMetrics.empty(startedAtEpochMs ?? 0);
+  }
+}
 
 ServerBinaryInfo _binary({int? buildNumber = 11960}) => ServerBinaryInfo(
   (b) => b
@@ -82,7 +115,7 @@ void main() {
     portProbe = FakePortProbe();
     binaryLocator = FakeBinaryLocator()..info = _binary();
     stateRepository = FakeStateRepository();
-    process = FakeServerProcess();
+    process = FakeServerProcess()..exitOnGraceful = true;
     launcher.process = process;
     supervisor = null;
   });
@@ -95,7 +128,10 @@ void main() {
     }
   });
 
-  LlamaServerSupervisor create({SupervisorTuning tuning = _tuning}) {
+  LlamaServerSupervisor create({
+    SupervisorTuning tuning = _tuning,
+    ServerMonitor? monitor,
+  }) {
     final created = LlamaServerSupervisor(
       launcher: launcher,
       httpClient: httpClient,
@@ -104,6 +140,7 @@ void main() {
       stateRepository: stateRepository,
       logStore: logStore,
       validator: const ServerConfigValidator(),
+      monitor: monitor,
       tuning: tuning,
       clock: () => now,
       delay: (duration) async {
@@ -112,6 +149,13 @@ void main() {
     );
     supervisor = created;
     return created;
+  }
+
+  Future<void> waitUntil(bool Function() condition) async {
+    for (var attempt = 0; attempt < 1000 && !condition(); attempt++) {
+      await Future<void>.delayed(Duration.zero);
+    }
+    expect(condition(), isTrue);
   }
 
   void answerHealthy() {
@@ -353,6 +397,9 @@ void main() {
     'kills the child gracefully then forcibly on a readiness timeout',
     () async {
       httpClient.addResponse('/health', Exception('connection refused'));
+      process
+        ..exitOnGraceful = false
+        ..exitOnForce = true;
       final created = create();
 
       await expectLater(
@@ -425,12 +472,17 @@ void main() {
     ]);
     expect(created.state.phase, ServerPhase.stopped);
     expect(created.state.serverPid, isNull);
+    expect(created.state.supervisorPid, isNull);
     expect(created.state.lastExitCode, 0);
     expect(stateRepository.saved.last.phase, ServerPhase.stopped);
+    expect(stateRepository.saved.last.serverPid, isNull);
+    expect(stateRepository.saved.last.supervisorPid, isNull);
   });
 
   test('escalates to a force kill when graceful stop hangs', () async {
-    process.exitOnForce = true;
+    process
+      ..exitOnGraceful = false
+      ..exitOnForce = true;
     final created = create();
     await startHealthy(created);
 
@@ -491,6 +543,223 @@ void main() {
     launcher.gate?.complete();
     answerHealthy();
     await first;
+  });
+
+  test('samples metrics while running', () async {
+    final monitor = _FakeMonitor(value: ServerMetrics.empty(1234));
+    final created = create(monitor: monitor, tuning: _metricsTuning);
+    final samples = <ServerMetrics>[];
+    final subscription = created.metrics.listen(samples.add);
+    addTearDown(subscription.cancel);
+
+    final sampled = created.metrics.first;
+    await startHealthy(created);
+    final metrics = await sampled.timeout(const Duration(seconds: 1));
+
+    expect(metrics.capturedAtEpochMs, 1234);
+    expect(monitor.calls, greaterThanOrEqualTo(1));
+    expect(created.state.phase, ServerPhase.running);
+  });
+
+  test('a failing metrics sample degrades health but keeps running', () async {
+    final monitor = _FakeMonitor(
+      error: ServerException(
+        ServerFailure(
+          (b) => b
+            ..code = ServerFailureCode.httpError
+            ..message = 'metrics unavailable',
+        ),
+      ),
+    );
+    final created = create(monitor: monitor, tuning: _metricsTuning);
+    final degraded = created.states.firstWhere(
+      (state) => state.health == ServerHealth.degraded,
+    );
+
+    await startHealthy(created);
+    await degraded.timeout(const Duration(seconds: 1));
+
+    expect(created.state.phase, ServerPhase.running);
+    expect(created.state.health, ServerHealth.degraded);
+  });
+
+  test('a stale exit watcher cannot poison the next run', () async {
+    final processA = process..exitOnGraceful = false;
+    final created = create();
+    await startHealthy(created);
+
+    // Stop A while its process never exits: the supervisor keeps it for a
+    // later signal, which leaves the old exit watcher pending.
+    await expectLater(
+      created.stop(),
+      throwsServerFailure(ServerFailureCode.processExited),
+    );
+    expect(created.state.phase, ServerPhase.failed);
+
+    final processB = FakeServerProcess(pid: 9876)..exitOnGraceful = true;
+    addTearDown(processB.close);
+    launcher.process = processB;
+    await startHealthy(created);
+    expect(created.state.phase, ServerPhase.running);
+    expect(created.state.serverPid, processB.pid);
+
+    processA.exit(9);
+    await pumpEventQueue();
+
+    expect(created.state.phase, ServerPhase.running);
+    expect(created.state.serverPid, processB.pid);
+    expect(processB.hasExited, isFalse);
+    expect(processB.kills, isEmpty);
+
+    await created.stop();
+    expect(processB.kills, [ServerKillMode.graceful]);
+    expect(processB.hasExited, isTrue);
+  });
+
+  test('stop during a launch before the spawn leaves no process', () async {
+    launcher.gate = Completer<void>();
+    process.exitOnGraceful = true;
+    final created = create();
+    final states = <ServerState>[];
+    final subscription = created.states.listen(states.add);
+    addTearDown(subscription.cancel);
+
+    final starting = created.start(_config(modelPath));
+    await waitUntil(() => launcher.calls == 1);
+    final stopping = created.stop();
+    await pumpEventQueue();
+    launcher.gate?.complete();
+    await starting;
+    await stopping;
+
+    expect(states.any((state) => state.phase == ServerPhase.running), isFalse);
+    expect(created.state.phase, ServerPhase.stopped);
+    expect(created.state.serverPid, isNull);
+    expect(process.kills, isNotEmpty);
+  });
+
+  test('stop while waiting for readiness never publishes running', () async {
+    final health = Completer<ServerHttpResponse>();
+    httpClient.addResponse('/health', health.future);
+    process.exitOnGraceful = true;
+    final created = create();
+    final states = <ServerState>[];
+    final subscription = created.states.listen(states.add);
+    addTearDown(subscription.cancel);
+
+    final starting = created.start(_config(modelPath));
+    await waitUntil(() => httpClient.paths.contains('/health'));
+    final stopping = created.stop();
+    await pumpEventQueue();
+    health.complete(_healthy);
+    await starting;
+    await stopping;
+
+    expect(states.any((state) => state.phase == ServerPhase.running), isFalse);
+    expect(created.state.phase, ServerPhase.stopped);
+    expect(created.state.serverPid, isNull);
+    expect(process.kills, contains(ServerKillMode.graceful));
+  });
+
+  test('dispose during a start terminates the child and completes', () async {
+    final health = Completer<ServerHttpResponse>();
+    httpClient.addResponse('/health', health.future);
+    process.exitOnGraceful = true;
+    final created = create();
+
+    final starting = created.start(_config(modelPath));
+    await waitUntil(() => httpClient.paths.contains('/health'));
+    final disposing = created.dispose();
+    await pumpEventQueue();
+    health.complete(_healthy);
+    await starting;
+    await disposing;
+
+    expect(created.state.phase, ServerPhase.stopped);
+    expect(created.state.serverPid, isNull);
+    expect(process.kills, contains(ServerKillMode.graceful));
+    expect(httpClient.closed, isTrue);
+  });
+
+  test(
+    'stop fails when the child survives SIGKILL and keeps its pid',
+    () async {
+      process.exitOnGraceful = false;
+      final created = create();
+      await startHealthy(created);
+
+      await expectLater(
+        created.stop(),
+        throwsA(
+          isA<ServerException>()
+              .having(
+                (error) => error.failure.code,
+                'failure.code',
+                ServerFailureCode.processExited,
+              )
+              .having(
+                (error) => error.failure.message,
+                'failure.message',
+                contains('did not exit after SIGKILL'),
+              ),
+        ),
+      );
+
+      expect(created.state.phase, ServerPhase.failed);
+      expect(created.state.serverPid, process.pid);
+      expect(created.state.supervisorPid, isNull);
+    },
+  );
+
+  test('redacts the api key from logs and failure details', () async {
+    httpClient.addResponse('/health', _healthy);
+    httpClient.addResponse(
+      '/props',
+      const ServerHttpResponse(statusCode: 200, body: '{}'),
+    );
+    final created = create();
+    await created.start(_config(modelPath, apiKey: 'secret-key'));
+
+    process.writeStdout('request with secret-key accepted');
+    await pumpEventQueue();
+
+    expect(logStore.recent.last.line, contains('***'));
+    expect(logStore.recent.last.line, isNot(contains('secret-key')));
+
+    final failed = created.states.firstWhere(
+      (state) => state.phase == ServerPhase.failed,
+    );
+    process.exit(1);
+    final state = await failed;
+
+    expect(state.failure?.details, contains('***'));
+    expect(state.failure?.details, isNot(contains('secret-key')));
+  });
+
+  test('testConnection requires a status ok body', () async {
+    httpClient.addResponse(
+      '/health',
+      const ServerHttpResponse(statusCode: 200, body: '{"error":"ok"}'),
+    );
+    final created = create();
+
+    final result = await created.testConnection(_config(modelPath));
+
+    expect(result.ok, isFalse);
+    expect(result.message, 'HTTP 200');
+  });
+
+  test('testConnection tolerates whitespace around status', () async {
+    httpClient.addResponse(
+      '/health',
+      const ServerHttpResponse(statusCode: 200, body: '{ "status" : "ok" }'),
+    );
+    final created = create();
+
+    final result = await created.testConnection(_config(modelPath));
+
+    expect(result.ok, isTrue);
+    expect(result.message, 'ok');
   });
 
   test('testConnection sends the api key and reports ok', () async {

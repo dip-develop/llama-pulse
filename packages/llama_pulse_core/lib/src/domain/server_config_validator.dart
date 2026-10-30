@@ -7,8 +7,9 @@ final class ServerConfigValidator {
   /// Flags `llama-server` already receives from a managed config field.
   ///
   /// Repeating one in [ServerConfig.extraArgs] would make the effective launch
-  /// ambiguous, so such items are rejected. Matching is by exact token: a
-  /// combined form such as `-m=/models/x.gguf` is not detected and passes.
+  /// ambiguous, so such items are rejected. The flag part of a token (the text
+  /// before the first `=`) is compared, so `--model=x` and `-m=x` are caught
+  /// as well as the bare flags.
   static const Set<String> managedFlags = {
     '-m',
     '--model',
@@ -50,6 +51,9 @@ final class ServerConfigValidator {
     if (config.modelPath.isNotEmpty && config.modelPath.trim().isEmpty) {
       violations.add('modelPath must not be blank');
     }
+    if (_hasControlChar(config.modelPath)) {
+      violations.add('modelPath must not contain control characters');
+    }
 
     final host = config.host;
     if (host.isEmpty) {
@@ -60,6 +64,8 @@ final class ServerConfigValidator {
       violations.add('host must not contain whitespace');
     } else if (host.contains('/')) {
       violations.add('host must not contain /');
+    } else if (_hasControlChar(host)) {
+      violations.add('host must not contain control characters');
     }
 
     _checkInt(violations, 'port', config.port, 1, 65535);
@@ -93,8 +99,10 @@ final class ServerConfigValidator {
       violations.add('extraArgs must not contain control characters');
     }
     for (final arg in extraArgs) {
-      if (managedFlags.contains(arg)) {
-        violations.add('extraArgs must not repeat the managed flag $arg');
+      final equals = arg.indexOf('=');
+      final flag = equals < 0 ? arg : arg.substring(0, equals);
+      if (managedFlags.contains(flag)) {
+        violations.add('$flag is managed by the server configuration');
         break;
       }
     }

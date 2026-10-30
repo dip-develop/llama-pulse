@@ -17,6 +17,7 @@ final class YamlFileConfigStore implements ConfigStore {
   final String _directory;
 
   static final RegExp _namePattern = RegExp(r'^[a-z0-9_-]+$');
+  static int _tempCounter = 0;
 
   @override
   Future<Map<String, Object?>?> read(String name) async {
@@ -36,17 +37,30 @@ final class YamlFileConfigStore implements ConfigStore {
   Future<void> write(String name, Map<String, Object?> data) async {
     final file = _fileFor(name);
     await file.parent.create(recursive: true);
-    final temporary = File('${file.path}.tmp');
-    await temporary.writeAsString(YamlEncoder.encode(data), flush: true);
+    // A per-writer name keeps concurrent supervisors/commands from sharing a
+    // temporary file and renaming a half-written document.
+    final temporary = File('${file.path}.tmp.$pid.${_tempCounter++}');
     try {
-      await temporary.rename(file.path);
-    } on FileSystemException {
-      // Windows cannot rename over an existing file; delete first, which is
-      // not atomic.
-      if (await file.exists()) {
-        await file.delete();
+      await temporary.writeAsString(YamlEncoder.encode(data), flush: true);
+      try {
+        await temporary.rename(file.path);
+      } on FileSystemException {
+        // Windows cannot rename over an existing file; delete first, which is
+        // not atomic.
+        if (await file.exists()) {
+          await file.delete();
+        }
+        await temporary.rename(file.path);
       }
-      await temporary.rename(file.path);
+    } catch (_) {
+      try {
+        if (await temporary.exists()) {
+          await temporary.delete();
+        }
+      } catch (_) {
+        // The original failure is more useful than a cleanup failure.
+      }
+      rethrow;
     }
   }
 

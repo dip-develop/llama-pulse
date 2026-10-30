@@ -16,7 +16,7 @@ int _nowEpochMs() => DateTime.now().millisecondsSinceEpoch;
 ///
 /// `/metrics` is required: without it there is nothing to show. `/slots` and
 /// `/props` are best-effort and degrade to empty data.
-final class ServerMonitor {
+class ServerMonitor {
   /// Creates a monitor with a per-request [timeout] and a [clock] in epoch ms.
   ServerMonitor({
     required this._httpClient,

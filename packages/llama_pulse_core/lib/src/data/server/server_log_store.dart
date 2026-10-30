@@ -9,8 +9,10 @@ import '../../domain/entities/server_log_stream.dart';
 /// Append-only store for supervisor and `llama-server` output.
 ///
 /// The store keeps the newest entries in memory for the dashboard and writes
-/// the same entries to [filePath] as `timestampEpochMs\tstream\tline\n`. One
-/// backup, `<filePath>.1`, holds the lines rotated out at [rotationBytes].
+/// the same entries to [filePath] as
+/// `timestampEpochMs\tsequence\tstream\tline\n`. One backup, `<filePath>.1`,
+/// holds the lines rotated out at [rotationBytes]. Files written before the
+/// sequence column was added (three fields) are still read, with sequence 0.
 final class ServerLogStore {
   /// Creates a store that keeps [capacity] entries in memory.
   ///
@@ -36,6 +38,7 @@ final class ServerLogStore {
   final List<String> _pending = <String>[];
 
   Future<void> _tail = Future<void>.value();
+  Future<void>? _historyLoad;
   bool _drainScheduled = false;
   bool _disposed = false;
   int _sequence = 0;
@@ -78,8 +81,8 @@ final class ServerLogStore {
   /// Reads the newest [lines] entries from disk, oldest first.
   ///
   /// When the active file holds fewer than [lines] entries and [includeBackup]
-  /// is true, the rotated backup is read first. Sequence numbers are positions
-  /// in the returned list, because the file format does not store them.
+  /// is true, the rotated backup is read first. Each entry keeps the sequence
+  /// stored on disk; legacy three-field lines carry sequence 0.
   Future<List<ServerLogEntry>> tail(
     int lines, {
     bool includeBackup = true,
@@ -93,14 +96,9 @@ final class ServerLogStore {
       final backup = await _parse(File(_backupPath));
       combined = <ServerLogEntry>[...backup, ...current];
     }
-    final selected = combined.length > lines
+    return combined.length > lines
         ? combined.sublist(combined.length - lines)
         : combined;
-    var sequence = 0;
-    return <ServerLogEntry>[
-      for (final entry in selected)
-        entry.rebuild((b) => b..sequence = ++sequence),
-    ];
   }
 
   /// Removes the in-memory entries and deletes the log files.
@@ -123,10 +121,20 @@ final class ServerLogStore {
   ///
   /// Unparsable lines are skipped, so a partially written line from an earlier
   /// crash does not poison the history.
-  Future<void> loadExisting({int max = 1000}) async {
+  Future<void> loadExisting({int max = 1000}) {
     if (max <= 0) {
-      return;
+      return Future<void>.value();
     }
+    final loaded = _historyLoad;
+    if (loaded != null) {
+      return loaded;
+    }
+    final future = _loadExisting(max);
+    _historyLoad = future;
+    return future;
+  }
+
+  Future<void> _loadExisting(int max) async {
     final current = await _parse(File(_filePath));
     var combined = current;
     if (current.length < max) {
@@ -176,7 +184,8 @@ final class ServerLogStore {
   }
 
   String _record(ServerLogEntry entry) =>
-      '${entry.timestampEpochMs}\t${entry.stream.name}\t${entry.line}\n';
+      '${entry.timestampEpochMs}\t${entry.sequence}\t${entry.stream.name}\t'
+      '${entry.line}\n';
 
   void _scheduleDrain() {
     if (_drainScheduled) {
@@ -284,18 +293,35 @@ final class ServerLogStore {
     if (timestamp == null) {
       return null;
     }
+
+    final second = line.substring(firstTab + 1, secondTab);
+    final storedSequence = int.tryParse(second);
     final ServerLogStream stream;
+    final String text;
     try {
-      stream = ServerLogStream.valueOf(line.substring(firstTab + 1, secondTab));
+      if (storedSequence == null) {
+        // Legacy `timestamp\tstream\tline`; the sequence was never stored.
+        stream = ServerLogStream.valueOf(second);
+        text = line.substring(secondTab + 1);
+      } else {
+        final thirdTab = line.indexOf('\t', secondTab + 1);
+        if (thirdTab < 0) {
+          return null;
+        }
+        stream = ServerLogStream.valueOf(
+          line.substring(secondTab + 1, thirdTab),
+        );
+        text = line.substring(thirdTab + 1);
+      }
     } on ArgumentError {
       return null;
     }
     return ServerLogEntry(
       (b) => b
-        ..sequence = 0
+        ..sequence = storedSequence ?? 0
         ..timestampEpochMs = timestamp
         ..stream = stream
-        ..line = line.substring(secondTab + 1),
+        ..line = text,
     );
   }
 }

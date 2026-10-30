@@ -10,6 +10,7 @@ final class SupervisorTuning {
     this.shutdownGrace = const Duration(seconds: 5),
     this.stopPollInterval = const Duration(milliseconds: 200),
     this.monitorInterval = const Duration(seconds: 1),
+    this.metricsInterval = const Duration(seconds: 1),
     this.httpTimeout = const Duration(seconds: 3),
     this.maxLogTail = 50,
   });
@@ -23,8 +24,14 @@ final class SupervisorTuning {
   /// Delay between exit checks while a stop is in progress.
   final Duration stopPollInterval;
 
-  /// Delay between synthetic metric and log samples in the stub controller.
+  /// Delay between health probes of a running server.
+  ///
+  /// The stub controller reuses it as the interval for synthetic metric and log
+  /// samples.
   final Duration monitorInterval;
+
+  /// Delay between metrics samples of a running server.
+  final Duration metricsInterval;
 
   /// Timeout applied to every supervisor HTTP request.
   final Duration httpTimeout;
