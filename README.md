@@ -42,24 +42,39 @@ Naming: app `llama_pulse`, CLI `llamapulse`, package `llama_pulse_core`.
 
 - **Server dashboard** (the primary screen): an editable `server.yaml` form,
   start/stop, supervisor status, the endpoint with Copy and Test connection,
-  live metrics and a log tail.
+  live metrics and a log tail. The app disposes the DI-owned
+  `ServerController` when the window closes. If `server-state.yaml` records an
+  active run the app did not start, it seeds the dashboard from that document,
+  disables Start and tells you to run `llamapulse stop` (`Started outside this
+  app`).
 - **Configuration in `server.yaml`**: model path, host, port, context size,
   threads, GPU layers, parallel slots, model alias, API key, flash attention,
   mlock/mmap, extra `llama-server` arguments, binary path and startup timeout.
 - **Supervised lifecycle**: validate, locate the binary, spawn, wait for
   `/health`, report `running`, then stop gracefully and force after a 5 s
-  grace. There is no auto-restart: a failed or exited server stays failed until
-  you start it again.
-- **Health and readiness** from `GET /health`, plus `/props` enrichment. The
-  port preflight is advisory; a bind failure reported on the child's stderr is
-  mapped to the same `portInUse` failure.
-- **Metrics** sampled from `/metrics` (Prometheus) and `/slots`: generation and
-  prompt tokens/sec, active/total slots, processing and deferred requests,
-  prompt and predicted token totals, uptime from the `Process-Start-Time-Unix`
-  response header, and context usage derived from `/slots`. Current llama.cpp
-  has no total-request counter, so LlamaPulse does not show one.
+  grace. `stop()` and `dispose()` wait for an in-flight `start()`, so no child
+  is left behind and the run never ends up `running` after a stop request.
+  There is no auto-restart: a failed or exited server stays failed until you
+  start it again.
+- **Health and readiness** from `GET /health`, plus `/props` enrichment. Health
+  is `ok` only for an HTTP 200 whose body is `{"status":"ok"}`; a 200 with
+  `{"status":"loading"}` is `degraded`/`loading`, not healthy. While the server
+  runs the supervisor polls `/health` about once a second and marks the run
+  `degraded` or `unreachable` when a probe fails, keeping the phase unchanged;
+  health recovers when the server answers again. The port preflight is
+  advisory; a bind failure reported on the child's stderr is mapped to the same
+  `portInUse` failure.
+- **Metrics**: the production supervisor owns a `ServerMonitor` that samples
+  `/metrics` (Prometheus), `/slots` and `/props` about once a second while the
+  server runs and emits `ServerMetrics` on the metrics stream. It reports
+  generation and prompt tokens/sec, active/total slots, processing and deferred
+  requests, prompt and predicted token totals, uptime from the
+  `Process-Start-Time-Unix` response header, and context usage derived from
+  `/slots`. Current llama.cpp has no total-request counter, so LlamaPulse does
+  not show one.
 - **Log tail**: in-memory ring of 1000 lines and `server.log` on disk, rotated
-  at 1 MiB to `server.log.1`.
+  at 1 MiB to `server.log.1`, with one `timestamp<TAB>sequence<TAB>stream<TAB>line`
+  record per line.
 - **Endpoint actions**: copy the base URL and test the connection, including
   the API key when one is configured.
 - **Chat tab, experimental**: still the existing stub/embedded engine. It is
@@ -68,14 +83,17 @@ Naming: app `llama_pulse`, CLI `llamapulse`, package `llama_pulse_core`.
   earlier `version`, `params get|set`, `models list|inspect`, `run` and `bench`.
 - **Binary discovery and version warning**: a configured path, an environment
   variable, the app bundle, the config `bin/` directory and `PATH` are tried in
-  that order. Builds below `b4000` only warn; they never block a start.
-- **538 tests** across the three packages (363 core, 106 CLI, 69 app).
+  that order. Builds below `b4000` warn, and an unknown or unreadable
+  `llama-server --version` reports `supported: true` with a warning; nothing
+  blocks a start on the version.
+- **577 tests** across the three packages (379 core, 119 CLI, 79 app).
 
 ## Requirements
 
 Flutter 3.44+ declared (tested on 3.47.7) and Dart 3.13+. The CLI and the core
 build without llama.cpp. To actually serve a model you need a `llama-server`
-binary; build `b4000` or newer is supported, older builds only warn. Put it on
+binary; build `b4000` or newer is supported, while older or unknown/unreadable
+builds only warn. Put it on
 `PATH`, next to the executable, in the app's `data/` directory, in
 `<config>/bin/`, or point `LLAMA_PULSE_SERVER` or `server.yaml`'s
 `binaryPath` at it.
@@ -92,9 +110,10 @@ dart run melos run app        # dashboard + the real llama-server supervisor
 
 Enter a `.gguf` model path, press Save, then Start. The dashboard shows the
 lifecycle, `/health`, live metrics and the log tail. `dart run melos run
-app:stub-server` opens the same dashboard with a synthetic controller and
-starts no process; use it when no llama.cpp binary is installed. The Chat tab
-is reached from the rail and carries an `Experimental` banner.
+app:stub-server` opens the same dashboard with a synthetic controller and a
+demo banner, and starts no process; use it when no llama.cpp binary is
+installed. The Chat tab is reached from the rail and carries an `Experimental`
+banner.
 
 For a headless server:
 
@@ -152,8 +171,10 @@ An OpenCode custom provider:
 When `apiKey` is set, clients must send it as `Authorization: Bearer <key>`.
 When it is empty, authentication is off; some clients still insist on a
 non-empty API-key field, so pass any placeholder. `server.yaml` stores a single
-key — there is no multi-user authentication, and the server is plain HTTP, not
-TLS. Only bind a non-loopback host on a network you trust.
+key in plaintext and the supervisor passes it to `llama-server` in argv; the
+key is redacted from child log lines and failure details and is never written
+to `server-state.yaml`. There is no multi-user authentication, and the server
+is plain HTTP, not TLS. Only bind a non-loopback host on a network you trust.
 
 Build the CLI with `dart run melos run build:cli`. `melos` is a root
 dev-dependency, so `dart run melos` needs no global install. Run `flutter pub
@@ -203,22 +224,38 @@ and `--startup-timeout`, plus `--json`.
 
 `serve` applies the same flags on top of the stored configuration for one run
 and supervises the child in the foreground. It refuses to start when the state
-file records a server that still answers `/health`; run `stop` first. `--json`
-switches `serve` to NDJSON on stdout, one schema-v1 object per line, with event
-types `starting`, `ready`, `metrics`, `log`, `stopping`, `stopped` and
-`failed`. `metrics` carries `tokensPerSecond`, `promptTokensPerSecond`,
-`activeSlots`, `totalSlots`, `requestsProcessing`, `requestsDeferred`,
-`promptTokensTotal`, `tokensPredictedTotal`, `contextUsageRatio`,
-`uptimeSeconds` and `capturedAtEpochMs`; `failed` carries a `failure` object
-(`code`, `message`, `details`) and `lastExitCode`. Diagnostics still go to
-stderr.
+file records a `starting`, `running` or `stopping` server that still answers
+`/health`; run `stop` first. The controller streams are subscribed before
+`start`, so `starting` and the first log lines appear immediately; SIGINT or
+SIGTERM during startup stops the child immediately and exits `130` or `0`. A
+supervisor stream that closes without a terminal event is reported as
+`failed(unknown, 'the supervisor stream ended')`.
 
-`status` reads `server-state.yaml` and probes the recorded server. It exits `0`
-only when the phase is `running` **and** `/health` answers; `stopped`, `stale`
-and `failed` all exit `1`. `stop` signals the recorded supervisor first, waits
-for the state file to release the pids, then forces the process; `--force`
-skips the graceful phase. `logs` prints the newest lines (default 100, range
-1..1000) and `--follow` keeps polling until interrupted.
+`--json` switches `serve` to NDJSON on stdout, one schema-v1 object per line,
+with event types `starting`, `ready`, `metrics`, `log`, `stopping`, `stopped`
+and `failed`. A failure before the controller publishes anything still emits
+exactly one `failed` line. `metrics` carries `tokensPerSecond`,
+`promptTokensPerSecond`, `activeSlots`, `totalSlots`, `requestsProcessing`,
+`requestsDeferred`, `promptTokensTotal`, `tokensPredictedTotal`,
+`contextUsageRatio`, `uptimeSeconds` and `capturedAtEpochMs`; `failed` carries
+a `failure` object (`code`, `message`, `details`) and `lastExitCode`.
+Diagnostics still go to stderr.
+
+`status` reads `server-state.yaml` and probes the recorded server. `starting`,
+`running` and `stopping` all count as an active run, which is why a second
+`serve` is refused while that server still answers `/health`. It exits `0` only
+when the phase is `running` **and** `/health` returns 200 with
+`{"status":"ok"}`; a 200 with `{"status":"loading"}` is `loading`, and
+`stopped`, `stale` and `failed` all exit `1`. Uptime is reported from
+`startedAtEpochMs` even when the server is unreachable.
+
+`stop` signals the recorded supervisor and falls back to `serverPid` when that
+signal cannot be delivered. `--force` sends the forced kill to the process that
+is actually alive. It only reports (and records) a stop once the state document
+shows the pids released; otherwise it exits `1` and leaves the document
+untouched. `logs` prints the newest lines (default 100, range 1..1000), and
+`--follow` follows by sequence number until interrupted, so it survives
+rotation without repeating or dropping a line.
 
 ### `run` and `bench` (embedded, experimental)
 
@@ -326,10 +363,13 @@ server:
 `server-state.yaml` is the cross-process contract: `phase`
 (`stopped`, `starting`, `running`, `stopping`, `failed`), `health`, the
 supervisor and server pids, host/port/model/binary, start and update times, the
-last exit code and the last failure. The supervisor is the only writer; `status`
-and `stop` read it from another terminal. `server.log` holds supervisor and
-child output, one `timestamp<TAB>stream<TAB>line` record per line, and rotates
-to `server.log.1` at 1 MiB.
+last exit code and the last failure. The supervisor writes it after every
+transition, `stop` clears a settled document, and `status` only reads it.
+Terminal states clear `supervisorPid`; pids are released on stop; a process
+that survives `SIGKILL` leaves the document `failed` with `serverPid` set. It
+never contains the API key. `server.log` holds supervisor and child output, one
+`timestamp<TAB>sequence<TAB>stream<TAB>line` record per line, and rotates to
+`server.log.1` at 1 MiB.
 
 The embedded chat path keeps its earlier `params.yaml`:
 
@@ -369,8 +409,9 @@ never imports Flutter, `dart:io` or plugins.
 
 Server supervision lives in `packages/llama_pulse_core/lib/src/data/server/`
 behind domain entities (`server_*`) and gateways. Process launch, HTTP,
-signalling and port probing are injected seams, so tests use fakes and never
-spawn a real process or open a real socket.
+signalling and port probing are injected seams. Most server tests use fakes, but
+a few core tests exercise the real launcher, a localhost socket and an
+in-process `HttpServer` on ephemeral ports.
 
 Supervisor invariants:
 
@@ -380,17 +421,23 @@ Supervisor invariants:
 - Lifecycle: `stopped → starting → running → stopping → stopped`, with
   `failed` as the terminal error state and `starting → failed` on startup
   errors.
-- Readiness means `GET /health` returns 200; `starting` also reports
-  `loading`. The startup timeout defaults to 120 s.
+- Readiness and `testConnection` both require an HTTP 200 **and** a
+  `{"status":"ok"}` body; a 200 with `{"status":"loading"}` is
+  `degraded`/`loading`, not healthy. The startup timeout defaults to 120 s.
+- `stop()` and `dispose()` wait for an in-flight `start()`; a stop request
+  aborts the wait for readiness and the run never ends up `running` afterwards.
 - Stops are graceful first, forced after a 5 s grace, and exit monitoring is
-  always cleaned up. A failed start terminates the child it spawned.
-- No auto-restart. A child that exits after `running` marks the run `failed`
-  with `processExited`; the caller decides whether to start again.
+  always cleaned up. A failed start terminates the child it spawned. A child
+  that survives `SIGKILL` makes `stop()` throw and leaves the state `failed`
+  with `serverPid` set.
+- Terminal states clear `supervisorPid`, and pids are released on stop. No
+  auto-restart. A child that exits after `running` marks the run `failed` with
+  `processExited`; the caller decides whether to start again.
 - The port preflight is advisory: the port can be taken between probe and
   bind, so child stderr bind errors are mapped to `portInUse` as well.
-- `server-state.yaml` is written by the supervisor after every transition and
-  read by `status`/`stop`; it never contains the API key, and neither do the
-  logs.
+- The supervisor writes `server-state.yaml` after every transition and `stop`
+  clears a settled document; `status` reads it. It never contains the API key,
+  and child log lines and failure details redact it.
 - Always pass `--metrics --slots`; the exact Prometheus names mapped are
   `llamacpp:prompt_tokens_total`, `prompt_tokens_cached_total`,
   `prompt_seconds_total`, `tokens_predicted_total`,

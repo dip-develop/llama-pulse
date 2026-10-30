@@ -78,6 +78,10 @@ Options: `--model-path` (alias `--model`), `--host`, `--port`,
 `--slots`, `-lm`, `--mlock`, `--mmap` and their long forms); such an argument is
 rejected with exit `2`.
 
+The API key is stored in plaintext in `server.yaml` by design and passed to
+`llama-server` in argv. It is redacted from child log lines and failure details
+and never written to `server-state.yaml`.
+
 ### `serve`
 
 Start and supervise `llama-server` in the foreground. `serve` applies the same
@@ -90,9 +94,14 @@ supervisor diagnostics go to stderr, and SIGINT/SIGTERM stop the child.
 $ llamapulse serve --model /models/llama-3.2-3b-instruct.Q4_K_M.gguf --port 8080
 ```
 
-The command refuses to start when `server-state.yaml` records a server that
-still answers `/health`; run `stop` first. From another terminal, `status` shows
-the run and `stop` ends it.
+The command refuses to start when `server-state.yaml` records a server in
+`starting`, `running` or `stopping` that still answers `/health`; run `stop`
+first. From another terminal, `status` shows the run and `stop` ends it. The
+controller streams are subscribed before `start`, so `starting` and the first
+log lines appear immediately. SIGINT or SIGTERM during startup stops the child
+right away and exits `130` or `0` instead of waiting for the startup timeout. A
+supervisor stream that closes without a terminal event is reported as
+`failed(unknown, 'the supervisor stream ended')`.
 
 `serve --json` writes NDJSON on stdout, one schema-v1 object per line:
 
@@ -114,13 +123,15 @@ Event types and their extra keys:
 | `ready` | `serverPid`, `baseUrl`, `startupMs` |
 | `metrics` | `metrics` object: `tokensPerSecond`, `promptTokensPerSecond`, `activeSlots`, `totalSlots`, `requestsProcessing`, `requestsDeferred`, `promptTokensTotal`, `tokensPredictedTotal`, `contextUsageRatio`, `uptimeSeconds`, `capturedAtEpochMs` |
 | `log` | `stream` (`stdout`, `stderr`, `supervisor`), `line` |
-| `stopping` | `reason` (`sigint`, `sigterm`, `child-exit`) |
+| `stopping` | `reason` (`sigint`, `sigterm`) |
 | `stopped` | `exitCode` |
 | `failed` | `failure` object (`code`, `message`, `details`), `lastExitCode` |
 
 SIGINT exits `130`; SIGTERM exits `0`. Startup failures (model missing, port
 taken, bind error on stderr, readiness timeout) emit `failed` and exit `1`, `2`
-or `3` as appropriate.
+or `3` as appropriate. A failure that happens before the controller publishes
+anything (invalid flags, a missing model, an already-recorded server) still
+prints exactly one `failed` NDJSON line when `--json` is set.
 
 ### `status`
 
@@ -139,9 +150,13 @@ uptime: 128s
 ```
 
 Human `status` is `running`, `stopped`, `stale` or a phase name. `stale` means
-the state file is active but `/health` does not answer. The command exits `0`
-only when the phase is `running` **and** the probe succeeded; every other state
-exits `1`.
+the state file is active but `/health` does not answer. `starting`, `running`
+and `stopping` all count as an active run, which is why a second `serve` is
+refused while the recorded server still answers `/health`. The command exits
+`0` only when the phase is `running` **and** `/health` returns 200 with
+`{"status":"ok"}`; a 200 with `{"status":"loading"}` reports `loading` and
+exits `1`. Every other state exits `1`. Uptime is reported from
+`startedAtEpochMs` even when the server is unreachable.
 
 `--json` prints one object:
 
@@ -152,9 +167,11 @@ exits `1`.
 ### `stop`
 
 Stop the server recorded in `server-state.yaml`. The command signals the
-recorded supervisor first, waits for the state file to release the pids, then
-sends a forced kill if the process lingers. `--force` skips the graceful phase.
-Stopping when nothing is recorded is a success.
+recorded supervisor first; when that signal cannot be delivered it falls back
+to `serverPid`, so a dead supervisor never masks a live child. It waits up to
+10 s for the state file to release the pids, then sends a forced kill to the
+process that is actually alive. `--force` skips the graceful phase. Stopping
+when nothing is recorded is a success.
 
 ```
 $ llamapulse stop
@@ -163,8 +180,10 @@ $ llamapulse stop --json
 {"schemaVersion":1,"type":"serverStop","stopped":true,"pid":38601,"forced":false}
 ```
 
-`pid` is the supervisor pid when recorded, otherwise the server pid. A process
-that cannot be stopped exits `1` with `stopped: false`.
+`pid` is the pid that accepted the signal, or the last target tried when none
+did. The command reports `stopped: true` and clears the document only when the
+state is absent or terminal with no pids left. A document that still lists them
+is left untouched and the command exits `1` with `stopped: false`.
 
 ### `logs`
 
@@ -177,12 +196,14 @@ $ llamapulse logs --lines 3
 [stderr] all slots are idle
 ```
 
-`--lines` accepts `1..1000` (default 100). `--follow` keeps printing new lines
-until interrupted, then exits `130`. `--json` prints one object per line with
+`--lines` accepts `1..1000` (default 100). `--follow` follows by sequence
+number, so it survives rotation without repeating or dropping a line, and
+exits `130` when interrupted. `--json` prints one object per line with
 `sequence`, `timestampEpochMs`, `stream` and `line`.
 
-The on-disk file is `server.log` in the configuration directory, rotated at
-1 MiB to `server.log.1`.
+The on-disk file is `server.log` in the configuration directory, one
+`timestamp<TAB>sequence<TAB>stream<TAB>line` record per line, rotated at 1 MiB
+to `server.log.1`.
 
 ### `params get` and `params set` (embedded)
 
@@ -291,11 +312,12 @@ location.
 6. `PATH`
 
 On Windows the name is `llama-server.exe`. The version comes from
-`llama-server --version`; the supported floor is build `b4000`. A lower or
-unreadable version only produces a warning (`unsupported or unknown llama.cpp
-build; supported from b4000`) — it never blocks a start. Builds `b10875` and
-newer (and unknown builds) get `--load-mode`; older builds get
-`--mlock`/`--no-mmap`.
+`llama-server --version`; the supported floor is build `b4000`. A build below
+`b4000` warns with `supported: false`. An unknown or unreadable version reports
+`supported: true` with a warning (`unsupported or unknown llama.cpp build;
+supported from b4000`, or `could not read llama-server --version`). Neither
+blocks a start. Builds `b10875` and newer (and unknown builds) get
+`--load-mode`; older builds get `--mlock`/`--no-mmap`.
 
 ## Exit codes
 

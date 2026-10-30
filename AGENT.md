@@ -293,7 +293,11 @@ Core has no annotations and no `get_it`; it only defines gateways.
   `LlamaEngine`, so the screen still builds when no engine exists and reports
   `engineUnavailable` instead of throwing. `ServerBloc` is a factory over the
   config repository, validator and the DI-owned controller; the controller
-  outlives the bloc, so `close` only cancels subscriptions.
+  outlives the bloc, so `close` only cancels subscriptions. An
+  `AppLifecycleListener` disposes that controller when the window closes, and
+  the bloc seeds the dashboard from `server-state.yaml` when it records an
+  active run the controller does not own: Start is disabled and the status card
+  says `Started outside this app` and points at `llamapulse stop`.
 - A release build must never silently produce synthetic output or a synthetic
   server. Stub selection is explicit at build time (`--dart-define`) or in the
   caller; nothing flips it at runtime.
@@ -349,7 +353,7 @@ remain. `run` and `bench` are the embedded/experimental path.
 The supervisor is `LlamaServerSupervisor` in core's `data/server/`; it
 implements the `ServerController` gateway. The dashboard, `serve` and `status`
 use the same `ServerController` contract. Process launch, HTTP, signalling and
-port probing are injected, so tests replace them with fakes.
+port probing are injected, so the supervisor tests replace them with fakes.
 
 ### 10.1 Lifecycle and invariants
 
@@ -358,37 +362,53 @@ port probing are injected, so tests replace them with fakes.
   enum lives in `server_phase.dart`.
 - `start` validates the configuration, locates the binary, checks that the model
   is a file, probes the port, spawns the child with an argument vector (never a
-  shell string), waits for `/health` and enriches with `/props`. Readiness is a
-  200 from `/health`; `loading` is the normal `starting` health.
+  shell string), waits for `/health` and enriches with `/props`. Readiness and
+  `testConnection` both require an HTTP 200 **and** `{"status":"ok"}`; a 200
+  with `{"status":"loading"}` is `degraded`/`loading`, not healthy.
 - The startup timeout is `ServerConfig.startupTimeoutSeconds` (default 120).
   An exit before readiness or a timeout terminates the child and marks the run
   `failed`; it never leaves a process behind.
 - Stop is graceful first (`SIGTERM`). After a 5 s grace the supervisor forces
-  the child and waits again. `stop()` is idempotent and never overlaps.
-- There is no auto-restart and no backoff loop. A child that exits after
-  `running` marks `failed` with `processExited`; only a caller starts again.
+  the child and waits again. `stop()` waits for an in-flight `start()`, so a
+  stop request aborts readiness and never ends up `running`; it is idempotent.
+  A child that survives `SIGKILL` makes `stop()` throw and leaves the state
+  `failed` with `serverPid` set.
+- Terminal states clear `supervisorPid`, and pids are released on stop. There
+  is no auto-restart and no backoff loop. A child that exits after `running`
+  marks `failed` with `processExited`; only a caller starts again.
 - One supervisor owns at most one child. `start` throws `invalidConfig` while a
-  run is active, and the CLI `serve` additionally refuses when the recorded
-  server still answers `/health`.
+  run is active (`starting`, `running` or `stopping`), and the CLI `serve`
+  additionally refuses when the recorded server still answers `/health`.
 - The port preflight is advisory: `SocketPortProbe` binds and closes the port,
   but another process can take it in between. The supervisor also watches the
   child's stderr for bind errors and maps them to `portInUse`.
 - `server-state.yaml` is the cross-process contract. The supervisor writes it
-  after every transition; `status` and `stop` read it from another terminal.
-  Health-only changes are broadcast without a write.
+  after every transition, `stop` clears a settled document, and `status` reads
+  it from another terminal. Health-only changes are broadcast without a write.
 - The log store keeps a 1000-entry in-memory ring and appends
-  `timestamp<TAB>stream<TAB>line` records to `server.log`, rotating at 1 MiB to
-  `server.log.1`. ANSI escapes are stripped and long lines are truncated.
-- No secrets in logs or state: the API key is passed to the child but never
-  written to `server-state.yaml`, `server.log` or failure details.
-- Monitoring always passes `--metrics --slots`. `/metrics` (Prometheus) is
-  required for a sample; `/slots` and `/props` are best-effort. Uptime comes
-  from the `Process-Start-Time-Unix` response header, context usage from
-  `/slots`, and there is no total-request counter in current llama.cpp.
+  `timestamp<TAB>sequence<TAB>stream<TAB>line` records to `server.log`,
+  rotating at 1 MiB to `server.log.1`. ANSI escapes are stripped and long lines
+  are truncated.
+- API keys: `server.yaml` holds the key in plaintext by design and the
+  supervisor passes it to the child in argv. The key is redacted from child log
+  lines and failure details, and is never written to `server-state.yaml` or
+  `server.log`.
+- Monitoring: the production supervisor owns a `ServerMonitor` that samples
+  `/metrics`, `/slots` and `/props` about once a second while running and emits
+  `ServerMetrics` on the metrics stream. The launch arguments always include
+  `--metrics --slots`. `/metrics` (Prometheus) is required for a sample;
+  `/slots` and `/props` are best-effort. A failed sample or health probe marks
+  the run `degraded` or `unreachable` without changing the phase, and health
+  recovers when the server answers again. Uptime comes from the `Process-Start-Time-Unix` response
+  header, context usage from `/slots`, and there is no total-request counter in
+  current llama.cpp. Those HTTP payloads are the only JSON decode exception
+  (`jsonDecode` stays under `data/server/`).
 - Binary discovery order: `binaryPath` → `LLAMA_PULSE_SERVER` → bundled
   `<exeDir>/data/llama-server` → `<exeDir>/llama-server` →
   `<config>/bin/llama-server` → `PATH`. `llama-server --version` supplies the
-  build; builds below `b4000` (and unknown versions) only warn.
+  build. Builds below `b4000` warn with `supported: false`; an unknown or
+  unreadable version reports `supported: true` with a warning (shown in the
+  UI). Nothing blocks a start on the version.
 - `--load-mode` is used for build `b10875` and newer, and for an unknown build;
   older builds get legacy `--mlock`/`--no-mmap`. `extraArgs` are appended and
   must not repeat a managed flag.
@@ -405,18 +425,31 @@ port probing are injected, so tests replace them with fakes.
   stored list), `--binary`, `--startup-timeout`, `--json`.
 - `serve` runs in the foreground, applies its flags over the stored
   configuration for one run, mirrors child output and stops on SIGINT/SIGTERM.
-  SIGINT exits `130`; SIGTERM exits `0`. `serve --json` is NDJSON on stdout
-  with `starting`, `ready`, `metrics`, `log`, `stopping`, `stopped` and
-  `failed`; diagnostics stay on stderr.
-- `status` reads the state file and probes `/health`. It exits `0` only when
-  the phase is `running` and the probe succeeds; `stopped`, `stale` and
-  `failed` exit `1`. Human status is `running`, `stopped`, `stale` or a phase
-  name.
-- `stop` signals the recorded supervisor (or server) gracefully, waits up to
-  10 s for the state file to release the pids, then forces. `--force` skips the
-  graceful phase. `stop` exits `0` when nothing is running.
-- `logs` prints the newest 1..1000 lines from the log store (default 100) and
-  `--follow` polls until interrupted, then exits `130`.
+  It subscribes to the controller streams before `start`, so `starting` and the
+  first log lines appear immediately; SIGINT or SIGTERM during startup stops
+  the child immediately and exits `130` or `0`. A supervisor stream that closes
+  without a terminal event becomes
+  `failed(unknown, 'the supervisor stream ended')`. `serve --json` is NDJSON on
+  stdout with `starting`, `ready`, `metrics`, `log`, `stopping`, `stopped` and
+  `failed`; a pre-start failure still emits exactly one `failed` line, and
+  diagnostics stay on stderr. `stopping` is emitted by `stop()` only, with
+  reason `sigint` or `sigterm`.
+- `status` reads the state file and probes `/health`. `starting`, `running` and
+  `stopping` count as an active run. It exits `0` only when the phase is
+  `running` and `/health` returns 200 with `{"status":"ok"}`; a 200 with
+  `{"status":"loading"}` is `loading`, and `stopped`, `stale` and `failed` exit
+  `1`. Human status is `running`, `stopped`, `stale` or a phase name; uptime is
+  reported from `startedAtEpochMs` even when the server is unreachable.
+- `stop` signals the recorded supervisor and falls back to `serverPid` when the
+  signal cannot be delivered; `--force` targets the process that actually
+  accepted the signal. It waits up to 10 s for the state file to release the
+  pids, then forces. It reports and records a stop only when the document is
+  absent or terminal with no pids; otherwise it exits `1` and leaves the
+  document untouched. `stop` exits `0` when nothing is running.
+- `logs` prints the newest 1..1000 lines from the log store (default 100).
+  `--follow` follows by sequence number, so it survives rotation, then exits
+  `130` on interrupt. The on-disk format is
+  `timestamp<TAB>sequence<TAB>stream<TAB>line`.
 - Server commands share the CLI exit codes: `0` success, `1` unexpected
   failure or non-running `status`, `2` invalid arguments/configuration, `3`
   missing model, `130` SIGINT.
@@ -454,7 +487,7 @@ APIs, no `!` on nullable values, no empty `catch` blocks.
 
 From the root, `dart run melos test`. Melos picks `flutter test` for the app and
 `dart test` for core and CLI. Test the critical seams, not every line. Coverage
-is not a target. The suites hold 538 tests today: 363 core, 106 CLI, 69 app.
+is not a target. The suites hold 577 tests today: 379 core, 119 CLI, 79 app.
 
 Must test today:
 
@@ -483,9 +516,11 @@ Must test today:
     not-found and not-executable failures.
   - `ServerVersionParser`: full version/build/commit, bare build, unknown
     output warns instead of throwing, `b4000` boundary.
-  - `LlamaServerSupervisor`: transitions, readiness, startup timeout, exit
-    before ready, bind-error mapping, graceful→force escalation, no
-    auto-restart, dispose idempotence.
+  - `LlamaServerSupervisor`: transitions, strict readiness, startup timeout,
+    exit before ready, bind-error mapping, graceful→force escalation, a stop
+    during an in-flight start, a child surviving `SIGKILL`, released pids,
+    health/monitor degradation and recovery, no auto-restart, dispose
+    idempotence.
   - `ServerLogStore`: ring cap, rotation at 1 MiB with one backup, ANSI
     stripping, truncation and unparsable-line tolerance.
   - `ServerMetricsMapper` / `PrometheusMetrics`: every mapped name, missing
@@ -500,10 +535,11 @@ Must test today:
   demo-engine banner (the experimental path).
 - Screen layout: wide and narrow windows, and the two-tab shell.
 
-Server tests never spawn a real process or open a real socket: process launch,
-HTTP, signals and the port probe are fakes. JSON decoding is tested through the
-`data/server/` seams; the architecture test keeps `jsonDecode` there and keeps
-`jsonEncode` out of the whole package.
+Supervisor, bloc and UI tests use fakes for process launch, HTTP, signals and
+the port probe. A few core tests do exercise the real launcher, a localhost
+socket and an in-process `HttpServer` on ephemeral ports. JSON decoding is
+tested through the `data/server/` seams; the architecture test keeps
+`jsonDecode` there and keeps `jsonEncode` out of the whole package.
 
 Real-isolate tests run only in the pure-Dart suites: core's `dart test` and the
 CLI's `dart test`; never in `flutter test`. Flutter's test binding and an actual
@@ -627,7 +663,7 @@ milestone. Never commit `.env` files, secrets or absolute local paths.
 
 - [ ] The workspace resolves with one lockfile (`flutter pub get` at the root).
 - [ ] `pubspec.lock` stays untracked.
-- [ ] `dart run melos run check` is green (538 tests: 363 core, 106 CLI, 69 app).
+- [ ] `dart run melos run check` is green (577 tests: 379 core, 119 CLI, 79 app).
 - [ ] The server path works end to end: the plain app can start a real
   `llama-server` when a binary is present, and `serve`/`status`/`stop` work from
   the compiled CLI.

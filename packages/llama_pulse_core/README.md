@@ -46,8 +46,10 @@ import 'package:llama_pulse_core/llama_pulse_core.dart';
 
 `LlamaServerSupervisor` implements the `ServerController` gateway: it validates
 `ServerConfig`, locates `llama-server`, spawns one child, waits for `/health`,
-publishes states, metrics and log lines, and stops the child. The dashboard,
-`serve`, `status` and `stop` all go through the same contracts.
+publishes states, metrics and log lines, and stops the child. In production it
+owns a `ServerMonitor` that samples `/metrics`, `/slots` and `/props` about once
+a second while the server runs and emits `ServerMetrics` on the metrics stream.
+The dashboard, `serve`, `status` and `stop` all go through the same contracts.
 
 ```dart
 final controller = LlamaServerSupervisor.production(
@@ -64,8 +66,9 @@ await controller.dispose();
 
 Every collaborator is injected (`ServerProcessLauncher`, `ServerHttpClient`,
 `PortProbe`, `ServerBinaryLocator`, `ServerStateRepository`, `ServerLogStore`,
-`ServerConfigValidator`), so tests use fakes and never spawn a process or open
-a socket. `LlamaServerSupervisor.production` wires the `dart:io` implementations
+`ServerConfigValidator`), so most tests use fakes. A few core tests exercise the
+real launcher, a localhost socket and an in-process `HttpServer` on ephemeral
+ports. `LlamaServerSupervisor.production` wires the `dart:io` implementations
 and `AppPaths`.
 
 Invariants:
@@ -74,21 +77,33 @@ Invariants:
   a failed start terminates the child it spawned.
 - Lifecycle: `stopped → starting → running → stopping → stopped`, with `failed`
   as the terminal error state and `starting → failed` on startup errors.
-- Readiness is a 200 from `/health`; `loading` is reported while the model
-  loads. The startup timeout is `startupTimeoutSeconds` (default 120).
-- Stop is graceful (`SIGTERM`), then forced after a 5 s grace. `stop` is
-  idempotent.
+- Readiness and `testConnection` both require an HTTP 200 **and** a
+  `{"status":"ok"}` body; a 200 with `{"status":"loading"}` is
+  `degraded`/`loading`, not healthy. The startup timeout is
+  `startupTimeoutSeconds` (default 120).
+- Stop is graceful (`SIGTERM`), then forced after a 5 s grace. `stop()` and
+  `dispose()` wait for an in-flight `start()`: a stop request aborts readiness
+  and the run never ends up `running` afterwards. `stop` is idempotent.
+- A child that survives `SIGKILL` makes `stop()` throw and leaves the state
+  `failed` with `serverPid` set. Terminal states clear `supervisorPid`, and pids
+  are released on stop.
 - No auto-restart: a child that exits after `running` marks the run `failed`
   with `processExited`.
 - The port preflight is advisory; child stderr bind errors are also mapped to
   `portInUse`.
 - `ServerState` is persisted to `server-state.yaml` after every transition and
-  is the cross-process contract for `status`/`stop`. Health-only changes are
-  broadcast without a write.
+  is the cross-process contract for `status`/`stop`; `stop` clears a settled
+  document. Health-only changes are broadcast without a write.
+- While the server runs, the monitor samples `/metrics`, `/slots` and `/props`
+  about once a second. A failed sample or health probe marks the run `degraded`
+  or `unreachable` without changing the phase, and health recovers when the
+  server answers again.
 - Logs go to a 1000-entry in-memory ring and to `server.log`
-  (`timestamp<TAB>stream<TAB>line`), rotated at 1 MiB to `server.log.1`.
-- The API key is passed to the child but never written to state, logs or
-  failure details.
+  (`timestamp<TAB>sequence<TAB>stream<TAB>line`), rotated at 1 MiB to
+  `server.log.1`.
+- `server.yaml` holds the API key in plaintext by design and the supervisor
+  passes it to the child in argv. It is redacted from child log lines and
+  failure details, and never written to state or logs.
 - The argument builder always includes `--metrics --slots`, plus the configured
   model, host, port, context, threads, GPU layers, slots, flash attention,
   alias, key and load mode. `extraArgs` are appended last and may not repeat a
@@ -96,10 +111,11 @@ Invariants:
 - Binary discovery order: `binaryPath` → `LLAMA_PULSE_SERVER` →
   `<exeDir>/data/llama-server` → `<exeDir>/llama-server` →
   `<config>/bin/llama-server` → `PATH`.
-- Version parsing reads `llama-server --version`. Builds below `b4000` and
-  unknown versions only warn (`supported` is false, `warning` is set); they
-  never block a start. Builds `b10875+` (and unknown builds) use `--load-mode`;
-  older builds use `--mlock`/`--no-mmap`.
+- Version parsing reads `llama-server --version`. Builds below `b4000` warn
+  with `supported: false`; an unknown or unreadable version reports
+  `supported: true` with a warning. Neither blocks a start. Builds `b10875+`
+  (and unknown builds) use `--load-mode`; older builds use
+  `--mlock`/`--no-mmap`.
 - The monitor requires `/metrics` and treats `/slots` and `/props` as
   best-effort. It maps `llamacpp:prompt_tokens_total`,
   `prompt_tokens_cached_total`, `prompt_seconds_total`,
@@ -119,7 +135,8 @@ explicitly.
 
 `server.yaml` starts with `schemaVersion: 1` and a `server` mapping. Missing,
 malformed or stale documents fall back to `ServerConfig.defaults()`; saving
-validates first. `server-state.yaml` is written by the supervisor only.
+validates first. `server-state.yaml` is written by the supervisor after each
+transition; `stop` clears a settled document.
 
 ```yaml
 schemaVersion: 1
@@ -225,9 +242,11 @@ final loaded = await repository.load();
 ## Test seams
 
 The server suite covers the argument builder, binary locator order, version
-parser, supervisor transitions and escalation, log-store rotation, metrics
-mapping and the YAML config/state round-trip. Fakes implement the gateways;
-tests do not spawn real processes or bind real sockets.
+parser, supervisor transitions, strict readiness, stop coordination and
+escalation, a child surviving `SIGKILL`, log-store rotation, metrics mapping and
+the YAML config/state round-trip. Fakes implement the gateways for most tests;
+a few exercise the real launcher, a localhost socket and an in-process
+`HttpServer` on ephemeral ports.
 
 ## Status
 
