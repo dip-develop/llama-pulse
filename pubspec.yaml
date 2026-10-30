@@ -45,6 +45,9 @@ melos:
     app:stub:
       description: Run the desktop app with the synthetic stub engine.
       run: cd "$MELOS_ROOT_PATH/apps/llama_pulse" && flutter run -d linux --dart-define=LLAMAPULSE_STUB_ENGINE=true
+    app:stub-server:
+      description: Run the desktop app with the synthetic stub server.
+      run: cd "$MELOS_ROOT_PATH/apps/llama_pulse" && flutter run -d linux --dart-define=LLAMAPULSE_STUB_SERVER=true
     build:app:
       description: Build the Linux desktop release bundle.
       run: cd "$MELOS_ROOT_PATH/apps/llama_pulse" && flutter build linux --release

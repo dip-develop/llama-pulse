@@ -13,13 +13,12 @@ import 'widgets/metrics_panel.dart';
 import 'widgets/model_params_form.dart';
 import 'widgets/status_chip.dart';
 
-/// Inference workspace: startup parameters, generation output and metrics.
-class InferenceScreen extends StatelessWidget {
-  const InferenceScreen({
-    super.key,
-    required this.picker,
-    this.demoEngine = false,
-  });
+/// Embedded chat workspace: startup parameters, generation output and metrics.
+///
+/// It renders inside the application shell, so it owns no [Scaffold] and no
+/// [AppBar]: the shell provides those and keeps both tabs alive.
+class ChatScreen extends StatelessWidget {
+  const ChatScreen({super.key, required this.picker, this.demoEngine = false});
 
   /// File dialog seam handed to the parameter form.
   final ModelPathPicker picker;
@@ -29,40 +28,33 @@ class InferenceScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('LlamaPulse'),
-        actions: const [
-          Padding(
-            padding: EdgeInsets.only(right: 16),
-            child: Center(child: StatusChip()),
+    return SafeArea(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (demoEngine) const _DemoEngineBanner(),
+          const Padding(
+            padding: EdgeInsets.fromLTRB(16, 12, 16, 0),
+            child: Align(alignment: Alignment.centerLeft, child: StatusChip()),
+          ),
+          const FailureBanner(),
+          const Padding(
+            padding: EdgeInsets.fromLTRB(16, 16, 16, 0),
+            child: _PromptSection(),
+          ),
+          Expanded(
+            child: LayoutBuilder(
+              builder: (BuildContext context, BoxConstraints constraints) {
+                // Below 900 px a 380 px parameter column would leave too
+                // little room for output, so the layout stacks instead.
+                if (constraints.maxWidth >= 900) {
+                  return _WideLayout(picker: picker);
+                }
+                return _NarrowLayout(picker: picker);
+              },
+            ),
           ),
         ],
-      ),
-      body: SafeArea(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            if (demoEngine) const _DemoEngineBanner(),
-            const FailureBanner(),
-            const Padding(
-              padding: EdgeInsets.fromLTRB(16, 16, 16, 0),
-              child: _PromptSection(),
-            ),
-            Expanded(
-              child: LayoutBuilder(
-                builder: (BuildContext context, BoxConstraints constraints) {
-                  // Below 900 px a 380 px parameter column would leave too
-                  // little room for output, so the layout stacks instead.
-                  if (constraints.maxWidth >= 900) {
-                    return _WideLayout(picker: picker);
-                  }
-                  return _NarrowLayout(picker: picker);
-                },
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }
