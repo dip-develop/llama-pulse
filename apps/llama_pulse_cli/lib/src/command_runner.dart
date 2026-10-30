@@ -2,10 +2,12 @@ import 'package:args/args.dart';
 import 'package:args/command_runner.dart';
 
 import 'cli_services.dart';
+import 'commands/bench_command.dart';
 import 'commands/models_inspect_command.dart';
 import 'commands/models_list_command.dart';
 import 'commands/params_get_command.dart';
 import 'commands/params_set_command.dart';
+import 'commands/run_command.dart';
 import 'commands/version_command.dart';
 import 'exit_codes.dart';
 
@@ -13,10 +15,15 @@ import 'exit_codes.dart';
 final class LlamaPulseCommandRunner extends CommandRunner<int> {
   /// Creates a runner over [services] and registers every command.
   LlamaPulseCommandRunner(this.services)
-    : super('llamapulse', 'Manage LlamaPulse parameters and model files.') {
+    : super(
+        'llamapulse',
+        'Manage LlamaPulse parameters, model files and local inference.',
+      ) {
     addCommand(VersionCommand(services));
     addCommand(_ParamsCommand(services));
     addCommand(_ModelsCommand(services));
+    addCommand(RunCommand(services));
+    addCommand(BenchCommand(services));
   }
 
   /// Dependencies handed to every command.
