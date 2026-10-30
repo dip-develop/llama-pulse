@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:llama_pulse_cli/llama_pulse_cli.dart';
 import 'package:llama_pulse_core/llama_pulse_core.dart';
@@ -27,15 +29,17 @@ void main() {
     store = InMemoryConfigStore();
   });
 
-  LlamaPulseCommandRunner makeRunner() => LlamaPulseCommandRunner(
-    CliServices(
-      paths: const AppPaths(configDirectory: '/config/llamapulse'),
-      configStore: store,
-      out: out,
-      err: err,
-      engineFactory: () => engine,
-    ),
-  );
+  LlamaPulseCommandRunner makeRunner({Stream<ProcessSignal>? interrupts}) =>
+      LlamaPulseCommandRunner(
+        CliServices(
+          paths: const AppPaths(configDirectory: '/config/llamapulse'),
+          configStore: store,
+          out: out,
+          err: err,
+          interrupts: interrupts,
+          engineFactory: () => engine,
+        ),
+      );
 
   test('--stub --json reports aggregates and every run', () async {
     final runner = makeRunner();
@@ -151,6 +155,98 @@ void main() {
     expect(err.toString(), contains('error: engineUnavailable:'));
     expect(engine.loadCalls, 0);
   });
+
+  test('a failed run keeps the partial text in --json output', () async {
+    engine = ScriptedLlamaEngine(
+      tokens: const ['Hello'],
+      failAfterTokens: true,
+      generateFailure: InferenceFailure(
+        (b) => b
+          ..code = InferenceFailureCode.nativeError
+          ..message = 'decode failed',
+      ),
+    );
+    final runner = makeRunner();
+
+    expect(
+      await runner.run([
+        'bench',
+        '--stub',
+        '--json',
+        '--runs',
+        '1',
+        '--model',
+        '/tmp/demo.gguf',
+      ]),
+      ExitCodes.failure,
+    );
+
+    final event = _lines(out.toString()).single;
+    expect(event['type'], 'failed');
+    expect(event['requestId'], 1);
+    expect(event['text'], 'Hello');
+    expect((event['failure'] as Map<String, Object?>)['code'], 'nativeError');
+    expect(err.toString(), contains('error: nativeError: decode failed'));
+  });
+
+  test('a failed run keeps the partial text in human output', () async {
+    engine = ScriptedLlamaEngine(
+      tokens: const ['Hel', 'lo'],
+      failAfterTokens: true,
+      generateFailure: InferenceFailure(
+        (b) => b
+          ..code = InferenceFailureCode.nativeError
+          ..message = 'decode failed',
+      ),
+    );
+    final runner = makeRunner();
+
+    expect(
+      await runner.run([
+        'bench',
+        '--stub',
+        '--runs',
+        '1',
+        '--model',
+        '/tmp/demo.gguf',
+      ]),
+      ExitCodes.failure,
+    );
+
+    expect(out.toString(), 'Hello\n');
+    expect(err.toString(), contains('error: nativeError: decode failed'));
+  });
+
+  test(
+    'the first SIGINT cancels and exits with ExitCodes.interrupted',
+    () async {
+      engine = ScriptedLlamaEngine(
+        tokens: const ['tick'],
+        tokenInterval: const Duration(milliseconds: 5),
+        repeatTokens: true,
+      );
+      final signals = StreamController<ProcessSignal>();
+      addTearDown(signals.close);
+      final runner = makeRunner(interrupts: signals.stream);
+
+      final pending = runner.run([
+        'bench',
+        '--stub',
+        '--json',
+        '--runs',
+        '2',
+        '--model',
+        '/tmp/demo.gguf',
+      ]);
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+      signals.add(ProcessSignal.sigint);
+
+      expect(await pending, ExitCodes.interrupted);
+      final event = _lines(out.toString()).single;
+      expect(event['type'], 'cancelled');
+      expect(event['requestId'], 1);
+    },
+  );
 
   test(
     'human output puts per-run lines on stderr and the summary on stdout',

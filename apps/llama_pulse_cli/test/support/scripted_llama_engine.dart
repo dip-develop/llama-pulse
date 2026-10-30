@@ -18,6 +18,7 @@ final class ScriptedLlamaEngine implements LlamaEngine {
     this.repeatTokens = false,
     this.loadFailure,
     this.generateFailure,
+    this.failAfterTokens = false,
     this.completionMetrics,
   });
 
@@ -47,6 +48,10 @@ final class ScriptedLlamaEngine implements LlamaEngine {
 
   /// Failure emitted by [generate], when set.
   final InferenceFailure? generateFailure;
+
+  /// Whether [generateFailure] is emitted after the token list instead of
+  /// immediately, so tests can observe partial text.
+  final bool failAfterTokens;
 
   /// Metrics override for the `completed` event.
   final GenerationMetrics? completionMetrics;
@@ -95,7 +100,7 @@ final class ScriptedLlamaEngine implements LlamaEngine {
     yield GenerationEvent.started(requestId);
 
     final failure = generateFailure;
-    if (failure != null) {
+    if (failure != null && !failAfterTokens) {
       yield GenerationEvent.failed(requestId, failure);
       return;
     }
@@ -113,6 +118,10 @@ final class ScriptedLlamaEngine implements LlamaEngine {
       index++;
     }
 
+    if (failAfterTokens && failure != null) {
+      yield GenerationEvent.failed(requestId, failure);
+      return;
+    }
     if (honourCancel && _cancelled.contains(requestId)) {
       yield GenerationEvent.cancelled(requestId);
       return;

@@ -12,9 +12,8 @@ import '../inference/run_session.dart';
 
 /// Runs one prompt through the inference engine.
 ///
-/// The native engine does not exist yet, so this command requires `--stub`.
-/// In stub mode the model path is echoed into the request but never read; no
-/// file-existence check happens in this batch.
+/// The native session is unavailable, so this command requires `--stub`.
+/// In stub mode the model path is echoed into the request but never read.
 final class RunCommand extends LlamaPulseCommand {
   /// Creates the command.
   RunCommand(super.services) {
@@ -47,8 +46,8 @@ final class RunCommand extends LlamaPulseCommand {
 
   @override
   String get description =>
-      'Run one prompt. Requires --stub until the native engine lands; the '
-      'model path is echoed but not read in this batch.';
+      'Run one prompt. Requires --stub: the native session is unavailable, '
+      'so stub mode echoes the model path without reading it.';
 
   @override
   bool get takesArguments => false;
@@ -62,8 +61,9 @@ final class RunCommand extends LlamaPulseCommand {
     }
     final mode = _mode(args);
 
-    final prompt = await _resolvePrompt(args);
-    if (prompt == null) {
+    final promptArgumentError = _promptArgumentError(args);
+    if (promptArgumentError != null) {
+      services.err.writeln('error: $promptArgumentError');
       return ExitCodes.usage;
     }
 
@@ -100,6 +100,13 @@ final class RunCommand extends LlamaPulseCommand {
       return ExitCodes.usage;
     }
 
+    // Reading the prompt is last, so `--file -` never blocks on stdin for an
+    // invocation that is already invalid.
+    final prompt = await _resolvePrompt(args);
+    if (prompt == null) {
+      return ExitCodes.usage;
+    }
+
     final engine = services.createEngine(useStubSession: true);
     try {
       try {
@@ -129,18 +136,26 @@ final class RunCommand extends LlamaPulseCommand {
     }
   }
 
-  Future<String?> _resolvePrompt(ArgResults args) async {
+  String? _promptArgumentError(ArgResults args) {
     final prompt = args.option('prompt');
     final file = args.option('file');
     if (prompt != null && file != null) {
-      services.err.writeln('error: --prompt and --file cannot be combined');
-      return null;
+      return '--prompt and --file cannot be combined';
     }
+    if (prompt == null && file == null) {
+      return 'pass either --prompt or --file';
+    }
+    return null;
+  }
+
+  Future<String?> _resolvePrompt(ArgResults args) async {
+    final prompt = args.option('prompt');
     if (prompt != null) {
       return prompt;
     }
+    final file = args.option('file');
     if (file == null) {
-      services.err.writeln('error: pass either --prompt or --file');
+      // _promptArgumentError rejects this before any I/O happens.
       return null;
     }
     if (file == '-') {
@@ -159,7 +174,12 @@ final class RunCommand extends LlamaPulseCommand {
       }
     }
     try {
-      return await File(file).readAsString();
+      return utf8.decode(await File(file).readAsBytes());
+    } on FormatException catch (error) {
+      services.err.writeln(
+        'error: cannot decode --file $file as UTF-8: ${error.message}',
+      );
+      return null;
     } on FileSystemException catch (error) {
       services.err.writeln('error: cannot read --file $file: ${error.message}');
       return null;
@@ -167,7 +187,7 @@ final class RunCommand extends LlamaPulseCommand {
   }
 
   int _engineUnavailable(RunOutputMode mode) {
-    const message = 'the native engine is not implemented yet; pass --stub';
+    const message = 'the native session is unavailable; pass --stub';
     services.err.writeln('error: engineUnavailable: $message');
     if (mode == RunOutputMode.stream || mode == RunOutputMode.json) {
       services.out.writeln(jsonEncode(encodeFailed(0, '', _failure(message))));

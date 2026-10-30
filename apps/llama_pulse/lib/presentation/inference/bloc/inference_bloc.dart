@@ -46,6 +46,7 @@ class InferenceBloc extends Bloc<InferenceEvent, InferenceState> {
   int _requestCounter = 0;
   bool _terminalSeen = false;
   bool _cancelRequested = false;
+  bool _userEdited = false;
 
   Future<void> _onStarted(
     InferenceStarted event,
@@ -53,6 +54,11 @@ class InferenceBloc extends Bloc<InferenceEvent, InferenceState> {
   ) async {
     try {
       final ModelParams params = await _loadParams();
+      // The stored document must not overwrite an input the user already
+      // touched, nor a state that moved past `initial` while loading.
+      if (_userEdited || state.status != InferenceStatus.initial) {
+        return;
+      }
       _emit(emit, state.rebuild((b) => b..params.replace(params)));
     } on Object catch (error) {
       _reportUnexpected(emit, error, 'Could not load the stored parameters.');
@@ -63,6 +69,7 @@ class InferenceBloc extends Bloc<InferenceEvent, InferenceState> {
     InferenceParamsChanged event,
     Emitter<InferenceState> emit,
   ) {
+    _userEdited = true;
     _emit(emit, state.rebuild((b) => b..params.replace(event.params)));
   }
 
@@ -70,6 +77,7 @@ class InferenceBloc extends Bloc<InferenceEvent, InferenceState> {
     InferencePromptChanged event,
     Emitter<InferenceState> emit,
   ) {
+    _userEdited = true;
     _emit(emit, state.rebuild((b) => b..prompt = event.prompt));
   }
 
@@ -97,6 +105,7 @@ class InferenceBloc extends Bloc<InferenceEvent, InferenceState> {
     InferenceLoadRequested event,
     Emitter<InferenceState> emit,
   ) async {
+    _userEdited = true;
     final List<String> violations = _validator.validate(state.params);
     if (violations.isNotEmpty) {
       _emit(
@@ -155,6 +164,14 @@ class InferenceBloc extends Bloc<InferenceEvent, InferenceState> {
       _emit(
         emit,
         _failed(InferenceFailureCode.engineUnavailable, 'no inference engine'),
+      );
+      return;
+    }
+    final List<String> violations = _validator.validate(state.params);
+    if (violations.isNotEmpty) {
+      _emit(
+        emit,
+        _failed(InferenceFailureCode.invalidParams, violations.join('; ')),
       );
       return;
     }
@@ -242,7 +259,22 @@ class InferenceBloc extends Bloc<InferenceEvent, InferenceState> {
   ) async {
     if (state.status == InferenceStatus.generating ||
         state.status == InferenceStatus.cancelling) {
-      await _cancelSubscription();
+      // The worker rejects an unload while a request is in flight with
+      // `engineBusy`; report that and leave the generation untouched.
+      _emit(
+        emit,
+        state.rebuild(
+          (b) => b
+            ..failure.replace(
+              InferenceFailure(
+                (f) => f
+                  ..code = InferenceFailureCode.engineBusy
+                  ..message = 'cancel the running generation first',
+              ),
+            ),
+        ),
+      );
+      return;
     }
     try {
       await _engine?.unload();

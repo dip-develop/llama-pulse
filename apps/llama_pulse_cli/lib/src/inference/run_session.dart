@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:llama_pulse_core/llama_pulse_core.dart';
 
+import '../exit_codes.dart';
 import 'output_schema.dart';
 
 /// How a generation session reports progress.
@@ -48,9 +49,9 @@ final class SessionResult {
 
   /// Process exit code implied by [status].
   int get exitCode => switch (status) {
-    SessionStatus.completed => 0,
-    SessionStatus.cancelled => 130,
-    SessionStatus.failed => 1,
+    SessionStatus.completed => ExitCodes.ok,
+    SessionStatus.cancelled => ExitCodes.interrupted,
+    SessionStatus.failed => ExitCodes.failure,
   };
 }
 
@@ -153,6 +154,16 @@ Future<SessionResult> runSession({
             ),
           );
         },
+        onDone: () => finish(
+          GenerationEvent.failed(
+            requestId,
+            InferenceFailure(
+              (b) => b
+                ..code = InferenceFailureCode.unknown
+                ..message = 'the engine stream ended without a result',
+            ),
+          ),
+        ),
       );
 
   final terminal = await done.future;

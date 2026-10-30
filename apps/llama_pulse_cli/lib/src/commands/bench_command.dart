@@ -19,7 +19,7 @@ const String _stubOnlyModelPath = '<stub>';
 
 /// Runs the same prompt several times and reports aggregate throughput.
 ///
-/// The native engine does not exist yet, so this command requires `--stub`.
+/// The native session is unavailable, so this command requires `--stub`.
 /// The fixed prompt is [benchPrompt].
 final class BenchCommand extends LlamaPulseCommand {
   /// Creates the command.
@@ -48,9 +48,9 @@ final class BenchCommand extends LlamaPulseCommand {
 
   @override
   String get description =>
-      'Benchmark repeated runs of "$benchPrompt". Requires --stub until the '
-      'native engine lands; stub mode without a configured model uses the '
-      '$_stubOnlyModelPath placeholder.';
+      'Benchmark repeated runs of "$benchPrompt". Requires --stub: the native '
+      'session is unavailable, and stub mode without a configured model uses '
+      'the $_stubOnlyModelPath placeholder.';
 
   @override
   bool get takesArguments => false;
@@ -136,9 +136,12 @@ final class BenchCommand extends LlamaPulseCommand {
               jsonEncode(encodeCancelled(requestId, result.text)),
             );
           } else {
+            if (result.text.isNotEmpty) {
+              services.out.writeln(result.text);
+            }
             services.err.writeln('cancelled');
           }
-          return 130;
+          return ExitCodes.interrupted;
         }
         if (result.status == SessionStatus.failed) {
           return _reportFailure(
@@ -150,6 +153,7 @@ final class BenchCommand extends LlamaPulseCommand {
                 ),
             requestId,
             json,
+            text: result.text,
           );
         }
 
@@ -220,7 +224,7 @@ final class BenchCommand extends LlamaPulseCommand {
   }
 
   int _engineUnavailable(bool json) {
-    const message = 'the native engine is not implemented yet; pass --stub';
+    const message = 'the native session is unavailable; pass --stub';
     services.err.writeln('error: engineUnavailable: $message');
     if (json) {
       services.out.writeln(
@@ -240,10 +244,17 @@ final class BenchCommand extends LlamaPulseCommand {
     return ExitCodes.failure;
   }
 
-  int _reportFailure(InferenceFailure failure, int requestId, bool json) {
+  int _reportFailure(
+    InferenceFailure failure,
+    int requestId,
+    bool json, {
+    String text = '',
+  }) {
     services.err.writeln('error: ${failure.code.name}: ${failure.message}');
     if (json) {
-      services.out.writeln(jsonEncode(encodeFailed(requestId, '', failure)));
+      services.out.writeln(jsonEncode(encodeFailed(requestId, text, failure)));
+    } else if (text.isNotEmpty) {
+      services.out.writeln(text);
     }
     return ExitCodes.failure;
   }

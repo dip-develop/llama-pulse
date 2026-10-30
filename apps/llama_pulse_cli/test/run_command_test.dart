@@ -60,7 +60,7 @@ void main() {
     expect(out.toString(), isEmpty);
     expect(
       err.toString(),
-      'error: engineUnavailable: the native engine is not implemented yet; '
+      'error: engineUnavailable: the native session is unavailable; '
       'pass --stub\n',
     );
     expect(engine.loadCalls, 0);
@@ -232,6 +232,92 @@ void main() {
     );
 
     expect(err.toString(), contains('--prompt or --file'));
+    expect(engine.loadCalls, 0);
+  });
+
+  test('rejects --prompt with --file before reading stdin', () async {
+    final stdin = StreamController<List<int>>();
+    addTearDown(() {
+      stdin.close();
+    });
+    final runner = makeRunner(stdin: stdin.stream);
+
+    expect(
+      await runner
+          .run([
+            'run',
+            '--stub',
+            '--model',
+            '/tmp/demo.gguf',
+            '--prompt',
+            'hi',
+            '--file',
+            '-',
+          ])
+          .timeout(const Duration(seconds: 2)),
+      ExitCodes.usage,
+    );
+
+    expect(stdin.hasListener, isFalse);
+    expect(err.toString(), contains('cannot be combined'));
+  });
+
+  test('--file - is never read for an invocation without --stub', () async {
+    final stdin = StreamController<List<int>>();
+    addTearDown(() {
+      stdin.close();
+    });
+    final runner = makeRunner(stdin: stdin.stream);
+
+    expect(
+      await runner
+          .run(['run', '--model', '/tmp/demo.gguf', '--file', '-'])
+          .timeout(const Duration(seconds: 2)),
+      ExitCodes.failure,
+    );
+
+    expect(stdin.hasListener, isFalse);
+    expect(err.toString(), contains('native session is unavailable'));
+  });
+
+  test('--file - is never read when the model path is missing', () async {
+    final stdin = StreamController<List<int>>();
+    addTearDown(() {
+      stdin.close();
+    });
+    final runner = makeRunner(stdin: stdin.stream);
+
+    expect(
+      await runner
+          .run(['run', '--stub', '--file', '-'])
+          .timeout(const Duration(seconds: 2)),
+      ExitCodes.usage,
+    );
+
+    expect(stdin.hasListener, isFalse);
+    expect(err.toString(), contains('model path is required'));
+  });
+
+  test('invalid UTF-8 in --file is a usage error', () async {
+    final directory = Directory.systemTemp.createTempSync('llamapulse_utf8');
+    addTearDown(() => directory.deleteSync(recursive: true));
+    final file = File('${directory.path}/prompt.txt')
+      ..writeAsBytesSync(const [0xff, 0xfe, 0xfd]);
+    final runner = makeRunner();
+
+    expect(
+      await runner.run([
+        'run',
+        '--stub',
+        '--model',
+        '/tmp/demo.gguf',
+        '--file',
+        file.path,
+      ]),
+      ExitCodes.usage,
+    );
+
+    expect(err.toString(), contains('cannot decode --file'));
     expect(engine.loadCalls, 0);
   });
 

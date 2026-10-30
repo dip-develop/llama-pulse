@@ -181,26 +181,13 @@ class _ParametersSection extends StatelessWidget {
     return BlocSelector<
       InferenceBloc,
       InferenceState,
-      (InferenceStatus, ModelParams, InferenceFailure?)
+      (InferenceStatus, ModelParams)
     >(
-      selector: (InferenceState state) =>
-          (state.status, state.params, state.failure),
-      builder:
-          (
-            BuildContext context,
-            (InferenceStatus, ModelParams, InferenceFailure?) data,
-          ) {
-            final (
-              InferenceStatus status,
-              ModelParams params,
-              InferenceFailure? _,
-            ) = data;
-            return ModelParamsForm(
-              status: status,
-              params: params,
-              picker: picker,
-            );
-          },
+      selector: (InferenceState state) => (state.status, state.params),
+      builder: (BuildContext context, (InferenceStatus, ModelParams) data) {
+        final (InferenceStatus status, ModelParams params) = data;
+        return ModelParamsForm(status: status, params: params, picker: picker);
+      },
     );
   }
 }

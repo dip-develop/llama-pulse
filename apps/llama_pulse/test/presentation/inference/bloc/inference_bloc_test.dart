@@ -89,6 +89,20 @@ void main() {
       ],
     );
 
+    test('keeps a user edit made before the stored load completes', () async {
+      final bloc = buildBloc();
+      final ModelParams edited = _validParams().copyWith(threads: 12);
+      bloc.add(InferenceParamsChanged(edited));
+      await _waitUntil(() => bloc.state.params.threads == 12);
+
+      bloc.add(const InferenceStarted());
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(bloc.state.params.threads, 12);
+      await bloc.close();
+    });
+
     blocTest<InferenceBloc, InferenceState>(
       'persists parameters on save',
       build: () => buildBloc(),
@@ -277,6 +291,21 @@ void main() {
       },
     );
 
+    test('rejects invalid parameters before generating', () async {
+      final bloc = buildBloc(forEngine: engine);
+      await _loadReady(bloc);
+      bloc.add(InferenceParamsChanged(_validParams().copyWith(maxTokens: 0)));
+      await _waitUntil(() => bloc.state.params.maxTokens == 0);
+
+      bloc.add(const InferenceGenerateRequested());
+      await _waitUntil(() => bloc.state.failure != null);
+
+      expect(bloc.state.failure?.code, InferenceFailureCode.invalidParams);
+      expect(bloc.state.failure?.message, contains('maxTokens'));
+      expect(engine.generatedRequests, isEmpty);
+      await bloc.close();
+    });
+
     test('caps the metrics history at the 100 newest reports', () async {
       final bloc = buildBloc(forEngine: engine);
       await _loadReady(bloc);
@@ -355,7 +384,7 @@ void main() {
   });
 
   group('unload', () {
-    test('releases the model and returns to initial', () async {
+    test('refuses to unload while a generation is active', () async {
       final bloc = buildBloc(forEngine: engine);
       await _loadReady(bloc);
       bloc.add(const InferenceGenerateRequested());
@@ -364,11 +393,29 @@ void main() {
       await _waitUntil(() => bloc.state.output == 'par');
 
       bloc.add(const InferenceUnloadRequested());
+      await _waitUntil(() => bloc.state.failure != null);
+
+      expect(engine.unloadCalls, 0);
+      expect(bloc.state.failure?.code, InferenceFailureCode.engineBusy);
+      expect(
+        bloc.state.failure?.message,
+        'cancel the running generation first',
+      );
+      expect(bloc.state.status, InferenceStatus.generating);
+      expect(bloc.state.activeRequestId, 1);
+      expect(bloc.state.output, 'par');
+      await bloc.close();
+    });
+
+    test('releases the model and returns to initial', () async {
+      final bloc = buildBloc(forEngine: engine);
+      await _loadReady(bloc);
+
+      bloc.add(const InferenceUnloadRequested());
       await _waitUntil(() => bloc.state.status == InferenceStatus.initial);
 
       expect(engine.unloadCalls, 1);
       expect(bloc.state.activeRequestId, isNull);
-      expect(bloc.state.output, 'par');
       expect(bloc.state.failure, isNull);
       await bloc.close();
     });
