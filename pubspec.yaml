@@ -17,6 +17,11 @@ workspace:
 dev_dependencies:
   melos: ^8.10.0
 
+# flutter_launcher_icons pins cli_util ^0.4.1 while melos needs 0.5+; it only
+# uses cli_logging, whose API is identical across 0.4.2/0.5.0/0.6.0.
+dependency_overrides:
+  cli_util: ^0.6.0
+
 melos:
   scripts:
     gen:
