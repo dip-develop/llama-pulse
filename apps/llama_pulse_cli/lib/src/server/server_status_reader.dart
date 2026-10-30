@@ -5,6 +5,13 @@ import 'package:llama_pulse_core/llama_pulse_core.dart';
 
 int _nowEpochMs() => DateTime.now().millisecondsSinceEpoch;
 
+/// The message [ServerController.testConnection] reports for an HTTP 200 whose
+/// body is not `{"status":"ok"}`.
+///
+/// That is how `llama-server` answers `/health` while it still loads the model,
+/// so the server is answering but is not healthy yet.
+const String _httpOkMessage = 'HTTP 200';
+
 /// A point-in-time view of the supervised server, for `status` and `serve`.
 final class ServerStatusSnapshot {
   /// Creates a snapshot.
@@ -24,7 +31,10 @@ final class ServerStatusSnapshot {
     required this.failure,
   });
 
-  /// Whether a recorded server answered `/health` and is in the running phase.
+  /// Whether a recorded server answered `/health` in the running phase.
+  ///
+  /// An answer of `{"status":"loading"}` counts: the process is up, but the run
+  /// is not healthy yet, so [exitCode] stays non-zero.
   final bool running;
 
   /// Human-readable status: `running`, `stopped`, `stale` or a phase name.
@@ -54,7 +64,7 @@ final class ServerStatusSnapshot {
   /// Resolved binary, or null when no runnable executable exists.
   final ServerBinaryInfo? binary;
 
-  /// Seconds since the server started, when it is running.
+  /// Seconds since the server started, while a run is recorded.
   final int? uptimeSeconds;
 
   /// Exit code of the last finished process, when recorded.
@@ -63,8 +73,19 @@ final class ServerStatusSnapshot {
   /// Failure recorded in the state document, when any.
   final ServerFailure? failure;
 
-  /// Process exit code implied by the snapshot.
-  int get exitCode => running ? 0 : 1;
+  /// Process exit code implied by the snapshot: 0 only for a healthy server.
+  int get exitCode => running && health == ServerHealth.ok.name ? 0 : 1;
+}
+
+/// The two facts `status` needs from one `/health` probe.
+final class _Probe {
+  const _Probe({required this.reachable, required this.healthy});
+
+  /// The server answered and is accepting requests.
+  final bool reachable;
+
+  /// The answer was a 200 with `{"status":"ok"}`.
+  final bool healthy;
 }
 
 /// Reads `server-state.yaml` and probes the recorded server.
@@ -87,8 +108,10 @@ final class ServerStatusReader {
 
   /// Probes the recorded server for the "already running" guard.
   ///
-  /// Returns true only when the state document records `starting` or
-  /// `running` **and** `/health` answers. A stale state document returns false.
+  /// Returns true only when the state document records `starting`, `running`
+  /// or `stopping` **and** `/health` answers. A stale state document returns
+  /// false. `stopping` counts because the previous run still owns the process
+  /// until it has exited.
   Future<bool> recordedServerAnswers({
     Duration timeout = const Duration(seconds: 3),
   }) async {
@@ -97,11 +120,12 @@ final class ServerStatusReader {
       return false;
     }
     if (state.phase != ServerPhase.starting &&
-        state.phase != ServerPhase.running) {
+        state.phase != ServerPhase.running &&
+        state.phase != ServerPhase.stopping) {
       return false;
     }
     final config = await _effectiveConfig(state);
-    return _probe(config, timeout);
+    return (await _probe(config, timeout)).reachable;
   }
 
   /// Reads the state document, locates the binary and probes a live server.
@@ -120,9 +144,9 @@ final class ServerStatusReader {
       binary = null;
     }
 
-    final probeOk = state != null && state.isActive
+    final probe = state != null && state.isActive
         ? await _probe(config, timeout)
-        : false;
+        : const _Probe(reachable: false, healthy: false);
 
     final baseUrl = state?.baseUrl ?? config.baseUrl;
     final modelPath = state != null && state.modelPath.isNotEmpty
@@ -137,17 +161,16 @@ final class ServerStatusReader {
     } else if (!state.isActive) {
       status = state.phase.name;
       health = state.health.name;
-    } else if (!probeOk) {
+    } else if (!probe.reachable) {
       status = 'stale';
       health = ServerHealth.unreachable.name;
-    } else if (state.phase == ServerPhase.running) {
-      status = ServerPhase.running.name;
-      health = ServerHealth.ok.name;
     } else {
-      status = state.phase.name;
-      health = ServerHealth.ok.name;
+      status = state.phase == ServerPhase.running
+          ? ServerPhase.running.name
+          : state.phase.name;
+      health = probe.healthy ? ServerHealth.ok.name : ServerHealth.loading.name;
     }
-    final running = status == ServerPhase.running.name && probeOk;
+    final running = status == ServerPhase.running.name;
 
     return ServerStatusSnapshot(
       running: running,
@@ -160,23 +183,23 @@ final class ServerStatusReader {
       baseUrl: baseUrl,
       modelPath: modelPath,
       binary: binary,
-      uptimeSeconds: running
-          ? _uptimeSeconds(state.startedAtEpochMs, state.phase)
-          : null,
+      uptimeSeconds: state == null || !state.isActive
+          ? null
+          : _uptimeSeconds(state.startedAtEpochMs),
       lastExitCode: state?.lastExitCode,
       failure: state?.failure,
     );
   }
 
-  int? _uptimeSeconds(int? startedAtEpochMs, ServerPhase phase) {
-    if (startedAtEpochMs == null || phase != ServerPhase.running) {
+  int? _uptimeSeconds(int? startedAtEpochMs) {
+    if (startedAtEpochMs == null) {
       return null;
     }
     final elapsed = _clock() - startedAtEpochMs;
     return elapsed < 0 ? 0 : elapsed ~/ 1000;
   }
 
-  Future<bool> _probe(ServerConfig config, Duration timeout) async {
+  Future<_Probe> _probe(ServerConfig config, Duration timeout) async {
     final probe = await _controller
         .testConnection(config)
         .timeout(
@@ -187,7 +210,10 @@ final class ServerStatusReader {
             message: 'unreachable',
           ),
         );
-    return probe.ok;
+    if (probe.ok) {
+      return const _Probe(reachable: true, healthy: true);
+    }
+    return _Probe(reachable: probe.message == _httpOkMessage, healthy: false);
   }
 
   Future<ServerConfig> _effectiveConfig(ServerState? state) async {

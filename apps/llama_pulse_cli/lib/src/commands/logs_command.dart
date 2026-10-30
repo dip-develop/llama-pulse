@@ -52,8 +52,12 @@ final class LogsCommand extends LlamaPulseCommand {
     final json = parsedArgs.flag('json');
     final store = services.serverLogStore;
     final entries = await store.tail(lines);
+    var lastSequence = 0;
     for (final entry in entries) {
       _write(entry, json: json);
+      if (entry.sequence > lastSequence) {
+        lastSequence = entry.sequence;
+      }
     }
 
     if (!parsedArgs.flag('follow')) {
@@ -68,7 +72,6 @@ final class LogsCommand extends LlamaPulseCommand {
       }
     });
     try {
-      var emitted = entries.length;
       while (!interrupted.isCompleted) {
         await Future.any(<Future<void>>[
           Future<void>.delayed(const Duration(milliseconds: 200)),
@@ -77,14 +80,16 @@ final class LogsCommand extends LlamaPulseCommand {
         if (interrupted.isCompleted) {
           break;
         }
+        // Sequence numbers survive rotation, so the poll never repeats a line
+        // and never skips one that moved from `server.log` to `server.log.1`.
         final all = await store.tail(1000);
-        if (all.length < emitted) {
-          emitted = 0;
-        }
-        for (final entry in all.skip(emitted)) {
+        for (final entry in all) {
+          if (entry.sequence <= lastSequence) {
+            continue;
+          }
           _write(entry, json: json);
+          lastSequence = entry.sequence;
         }
-        emitted = all.length;
       }
     } finally {
       await subscription?.cancel();

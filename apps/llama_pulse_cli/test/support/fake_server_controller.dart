@@ -9,6 +9,7 @@ final class FakeServerController implements ServerController {
     ServerBinaryInfo? binary,
     this.locateFailure,
     this.startFailure,
+    this.startGate,
     this.probeResult = const ServerProbeResult(
       ok: true,
       latencyMs: 1,
@@ -26,6 +27,10 @@ final class FakeServerController implements ServerController {
 
   /// Thrown by [start] after a failed state is published when set.
   final ServerException? startFailure;
+
+  /// Awaited inside [start] before it publishes anything; a slow or never
+  /// completing gate simulates a startup that is still in flight.
+  final Future<void> Function()? startGate;
 
   /// Answer returned by [testConnection].
   final ServerProbeResult probeResult;
@@ -91,6 +96,11 @@ final class FakeServerController implements ServerController {
     startConfig = config;
     _config = config;
     _startedAtEpochMs = 0;
+
+    final gate = startGate;
+    if (gate != null) {
+      await gate();
+    }
 
     final failure = startFailure;
     if (failure != null) {
@@ -162,6 +172,10 @@ final class FakeServerController implements ServerController {
       _states.add(state);
     }
   }
+
+  /// Closes the state stream, as a controller that died without a terminal
+  /// state would.
+  Future<void> closeStates() => _states.close();
 
   /// Emits a `failed` state, as an unexpected child exit does.
   void emitFailure(ServerFailure failure, {int? lastExitCode}) {

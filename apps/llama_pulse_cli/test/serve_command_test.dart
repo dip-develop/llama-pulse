@@ -150,7 +150,42 @@ void main() {
       contains('a server is already recorded; run llamapulse stop'),
     );
     expect(controller.startCalls, 0);
-    expect(out.toString(), isEmpty);
+    final events = _lines(out.toString());
+    expect(events, hasLength(1));
+    expect(events.single['type'], 'failed');
+    expect(
+      (events.single['failure']! as Map<String, Object?>)['code'],
+      'invalidConfig',
+    );
+    expect(events.single['lastExitCode'], isNull);
+  });
+
+  test('refuses to start while the previous run is stopping', () async {
+    await CliServices(
+      paths: AppPaths(configDirectory: tempDirectory.path),
+      configStore: store,
+      out: out,
+      err: err,
+    ).serverStateRepository.save(
+      ServerState(
+        (b) => b
+          ..phase = ServerPhase.stopping
+          ..health = ServerHealth.ok
+          ..supervisorPid = 11
+          ..serverPid = 12
+          ..host = '127.0.0.1'
+          ..port = 8080
+          ..modelPath = modelFile.path
+          ..binaryPath = ''
+          ..updatedAtEpochMs = 0,
+      ),
+    );
+
+    final code = await runner.run(serveArgs());
+
+    expect(code, ExitCodes.failure);
+    expect(controller.startCalls, 0);
+    expect(_lines(out.toString()).single['type'], 'failed');
   });
 
   test('a stale state document does not block a start', () async {
@@ -197,7 +232,7 @@ void main() {
     expect(controller.startCalls, 1);
   });
 
-  test('missing model exits 3 without starting', () async {
+  test('missing model exits 3 and emits one failed line', () async {
     final code = await runner.run(
       serveArgs(modelPath: '${tempDirectory.path}/missing.gguf'),
     );
@@ -205,14 +240,61 @@ void main() {
     expect(code, ExitCodes.notFound);
     expect(err.toString(), contains('model file not found'));
     expect(controller.startCalls, 0);
+    final events = _lines(out.toString());
+    expect(events, hasLength(1));
+    expect(events.single['type'], 'failed');
+    expect(events.single.keys, [
+      'schemaVersion',
+      'type',
+      'failure',
+      'lastExitCode',
+    ]);
+    expect(
+      (events.single['failure']! as Map<String, Object?>)['code'],
+      'modelNotFound',
+    );
   });
 
-  test('a blank model exits 2 with a validation message', () async {
-    final code = await runner.run(['serve', '--model-path', '']);
+  test('human mode keeps stdout empty for a pre-start failure', () async {
+    final code = await runner.run([
+      'serve',
+      '--model-path',
+      '${tempDirectory.path}/missing.gguf',
+    ]);
+
+    expect(code, ExitCodes.notFound);
+    expect(out.toString(), isEmpty);
+    expect(err.toString(), contains('model file not found'));
+  });
+
+  test('a blank model exits 2 with a validation failed line', () async {
+    final code = await runner.run(['serve', '--model-path', '', '--json']);
 
     expect(code, ExitCodes.usage);
     expect(err.toString(), contains('error:'));
     expect(controller.startCalls, 0);
+    final failure =
+        _lines(out.toString()).single['failure']! as Map<String, Object?>;
+    expect(failure['code'], 'invalidConfig');
+    expect(failure['details'], isNotEmpty);
+  });
+
+  test('an unparsable flag exits 2 with a failed line', () async {
+    final code = await runner.run([
+      'serve',
+      '--json',
+      '--port',
+      'http',
+      '--model-path',
+      modelFile.path,
+    ]);
+
+    expect(code, ExitCodes.usage);
+    expect(controller.startCalls, 0);
+    final failure =
+        _lines(out.toString()).single['failure']! as Map<String, Object?>;
+    expect(failure['code'], 'invalidConfig');
+    expect(failure['details'], contains('--port'));
   });
 
   test('missing binary exits 1 before starting', () async {
@@ -241,7 +323,114 @@ void main() {
     expect(code, ExitCodes.failure);
     expect(err.toString(), contains('binaryNotFound'));
     expect(controller.startCalls, 0);
+    expect(
+      (_lines(out.toString()).single['failure']!
+          as Map<String, Object?>)['code'],
+      'binaryNotFound',
+    );
   });
+
+  test('an interrupt during a slow start stops it and exits 130', () async {
+    final gate = Completer<void>();
+    final entered = Completer<void>();
+    controller = FakeServerController(
+      startGate: () {
+        if (!entered.isCompleted) {
+          entered.complete();
+        }
+        return gate.future;
+      },
+    );
+    runner = LlamaPulseCommandRunner(
+      CliServices(
+        paths: AppPaths(configDirectory: tempDirectory.path),
+        configStore: store,
+        out: out,
+        err: err,
+        interrupts: signals.stream,
+        serverControllerFactory: () => controller,
+      ),
+    );
+
+    final running = runner.run(serveArgs());
+    await entered.future;
+    signals.add(ProcessSignal.sigint);
+
+    expect(
+      await running.timeout(const Duration(seconds: 5)),
+      ExitCodes.interrupted,
+    );
+    expect(controller.startCalls, 1);
+    expect(controller.stopCalls, 1);
+    final events = _lines(out.toString());
+    expect(events.map((event) => event['type']), ['stopping']);
+    gate.complete();
+  });
+
+  test(
+    'a states stream that ends without a terminal fails and exits 1',
+    () async {
+      controller = FakeServerController(
+        startGate: () => controller.closeStates(),
+      );
+      runner = LlamaPulseCommandRunner(
+        CliServices(
+          paths: AppPaths(configDirectory: tempDirectory.path),
+          configStore: store,
+          out: out,
+          err: err,
+          interrupts: signals.stream,
+          serverControllerFactory: () => controller,
+        ),
+      );
+
+      final code = await runner
+          .run(serveArgs())
+          .timeout(const Duration(seconds: 5));
+
+      expect(code, ExitCodes.failure);
+      final failed = _lines(out.toString()).single;
+      expect(failed['type'], 'failed');
+      final failure = failed['failure']! as Map<String, Object?>;
+      expect(failure['code'], 'unknown');
+      expect(failure['message'], 'the supervisor stream ended');
+    },
+  );
+
+  test(
+    'a starting event published during a slow start is not missed',
+    () async {
+      final gate = Completer<void>();
+      controller = FakeServerController(
+        startGate: () {
+          controller.emitLog('early log');
+          return gate.future;
+        },
+      );
+      runner = LlamaPulseCommandRunner(
+        CliServices(
+          paths: AppPaths(configDirectory: tempDirectory.path),
+          configStore: store,
+          out: out,
+          err: err,
+          interrupts: signals.stream,
+          serverControllerFactory: () => controller,
+        ),
+      );
+
+      final running = runner.run(serveArgs(json: false));
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      expect(out.toString(), 'early log\n');
+      gate.complete();
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      signals.add(ProcessSignal.sigint);
+
+      expect(
+        await running.timeout(const Duration(seconds: 5)),
+        ExitCodes.interrupted,
+      );
+    },
+  );
 
   test('a startup failure emits failed and exits 1', () async {
     controller = FakeServerController(

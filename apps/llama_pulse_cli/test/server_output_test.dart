@@ -194,6 +194,57 @@ void main() {
     ]);
   });
 
+  test('encodeServeFailed is the requestId-free shape', () {
+    final failed = encodeServeFailed(_failure(), null);
+
+    expect(failed['schemaVersion'], 1);
+    expect(failed['type'], 'failed');
+    expect(failed['lastExitCode'], isNull);
+    expect(failed.keys, ['schemaVersion', 'type', 'failure', 'lastExitCode']);
+    final failure = failed['failure']! as Map<String, Object?>;
+    expect(failure.keys, ['code', 'message', 'details']);
+    expect(failure['code'], 'startupTimeout');
+    expect(failure['message'], 'not ready');
+    expect(failure['details'], 'stderr');
+  });
+
+  test('a loading snapshot stays running but does not exit 0', () {
+    const loading = ServerStatusSnapshot(
+      running: true,
+      status: 'running',
+      health: 'loading',
+      pid: 124,
+      supervisorPid: 123,
+      host: '127.0.0.1',
+      port: 8080,
+      baseUrl: 'http://127.0.0.1:8080/v1',
+      modelPath: '/models/x.gguf',
+      binary: null,
+      uptimeSeconds: 3,
+      lastExitCode: null,
+      failure: null,
+    );
+    const healthy = ServerStatusSnapshot(
+      running: true,
+      status: 'running',
+      health: 'ok',
+      pid: 124,
+      supervisorPid: 123,
+      host: '127.0.0.1',
+      port: 8080,
+      baseUrl: 'http://127.0.0.1:8080/v1',
+      modelPath: '/models/x.gguf',
+      binary: null,
+      uptimeSeconds: 3,
+      lastExitCode: null,
+      failure: null,
+    );
+
+    expect(loading.running, isTrue);
+    expect(loading.exitCode, 1);
+    expect(healthy.exitCode, 0);
+  });
+
   test('encodeLogEntry and encodeServerStop match the command schema', () {
     expect(encodeLogEntry(_logEntry()).keys, [
       'schemaVersion',

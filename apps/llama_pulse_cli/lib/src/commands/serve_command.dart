@@ -15,6 +15,10 @@ import '../server/server_status_reader.dart';
 /// The command never daemonizes: it stays attached to the child, mirrors its
 /// output and stops it on SIGINT or SIGTERM. `server-state.yaml` is written by
 /// the supervisor, not by this command.
+///
+/// `--json` is NDJSON on stdout. Every failure that happens before the
+/// controller publishes anything is reported as one `failed` object, so a
+/// consumer always sees exactly one terminal line.
 final class ServeCommand extends LlamaPulseCommand {
   /// Creates the command.
   ServeCommand(super.services) {
@@ -34,21 +38,24 @@ final class ServeCommand extends LlamaPulseCommand {
   @override
   Future<int> run() async {
     final parsed = parseServerOptions(parsedArgs);
+    final json = parsed.json;
     if (parsed.errors.isNotEmpty) {
-      for (final message in parsed.errors) {
-        services.err.writeln('error: $message');
-      }
-      return ExitCodes.usage;
+      return _failPreStart(
+        json: json,
+        failure: _invalidConfig(parsed.errors),
+        exitCode: ExitCodes.usage,
+      );
     }
 
     final stored = await services.serverConfigRepository.load();
     final config = parsed.overrides.applyTo(stored);
     final violations = const ServerConfigValidator().validateForStart(config);
     if (violations.isNotEmpty) {
-      for (final violation in violations) {
-        services.err.writeln('error: $violation');
-      }
-      return ExitCodes.usage;
+      return _failPreStart(
+        json: json,
+        failure: _invalidConfig(violations),
+        exitCode: ExitCodes.usage,
+      );
     }
 
     final model = File(config.modelPath);
@@ -56,49 +63,80 @@ final class ServeCommand extends LlamaPulseCommand {
         await model.exists() &&
         (await model.stat()).type == FileSystemEntityType.file;
     if (!modelIsFile) {
-      services.err.writeln('error: model file not found: ${config.modelPath}');
-      return ExitCodes.notFound;
+      return _failPreStart(
+        json: json,
+        failure: ServerFailure(
+          (b) => b
+            ..code = ServerFailureCode.modelNotFound
+            ..message = 'model file not found: ${config.modelPath}',
+        ),
+        exitCode: ExitCodes.notFound,
+      );
     }
 
-    final json = parsed.json;
     final controller = services.createServerController();
     StreamSubscription<ServerState>? statesSubscription;
     StreamSubscription<ServerMetrics>? metricsSubscription;
     StreamSubscription<ServerLogEntry>? logsSubscription;
     StreamSubscription<ProcessSignal>? signalSubscription;
+    final done = Completer<void>();
     try {
       if (await ServerStatusReader(
         stateRepository: services.serverStateRepository,
         configRepository: services.serverConfigRepository,
         controller: controller,
       ).recordedServerAnswers()) {
-        services.err.writeln(
-          'error: a server is already recorded; run llamapulse stop',
+        return _failPreStart(
+          json: json,
+          failure: ServerFailure(
+            (b) => b
+              ..code = ServerFailureCode.invalidConfig
+              ..message = 'a server is already recorded; run llamapulse stop',
+          ),
+          exitCode: ExitCodes.failure,
         );
-        return ExitCodes.failure;
       }
 
       final ServerBinaryInfo binary;
       try {
         binary = await controller.locateBinary(config);
       } on ServerException catch (error) {
-        _printFailure(error.failure);
-        return _exitFor(error.failure.code);
+        return _failPreStart(
+          json: json,
+          failure: error.failure,
+          exitCode: _exitFor(error.failure.code),
+        );
+      } catch (error) {
+        return _failPreStart(
+          json: json,
+          failure: ServerFailure(
+            (b) => b
+              ..code = ServerFailureCode.binaryNotFound
+              ..message = 'llama-server not found'
+              ..details = '$error',
+          ),
+          exitCode: ExitCodes.failure,
+        );
       }
 
       final started = Stopwatch()..start();
-      final done = Completer<void>();
       var startingEmitted = false;
       var readyEmitted = false;
       var stoppingEmitted = false;
       var failedEmitted = false;
       var stopRequested = false;
       var startReturned = false;
+      var terminalSeen = false;
       var terminalExit = ExitCodes.ok;
-      String? pendingStopReason;
 
       void emit(Map<String, Object?> event) =>
           writeJsonLine(services.out, event);
+
+      void finish() {
+        if (!done.isCompleted) {
+          done.complete();
+        }
+      }
 
       void emitStarting(ServerState state) {
         if (startingEmitted) {
@@ -150,21 +188,37 @@ final class ServeCommand extends LlamaPulseCommand {
       }
 
       void fail(ServerFailure failure, int? lastExitCode) {
-        if (failedEmitted) {
+        if (done.isCompleted) {
           return;
         }
-        failedEmitted = true;
-        if (json) {
-          emit(encodeServeFailed(failure, lastExitCode));
+        if (!failedEmitted) {
+          failedEmitted = true;
+          if (json) {
+            emit(encodeServeFailed(failure, lastExitCode));
+          }
+          _printFailure(failure);
         }
-        _printFailure(failure);
-        if (!done.isCompleted) {
-          done.complete();
-        }
+        finish();
       }
 
-      Future<void> requestStop(String reason) async {
-        if (stopRequested) {
+      void failWith(ServerFailureCode code, String message, {String? details}) {
+        terminalExit = _exitFor(code);
+        fail(
+          ServerFailure(
+            (b) => b
+              ..code = code
+              ..message = message
+              ..details = details,
+          ),
+          null,
+        );
+      }
+
+      Future<void> requestStop(
+        String reason, {
+        required bool duringStart,
+      }) async {
+        if (stopRequested || done.isCompleted) {
           return;
         }
         stopRequested = true;
@@ -175,52 +229,79 @@ final class ServeCommand extends LlamaPulseCommand {
         try {
           await controller.stop();
         } on ServerException catch (error) {
+          terminalExit = ExitCodes.failure;
           fail(error.failure, null);
+          return;
         } catch (error) {
-          fail(
-            ServerFailure(
-              (b) => b
-                ..code = ServerFailureCode.unknown
-                ..message = 'could not stop llama-server'
-                ..details = '$error',
-            ),
-            null,
+          failWith(
+            ServerFailureCode.unknown,
+            'could not stop llama-server',
+            details: '$error',
           );
+          return;
+        }
+        // `stop()` waits for an in-flight start, so the controller has settled
+        // even when no terminal state reached the stream listener.
+        if (duringStart) {
+          finish();
         }
       }
 
-      statesSubscription = controller.states.listen((state) {
-        switch (state.phase) {
-          case ServerPhase.starting:
-            emitStarting(state);
-          case ServerPhase.running:
-            emitStarting(state);
-            emitReady(state);
-          case ServerPhase.stopping:
-            if (!stopRequested && !failedEmitted) {
-              stopRequested = true;
-              emitStopping('child-exit');
-            }
-          case ServerPhase.stopped:
-            if (json) {
-              emit(encodeServeStopped(state.lastExitCode ?? 0));
-            }
-            if (!done.isCompleted) {
-              done.complete();
-            }
-          case ServerPhase.failed:
-            terminalExit = ExitCodes.failure;
-            fail(
-              state.failure ??
-                  ServerFailure(
-                    (b) => b
-                      ..code = ServerFailureCode.unknown
-                      ..message = 'the server failed',
-                  ),
-              state.lastExitCode,
-            );
-        }
-      });
+      // The subscriptions must exist before `start` so the `starting` event and
+      // the first child log lines are never missed.
+      statesSubscription = controller.states.listen(
+        (state) {
+          if (done.isCompleted) {
+            return;
+          }
+          switch (state.phase) {
+            case ServerPhase.starting:
+              emitStarting(state);
+            case ServerPhase.running:
+              emitStarting(state);
+              emitReady(state);
+            case ServerPhase.stopping:
+              if (!stopRequested && !failedEmitted) {
+                stopRequested = true;
+                emitStopping('child-exit');
+              }
+            case ServerPhase.stopped:
+              terminalSeen = true;
+              if (json) {
+                emit(encodeServeStopped(state.lastExitCode ?? 0));
+              }
+              finish();
+            case ServerPhase.failed:
+              terminalSeen = true;
+              terminalExit = ExitCodes.failure;
+              fail(
+                state.failure ??
+                    ServerFailure(
+                      (b) => b
+                        ..code = ServerFailureCode.unknown
+                        ..message = 'the server failed',
+                    ),
+                state.lastExitCode,
+              );
+          }
+        },
+        onDone: () {
+          if (terminalSeen || done.isCompleted) {
+            return;
+          }
+          failWith(ServerFailureCode.unknown, 'the supervisor stream ended');
+        },
+        onError: (Object error, StackTrace stackTrace) {
+          if (terminalSeen || done.isCompleted) {
+            return;
+          }
+          failWith(
+            ServerFailureCode.unknown,
+            'the supervisor stream ended',
+            details: '$error',
+          );
+        },
+      );
 
       var lastMetricsAt = DateTime.fromMillisecondsSinceEpoch(0);
       metricsSubscription = controller.metrics.listen((metrics) {
@@ -257,38 +338,34 @@ final class ServeCommand extends LlamaPulseCommand {
       if (signals != null) {
         signalSubscription = signals.listen((signal) {
           final reason = signal == ProcessSignal.sigint ? 'sigint' : 'sigterm';
-          if (!startReturned) {
-            pendingStopReason = reason;
-            return;
-          }
-          unawaited(requestStop(reason));
+          // A stop request during startup aborts the wait for readiness
+          // instead of letting it run into the startup timeout.
+          unawaited(requestStop(reason, duringStart: !startReturned));
         });
       }
 
-      try {
-        await controller.start(config);
-      } on ServerException catch (error) {
-        terminalExit = _exitFor(error.failure.code);
-        fail(error.failure, null);
-      } catch (error) {
-        terminalExit = ExitCodes.failure;
-        fail(
-          ServerFailure(
-            (b) => b
-              ..code = ServerFailureCode.unknown
-              ..message = 'could not start llama-server'
-              ..details = '$error',
-          ),
-          null,
-        );
-      } finally {
-        startReturned = true;
-      }
-
-      final pending = pendingStopReason;
-      if (pending != null && !done.isCompleted) {
-        unawaited(requestStop(pending));
-      }
+      unawaited(
+        Future<void>.sync(() => controller.start(config))
+            .then<void>(
+              (_) {},
+              onError: (Object error, StackTrace stackTrace) {
+                if (done.isCompleted) {
+                  return;
+                }
+                if (error is ServerException) {
+                  terminalExit = _exitFor(error.failure.code);
+                  fail(error.failure, null);
+                  return;
+                }
+                failWith(
+                  ServerFailureCode.unknown,
+                  'could not start llama-server',
+                  details: '$error',
+                );
+              },
+            )
+            .whenComplete(() => startReturned = true),
+      );
 
       await done.future;
       return terminalExit;
@@ -299,6 +376,25 @@ final class ServeCommand extends LlamaPulseCommand {
       await statesSubscription?.cancel();
       await controller.dispose();
     }
+  }
+
+  ServerFailure _invalidConfig(List<String> violations) => ServerFailure(
+    (b) => b
+      ..code = ServerFailureCode.invalidConfig
+      ..message = 'invalid server configuration'
+      ..details = violations.join('\n'),
+  );
+
+  int _failPreStart({
+    required bool json,
+    required ServerFailure failure,
+    required int exitCode,
+  }) {
+    _printFailure(failure);
+    if (json) {
+      writeJsonLine(services.out, encodeServeFailed(failure, null));
+    }
+    return exitCode;
   }
 
   void _printFailure(ServerFailure failure) {

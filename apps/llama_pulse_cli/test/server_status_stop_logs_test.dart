@@ -15,17 +15,22 @@ List<Map<String, Object?>> _lines(String text) => text
     .toList();
 
 final class _RecordingSignaller implements ProcessSignaller {
-  _RecordingSignaller({this.onSend});
+  _RecordingSignaller({this.onSend, Set<int>? deadPids})
+    : deadPids = deadPids ?? <int>{};
 
-  final void Function(int pid, ServerKillMode mode)? onSend;
+  void Function(int pid, ServerKillMode mode)? onSend;
+  final Set<int> deadPids;
   final List<(int, ServerKillMode)> calls = <(int, ServerKillMode)>[];
   bool result = true;
 
   @override
   bool send(int pid, ServerKillMode mode) {
     calls.add((pid, mode));
+    if (!result || deadPids.contains(pid)) {
+      return false;
+    }
     onSend?.call(pid, mode);
-    return result;
+    return true;
   }
 }
 
@@ -175,7 +180,11 @@ void main() {
         ),
       ),
     );
-    await servicesUnderTest.serverStateRepository.save(runningState());
+    await servicesUnderTest.serverStateRepository.save(
+      runningState(
+        startedAtEpochMs: DateTime.now().millisecondsSinceEpoch - 9000,
+      ),
+    );
     final runner = LlamaPulseCommandRunner(servicesUnderTest);
 
     expect(await runner.run(['status', '--json']), ExitCodes.failure);
@@ -184,6 +193,28 @@ void main() {
     expect(status['running'], isFalse);
     expect(status['status'], 'stale');
     expect(status['health'], 'unreachable');
+    expect(status['uptimeSeconds'], inInclusiveRange(8, 10));
+  });
+
+  test('status reports loading and exits 1 when the body is not ok', () async {
+    final servicesUnderTest = services(
+      controller: FakeServerController(
+        probeResult: const ServerProbeResult(
+          ok: false,
+          latencyMs: 2,
+          message: 'HTTP 200',
+        ),
+      ),
+    );
+    await servicesUnderTest.serverStateRepository.save(runningState());
+    final runner = LlamaPulseCommandRunner(servicesUnderTest);
+
+    expect(await runner.run(['status', '--json']), ExitCodes.failure);
+
+    final status = _lines(out.toString()).single;
+    expect(status['running'], isTrue);
+    expect(status['status'], 'running');
+    expect(status['health'], 'loading');
   });
 
   test(
@@ -237,6 +268,29 @@ void main() {
     expect(result['stopped'], isTrue);
     expect(result['pid'], 123);
     expect(result['forced'], isFalse);
+    expect(await servicesUnderTest.serverStateRepository.load(), isNull);
+  });
+
+  test('stop falls back to the child when the supervisor is gone', () async {
+    late CliServices servicesUnderTest;
+    final signaller = _RecordingSignaller(deadPids: {123});
+    servicesUnderTest = services(signaller: signaller);
+    signaller.onSend = (pid, mode) {
+      unawaited(servicesUnderTest.serverStateRepository.clear());
+    };
+    await servicesUnderTest.serverStateRepository.save(runningState());
+    final runner = LlamaPulseCommandRunner(servicesUnderTest);
+
+    expect(await runner.run(['stop', '--json']), ExitCodes.ok);
+
+    expect(signaller.calls, [
+      (123, ServerKillMode.graceful),
+      (124, ServerKillMode.graceful),
+    ]);
+    final result = _lines(out.toString()).single;
+    expect(result['stopped'], isTrue);
+    expect(result['pid'], 124);
+    expect(result['forced'], isFalse);
   });
 
   test('stop forces a lingering process and clears the state', () async {
@@ -278,7 +332,31 @@ void main() {
     expect(out.toString(), 'stopped\n');
   });
 
-  test('stop exits 1 when the process cannot be signalled', () async {
+  test(
+    'stop --force falls back to the child when the supervisor is gone',
+    () async {
+      late CliServices servicesUnderTest;
+      final signaller = _RecordingSignaller(deadPids: {123});
+      servicesUnderTest = services(signaller: signaller);
+      signaller.onSend = (pid, mode) =>
+          unawaited(servicesUnderTest.serverStateRepository.clear());
+      await servicesUnderTest.serverStateRepository.save(runningState());
+      final runner = LlamaPulseCommandRunner(servicesUnderTest);
+
+      expect(await runner.run(['stop', '--force', '--json']), ExitCodes.ok);
+
+      expect(signaller.calls, [
+        (123, ServerKillMode.force),
+        (124, ServerKillMode.force),
+      ]);
+      final result = _lines(out.toString()).single;
+      expect(result['stopped'], isTrue);
+      expect(result['pid'], 124);
+      expect(result['forced'], isTrue);
+    },
+  );
+
+  test('stop keeps the state when nothing accepts the signal', () async {
     final signaller = _RecordingSignaller()..result = false;
     final servicesUnderTest = services(signaller: signaller);
     await servicesUnderTest.serverStateRepository.save(runningState());
@@ -286,10 +364,56 @@ void main() {
 
     expect(await runner.run(['stop', '--json']), ExitCodes.failure);
 
+    expect(signaller.calls, [
+      (123, ServerKillMode.graceful),
+      (124, ServerKillMode.graceful),
+      (123, ServerKillMode.force),
+      (124, ServerKillMode.force),
+    ]);
     final result = _lines(out.toString()).single;
     expect(result['stopped'], isFalse);
     expect(result['forced'], isTrue);
+    expect(result['pid'], 124);
     expect(err.toString(), contains('could not stop'));
+
+    final retained = await servicesUnderTest.serverStateRepository.load();
+    expect(retained, isNotNull);
+    expect(retained!.phase, ServerPhase.running);
+    expect(retained.supervisorPid, 123);
+    expect(retained.serverPid, 124);
+  });
+
+  test('stop clears the state once the run is gone', () async {
+    late CliServices servicesUnderTest;
+    final signaller = _RecordingSignaller();
+    servicesUnderTest = services(signaller: signaller);
+    signaller.onSend = (pid, mode) {
+      unawaited(
+        servicesUnderTest.serverStateRepository.save(
+          ServerState(
+            (b) => b
+              ..phase = ServerPhase.stopped
+              ..health = ServerHealth.unknown
+              ..host = '127.0.0.1'
+              ..port = 8080
+              ..modelPath = '/models/x.gguf'
+              ..binaryPath = ''
+              ..updatedAtEpochMs = 1,
+          ),
+        ),
+      );
+    };
+    await servicesUnderTest.serverStateRepository.save(runningState());
+    final runner = LlamaPulseCommandRunner(servicesUnderTest);
+
+    expect(await runner.run(['stop', '--json']), ExitCodes.ok);
+
+    final latest = await servicesUnderTest.serverStateRepository.load();
+    expect(latest, isNotNull);
+    expect(latest!.phase, ServerPhase.stopped);
+    expect(latest.supervisorPid, isNull);
+    expect(latest.serverPid, isNull);
+    expect(latest.updatedAtEpochMs, isNot(1));
   });
 
   test('logs prints the newest lines with the stream prefix', () async {
@@ -364,6 +488,50 @@ void main() {
 
     expect(await running, ExitCodes.interrupted);
     expect(out.toString(), '[stdout] first\n[stdout] second\n');
+  });
+
+  test('logs --follow tracks sequence numbers across a rotation', () async {
+    final signals = StreamController<ProcessSignal>.broadcast();
+    addTearDown(signals.close);
+    final servicesUnderTest = services(interrupts: signals.stream);
+    final logStore = servicesUnderTest.serverLogStore;
+    final filler = 'x' * 2000;
+    for (var i = 0; i < 600; i++) {
+      logStore.append(ServerLogStream.stdout, '$i $filler');
+    }
+    await logStore.flush();
+    expect(
+      await File('${servicesUnderTest.paths.serverLogFile}.1').exists(),
+      isTrue,
+    );
+    final runner = LlamaPulseCommandRunner(servicesUnderTest);
+
+    final running = runner.run(['logs', '--follow', '--lines', '1']);
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    logStore.append(ServerLogStream.stdout, 'after rotation one');
+    logStore.append(ServerLogStream.stdout, 'after rotation two');
+    await logStore.flush();
+    await Future<void>.delayed(const Duration(milliseconds: 400));
+    signals.add(ProcessSignal.sigint);
+
+    expect(await running, ExitCodes.interrupted);
+    final lines = out
+        .toString()
+        .split('\n')
+        .where((line) => line.isNotEmpty)
+        .toList();
+    expect(lines.sublist(lines.length - 2), [
+      '[stdout] after rotation one',
+      '[stdout] after rotation two',
+    ]);
+    expect(
+      lines.where((line) => line.contains('after rotation one')),
+      hasLength(1),
+    );
+    expect(
+      lines.where((line) => line.contains('after rotation two')),
+      hasLength(1),
+    );
   });
 
   test('logs on a missing file prints nothing and exits 0', () async {
