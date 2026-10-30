@@ -6,9 +6,11 @@ LlamaPulse is a workspace for running local LLMs through llama.cpp: a Flutter
 desktop GUI (`apps/llama_pulse`), a command-line companion
 (`apps/llama_pulse_cli`) and a shared Dart package (`packages/llama_pulse_core`).
 The MVP goal: pick a model and a llama.cpp library, tune the startup parameters,
-watch the run. Today the GUI renders `ModelParams.defaults()` and the engine is
-not wired in yet; the CLI reads and writes the shared configuration and lists
-local model files.
+watch the run. Today the GUI runs against the stub engine with an editable
+parameter form, streaming output and live metrics; the CLI reads and writes the
+shared configuration, lists local model files, and its `run`/`bench` commands
+also run against the stub behind `--stub`. Native inference is the next
+milestone.
 
 MVP:
 
@@ -46,7 +48,7 @@ The repository is one pub workspace and one Melos workspace.
 
 Flutter/Dart, Clean Architecture. Dart `>=3.13.0 <4.0.0`, Flutter `>=3.44`
 (baseline: Flutter 3.47.7 / Dart 3.13.5). Shared logic lives in the pure-Dart
-core. State management with bloc returns with the editable parameter UI. DI:
+core. State management is bloc (`flutter_bloc`). DI:
 `get_it` + `injectable` in the app, a hand-written composition root in the CLI.
 Immutable models, state and entities: `built_value` + `built_collection`.
 Configuration: YAML through the hand-written codec in core.
@@ -55,10 +57,14 @@ Pins are deliberate; do not loosen them without reproducing the resolution:
 
 | Package | Pin | Why |
 |---|---|---|
-| `built_value` | `8.13.0` | exact; generator and runtime move together |
-| `built_collection` | `^5.1.2` | 6.x is incompatible with `built_value 8.13` |
+| `built_value` | `8.13.0` | exact; generator and runtime move together; core entities and `InferenceState` |
+| `built_collection` | `^5.1.2` | 6.x is incompatible with `built_value 8.13`; `BuiltList` in core and app state |
 | `build_runner` | `2.16.1` | exact; 2.17.x requires `build 5.x`, while `built_value_generator 8.13.0` declares `build <5.0.0` and `injectable_generator 3.1.3` declares `build ^4.0.4` |
 | `built_value_generator` | `8.13.0` | exact; must match the `built_value` runtime |
+| `flutter_bloc` | `^9.1.1` | app state management for the inference screen |
+| `file_selector` | `^1.1.0` | native file dialog behind `ModelPathPicker` |
+| `bloc_test` (dev) | `^10.0.0` | bloc transition tests in the app |
+| `mocktail` (dev) | `^1.0.5` | engine and picker fakes in app tests |
 | `injectable_generator` | `3.1.3` | exact; paired with `injectable ^3.0.0` |
 | `get_it` | `^9.3.0` | DI container in the app |
 | `injectable` | `^3.0.0` | annotations for app-owned registrations |
@@ -90,17 +96,17 @@ must leave the tree clean when run twice.
 ```
 apps/llama_pulse/
   lib/main.dart
-  lib/app/          bootstrap.dart, app.dart, di/, theme/
-  lib/presentation/inference/   screen, bloc/ (next)
+  lib/app/          bootstrap.dart, app.dart, di/, platform/, theme/
+  lib/presentation/inference/   screen, bloc/, widgets/
   test/             app/, presentation/, support/
 apps/llama_pulse_cli/
   bin/llamapulse.dart
-  lib/src/          command_runner.dart, commands/, cli_services.dart
+  lib/src/          command_runner.dart, commands/, inference/, cli_services.dart
   test/
 packages/llama_pulse_core/
   lib/llama_pulse_core.dart     public entrypoint
-  lib/src/domain/   entities/, gateways/, usecases/, text/
-  lib/src/data/     config/, models/, serialization/
+  lib/src/domain/   entities/, exceptions/, gateways/, usecases/, text/
+  lib/src/data/     config/, inference/, models/, serialization/
   test/             architecture/, data/, domain/
 ```
 
@@ -119,29 +125,36 @@ by `packages/llama_pulse_core/test/architecture/core_imports_test.dart`.
 `dart:ffi` **is** allowed in core because it only runs inside the worker isolate;
 Flutter-specific code stays in the app.
 
-Core is organised as `domain/{entities,gateways,usecases,text}` and
-`data/{config,models,serialization}`; new domain and data code goes under those
-existing subfolders. Feature folders (`inference/`) are used only where they
-already exist.
+Core is organised as `domain/{entities,exceptions,gateways,usecases,text}` and
+`data/{config,inference,models,serialization}`. The `inference/` feature folders
+exist in core, the CLI and the app; new domain and data code goes under the
+existing subfolders.
 
 ## 5. Immutability
 
 `built_value` is mandatory for anything persisted, held in bloc state, or sent
 across the isolate boundary: entities (`ModelParams`, `GenerationRequest`,
 `GenerationMetrics`, `GenerationEvent`, `InferenceFailure`), the persisted
-envelope, worker request/response DTOs, and `InferenceState` once it exists.
+envelope, worker request/response DTOs, and `InferenceState`.
 
-Lists in state are `BuiltList`, never growable `List`. Never mutate; never
-expose a builder outside the file that owns the type.
+Lists in state are `BuiltList`, never growable `List`; `InferenceState` keeps
+`outputChunks` and a 100-entry-capped `metricsHistory` this way. Never mutate;
+never expose a builder outside the file that owns the type.
 
-Two deliberate exceptions, both in core:
+Deliberate non-`built_value` types, all immutable:
 
-1. `WorkerConfig` / `WorkerReady` (later) hold `SendPort`, which `built_value`
-   cannot serialize. Keep them minimal and construct them only in worker
-   plumbing.
+1. `WorkerConfig` / `WorkerReady` hold `SendPort`, which `built_value` cannot
+   serialize. Keep them minimal and construct them only in worker plumbing.
 2. `ModelScanResult` is a transient plain class: the scanner produces it on
    demand, it is never persisted and never compared structurally. Its lists are
    unmodifiable.
+3. `GenerationStep` is produced on demand by a `LlamaSession` inside the worker:
+   it is never persisted, never crosses the isolate boundary and never compared
+   structurally.
+4. The sealed `InferenceEvent` hierarchy holds transient UI commands that never
+   cross the isolate boundary. Two members are internal plumbing that the bloc
+   feeds back to itself — `InferenceEngineEventReceived` and
+   `InferenceEngineStreamEnded` — and UI code never adds them.
 
 Adding a mutable field to state or an entity is a review blocker. If
 `built_value` codegen hurts, fix the model; do not switch libraries.
@@ -169,28 +182,45 @@ The YAML layer sits above the `built_value` serializers:
 
 ## 7. FFI and isolates
 
-The engine is **not implemented yet**. These are the rules for the milestone
-that adds it:
+A worker isolate exists and is stub-backed. Core's `data/inference/` holds the
+protocol (`WorkerRequest`/`WorkerResponse` and their kinds), `WorkerTransport`,
+`WorkerLlamaEngine`, `WorkerLoop`, `StubLlamaSession` and the
+`@pragma('vm:entry-point')` `llamaWorkerMain` entrypoint. There is no
+`dart:ffi` code yet; the worker is hard-wired to `StubLlamaSession`.
 
 - One long-lived worker isolate per engine, spawned lazily on the first
-  `LlamaEngine.load`. No engine state on the UI isolate.
-- Never `dart:ffi` on the UI isolate — not even to probe a symbol.
-- Symbols via `DynamicLibrary.open` + `lookupFunction`, never `@Native`; the
-  app must start with no native library present.
-- `NativeLlamaSession` (later) implements the core `LlamaEngine` gateway and
-  runs in the worker. There is no stub fallback in production once `run` exists.
-- Protocol: worker request/response messages, monotonic `requestId`, exactly
-  one terminal response per request, token batches coalesced every 16–33 ms,
-  metrics every ~250 ms.
-- Cancellation is cooperative: a `cancel` request checked between decode steps.
-  Never `Isolate.kill` during generation — it leaks native memory.
+  `load`/`unload`/`generate`. A failed start is retried on the next call. No
+  engine state on the UI isolate.
+- `Isolate.spawn` resolves the entrypoint by value, so `llamaWorkerMain` keeps
+  its `@pragma('vm:entry-point')`.
+- Messages across the port are `built_value` DTOs. Caller request ids are
+  non-negative and unique while in flight; control requests use negative ids so
+  they cannot collide.
+- The worker isolate owns the session: it is the only place that calls `open`,
+  `load`, `begin`/`next`, `cancel`, `unload` and `dispose` on a `LlamaSession`.
+- Cancellation is cooperative: a `cancel` request is checked between decode
+  steps. Never `Isolate.kill` during generation — it leaks native memory.
+- Exactly one terminal event per request: `completed`, `cancelled` or `failed`.
+- Token batches are coalesced and metrics are emitted every 250 ms.
+- `WorkerTransport` waits up to 10 s for the `WorkerReady` handshake and
+  surfaces isolate errors and unexpected exits as failures. `WorkerLlamaEngine`
+  applies a 30 s load/unload timeout and a 5 min per-request timeout, and its
+  `dispose` is idempotent.
 - Failures cross the port as `InferenceFailure` values, never as thrown
-  exceptions.
+  exceptions. Load failures throw `InferenceFailureException` on the caller
+  side.
+- Never `dart:ffi` on the UI isolate — not even to probe a symbol. Symbols, once
+  native code exists, come from `DynamicLibrary.open` + `lookupFunction`, never
+  `@Native`; the app must start with no native library present.
+- `NativeLlamaSession` (later) implements core's `LlamaSession` and runs in the
+  worker. Native-PR contract: `LLAMA_PULSE_LIB` is the absolute path to the
+  shared library, read only inside the worker. Resolution order is explicit path
+  → env → bundle → exe-adjacent → data dir → bare soname. A runtime
+  `llama_version()` gate must reject a mismatched library with a
+  `libraryVersionMismatch` failure code. The build, tests and library startup
+  must work with no llama.cpp binary installed.
 - UTF-8 is accumulated by `Utf8TokenAccumulator`, because
   `llama_token_to_piece` can split a code point across tokens.
-- `LLAMA_PULSE_LIB` is the future contract for the absolute path to the shared
-  library; it is read only inside the worker. The build, tests and library
-  startup must work with no llama.cpp binary installed.
 
 ## 8. DI
 
@@ -200,9 +230,18 @@ Core has no annotations and no `get_it`; it only defines gateways.
   `AppPaths`, `Serializers`, `ConfigStore`, `ModelParamsValidator`,
   `ModelParamsRepository`, `ModelFileScanner` and the use cases. `injectable`
   only generates for app-owned types; `injection.config.dart` is committed.
-- `configureDependencies({engine, configStore, paths})` optionally registers a
-  caller-supplied `LlamaEngine` and always accepts overrides for the config
-  store and paths.
+- `configureDependencies({engine, configStore, paths, useStubEngine})` accepts
+  an explicit caller-supplied `LlamaEngine` and always accepts overrides for the
+  config store and paths. The explicit `engine` wins. Otherwise
+  `WorkerLlamaEngine` is registered only when `useStubEngine` is true or the
+  `LLAMAPULSE_STUB_ENGINE` compile-time flag is set; with neither, no engine is
+  registered.
+- `InferenceBloc` is a registered factory; its fourth argument is a nullable
+  `LlamaEngine`, so the screen still builds when no engine exists and reports
+  `engineUnavailable` instead of throwing.
+- A release build must never silently produce synthetic output. Stub selection
+  is explicit at build time (`--dart-define`) or in the caller; nothing flips it
+  at runtime.
 - The CLI has no service locator. `CliServices` in
   `apps/llama_pulse_cli/lib/src/cli_services.dart` is the manual composition
   root, built in `bin/llamapulse.dart` for production and directly in tests.
@@ -216,21 +255,33 @@ Core has no annotations and no `get_it`; it only defines gateways.
 ## 9. CLI
 
 Commands: `version`, `params get`, `params set`, `models list`,
-`models inspect`. `run` and `bench` do not exist yet.
+`models inspect`, `run` and `bench`.
 
-- Every leaf command (`version`, `params get`, `params set`, `models list`,
-  `models inspect`) accepts `--json` and prints one single-line JSON object. The
-  `params` and `models` groups are not invocable. The configuration file on disk
-  stays YAML.
-- Exit codes: `0` success, `1` unexpected failure, `2` invalid arguments or
-  validation failure, `3` requested model not found or not a readable `.gguf`
-  file.
-- stdout carries command data; stderr carries diagnostics, warnings and usage
-  errors.
+- `run` and `bench` require `--stub` until the native engine lands. Without it,
+  both exit `1` with `engineUnavailable`. The CLI never silently falls back to
+  the stub.
+- `run` flags: `--model`, `--prompt`, `--file` (`-` reads stdin), `--stream`,
+  `--json`, `--threads`, `--temperature`, `--top-p`, `--top-k`, `--max-tokens`
+  and `--context-size`. `--prompt` and `--file` are mutually exclusive; one is
+  required. `--json` and `--stream` cannot be combined.
+- `bench` flags: `--runs` (1..50, default 3), `--json`, `--max-tokens`
+  (default 32), plus the shared `--model` and sampling overrides. It runs the
+  fixed `benchPrompt` repeatedly and reports aggregate throughput.
+- Schema-v1 NDJSON covers `started`, `token`, `metrics`, `completed`,
+  `cancelled` and `failed`, each line carrying `schemaVersion` and `type`.
+  `metrics` and `failure` are nested objects. `bench --json` emits one
+  aggregate `type: "bench"` object instead of a stream.
+- stdout carries command data only; stderr carries diagnostics, human summaries
+  and usage errors.
+- Every leaf command accepts `--json` and prints one single-line JSON object.
+  The `params` and `models` groups are not invocable. The configuration file on
+  disk stays YAML.
+- Exit codes: `0` success, `1` unexpected failure (including
+  `engineUnavailable`), `2` invalid arguments or validation failure, `3`
+  requested model not found or not a readable `.gguf` file, `130` generation
+  cancelled by SIGINT.
 - The `params get` and `params set` leaf commands include the active
   `params.yaml` path in their help, because the platform directory varies.
-- Once `run` lands it must use the real engine and fail loudly. The CLI never
-  silently falls back to a stub engine.
 
 ## 10. Code style
 
@@ -265,7 +316,7 @@ APIs, no `!` on nullable values, no empty `catch` blocks.
 
 From the root, `dart run melos test`. Melos picks `flutter test` for the app and
 `dart test` for core and CLI. Test the critical seams, not every line. Coverage
-is not a target. The suites hold 135 tests today: 107 core, 21 CLI, 7 app.
+is not a target. The suites hold 237 tests today: 155 core, 53 CLI, 29 app.
 
 Must test today:
 
@@ -273,15 +324,20 @@ Must test today:
 - Repository fallbacks: missing file, malformed YAML, stale `schemaVersion`,
   invalid parameters.
 - Scanner warnings and path resolution.
-- CLI exit codes and `--json` shape.
+- CLI exit codes, `--json` shape, and `run`/`bench` NDJSON and exit codes
+  (`0`, `1`, `2`, `130`) with the stdout/stderr split.
+- The worker layer: `WorkerLoop` responses, `WorkerTransport` through a real
+  isolate (handshake timeout, crash and exit), and `WorkerLlamaEngine`
+  (lazy spawn, per-request timeout, cooperative cancel, idempotent dispose).
+- `InferenceBloc` state machine, including terminal events, cancellation and the
+  100-entry metrics-history cap.
+- Widget tests for streamed output, Generate/Cancel, the editable form and the
+  demo-engine banner.
 - DI registration and the test overrides.
-- Screen layout: wide and narrow windows, placeholder content.
+- Screen layout: wide and narrow windows.
 
-Must test when they land:
-
-- Worker protocol round-trip through the real isolate transport: load,
-  streaming, completion, cancellation, `engineBusy`.
-- `InferenceBloc` state machine, including terminal events and cancellation.
+Real-isolate tests live in core's `dart test`, never in `flutter test`:
+Flutter's test binding and an actual isolate handshake do not mix reliably.
 
 Tests mirror the package layout. Most core fakes are declared inline in the
 test file that uses them; the app keeps shared fakes in `test/support/`. Never
@@ -328,9 +384,10 @@ Add a config parameter:
 3. Add a serialization test for the default and a YAML round-trip.
 4. Wire the CLI flag; add the form field when the editable UI lands.
 
-Add an engine implementation: implement `LlamaEngine` in core (worker-side),
-register it through `configureDependencies(engine: …)`, and add a fake in
-`test/support/`. No annotations in core.
+Add an engine implementation: implement `LlamaSession` in core's
+`data/inference/` for the worker, or a test `LlamaEngine` registered through
+`configureDependencies(engine: …)`, and add a fake in `test/support/`. No
+annotations in core.
 
 Add a feature slice: `domain/<feature>` and `data/<feature>` in core, plus
 `presentation/<feature>` in the app; one gateway in domain, one bloc per screen,
@@ -338,8 +395,16 @@ no imports of another feature's data layer.
 
 Post-MVP landing spots:
 
+- Native llama.cpp session: replace `StubLlamaSession` in the worker with a
+  `LlamaSession` implementation pinned to the latest upstream llama.cpp tag, and
+  gate the loaded library behind a runtime `llama_version()` check. Keep
+  `LLAMA_PULSE_LIB` and the resolution order from section 7. A local install at
+  `/opt/llama.cpp-rocm` is an Unsloth fork (`0.7.0-dev`), so it cannot be used
+  with upstream-pinned bindings.
 - Binary downloader: `data/downloads/` in an app layer plus a library locator
-  strategy; the UI reaches it through a core gateway.
+  strategy; the UI reaches it through a core gateway. It must
+  **ask which compute backend to install (CPU/ROCm/CUDA/Vulkan/Metal)** and
+  offer a detected default rather than guessing.
 - Hugging Face / model manager: `data/models/` with structured storage (the
   `hive_ce` dependency returns with the model manager) through a core gateway.
 
@@ -354,6 +419,7 @@ flutter pub get
 dart run melos run gen
 dart run melos run check
 dart run melos run app
+dart run melos run app:stub
 dart run melos run build:app
 dart run melos run build:cli
 dart run melos analyze
@@ -368,15 +434,20 @@ dart format lib test
 build. The multi-command scripts start with `set -e`, so it is a genuine gate; a
 masked failure means the script is buggy. The CLI executable is `llamapulse`;
 the desktop app binary is `llama_pulse`. From the root,
-`dart run llama_pulse_cli:llamapulse …` also works. `LLAMA_PULSE_LIB` points at
-a llama.cpp shared library in the future FFI milestone. Never commit `.env`
-files, secrets or absolute local paths.
+`dart run llama_pulse_cli:llamapulse …` also works. `melos run app:stub` runs
+the GUI with `--dart-define=LLAMAPULSE_STUB_ENGINE=true`; plain `melos run app`
+starts with no engine. `LLAMA_PULSE_LIB` points at a llama.cpp shared library in
+the future native milestone. Never commit `.env` files, secrets or absolute
+local paths.
 
 ## 16. Definition of done for a change
 
 - [ ] The workspace resolves with one lockfile (`flutter pub get` at the root).
 - [ ] `pubspec.lock` stays untracked.
-- [ ] `dart run melos run check` is green (135 tests: 107 core, 21 CLI, 7 app).
+- [ ] `dart run melos run check` is green (237 tests: 155 core, 53 CLI, 29 app).
+- [ ] The stub path works end to end from the compiled CLI and the demo app.
+- [ ] No `dart:ffi` in this batch.
+- [ ] `dart run melos run gen` twice leaves `git status` clean.
 - [ ] Layers respected; no Flutter imports in core, no `dart:ffi` on the UI
   isolate.
 - [ ] Immutability rules from section 5 followed.
