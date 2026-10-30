@@ -1,0 +1,30 @@
+name: llama_pulse_core
+description: Flutter-free entities, YAML configuration storage, model scanning and use cases for LlamaPulse.
+version: 0.1.0
+publish_to: none
+homepage: https://github.com/dip-develop/llama-pulse
+repository: https://github.com/dip-develop/llama-pulse
+issue_tracker: https://github.com/dip-develop/llama-pulse/issues
+topics:
+  - llama
+  - llamacpp
+  - localinference
+  - inference
+  - desktop
+resolution: workspace
+
+environment:
+  sdk: ^3.13.0
+
+dependencies:
+  built_collection: ^5.1.2
+  built_value: 8.13.0
+  meta: ^1.18.3
+  path: ^1.9.1
+  yaml: ^3.1.4
+
+dev_dependencies:
+  build_runner: 2.16.1
+  built_value_generator: 8.13.0
+  lints: ^6.1.0
+  test: ^1.31.1

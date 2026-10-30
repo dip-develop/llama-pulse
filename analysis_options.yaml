@@ -1,5 +1,3 @@
-include: package:flutter_lints/flutter.yaml
-
 analyzer:
   language:
     strict-casts: true
@@ -9,8 +7,6 @@ analyzer:
     - "**/*.g.dart"
     - "**/*.config.dart"
     - "**/*.module.dart"
-    - build/**
-    - linux/**
 
 linter:
   rules:

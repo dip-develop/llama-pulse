@@ -1,35 +1,46 @@
-name: llama_pulse
-description: Minimal, fast desktop app for running local LLMs through llama.cpp.
+name: llama_pulse_workspace
+description: LlamaPulse workspace root - shared tooling for the desktop app, the CLI and the core package.
 publish_to: none
 version: 0.1.0+1
+homepage: https://github.com/dip-develop/llama-pulse
+repository: https://github.com/dip-develop/llama-pulse
+issue_tracker: https://github.com/dip-develop/llama-pulse/issues
 
 environment:
-  sdk: ">=3.13.0 <4.0.0"
-  flutter: ">=3.44.0"
+  sdk: ^3.13.0
 
-dependencies:
-  flutter:
-    sdk: flutter
-  flutter_bloc: ^9.1.1
-  get_it: ^9.3.0
-  injectable: ^3.0.0
-  built_value: 8.13.0
-  built_collection: ^5.1.2
-  shared_preferences: ^2.5.6
-  hive_ce: ^2.22.0
-  ffi: ^2.2.0
-  path: ^1.9.1
-  file_selector: ^1.1.0
+workspace:
+  - packages/llama_pulse_core
+  - apps/llama_pulse
+  - apps/llama_pulse_cli
 
 dev_dependencies:
-  flutter_test:
-    sdk: flutter
-  flutter_lints: ^6.0.0
-  build_runner: 2.16.1
-  built_value_generator: 8.13.0
-  injectable_generator: 3.1.3
-  mocktail: ^1.0.5
-  bloc_test: ^10.0.0
+  melos: ^8.10.0
 
-flutter:
-  uses-material-design: true
+melos:
+  scripts:
+    gen:
+      description: Run build_runner in dependency order (core, then app).
+      run: |
+        cd "$MELOS_ROOT_PATH/packages/llama_pulse_core" && dart run build_runner build
+        cd "$MELOS_ROOT_PATH/apps/llama_pulse" && dart run build_runner build
+    format:check:
+      description: Fail if any Dart file is not formatted.
+      run: dart format --output=none --set-exit-if-changed packages apps
+    app:
+      description: Run the desktop app on Linux.
+      run: cd "$MELOS_ROOT_PATH/apps/llama_pulse" && flutter run -d linux
+    build:app:
+      description: Build the Linux desktop release bundle.
+      run: cd "$MELOS_ROOT_PATH/apps/llama_pulse" && flutter build linux --release
+    build:cli:
+      description: Compile the CLI to a native executable.
+      run: cd "$MELOS_ROOT_PATH/apps/llama_pulse_cli" && dart compile exe bin/llamapulse.dart -o build/llamapulse
+    check:
+      description: Local gate - gen, analyze, test, format check, CLI build.
+      run: |
+        dart run melos run gen
+        dart run melos analyze
+        dart run melos test
+        dart run melos run format:check
+        dart run melos run build:cli

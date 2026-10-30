@@ -1,0 +1,29 @@
+name: llama_pulse_cli
+description: Command-line interface for LlamaPulse parameters, configuration and local model files.
+version: 0.1.0
+publish_to: none
+homepage: https://github.com/dip-develop/llama-pulse
+repository: https://github.com/dip-develop/llama-pulse
+issue_tracker: https://github.com/dip-develop/llama-pulse/issues
+topics:
+  - llama
+  - llamacpp
+  - localinference
+  - cli
+  - tooling
+resolution: workspace
+
+environment:
+  sdk: ^3.13.0
+
+dependencies:
+  args: ^2.7.0
+  llama_pulse_core:
+    path: ../../packages/llama_pulse_core
+
+dev_dependencies:
+  lints: ^6.1.0
+  test: ^1.31.1
+
+executables:
+  llamapulse:
