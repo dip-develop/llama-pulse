@@ -462,33 +462,39 @@ class _ServerConfigFormState extends State<ServerConfigForm> {
               ),
             ),
             const SizedBox(height: 12),
-            DropdownButtonFormField<ServerFlashAttention>(
+            KeyedSubtree(
               key: const ValueKey('server-flash-attn'),
-              initialValue: widget.config.flashAttention,
-              decoration: const InputDecoration(
-                labelText: 'Flash attention',
-                isDense: true,
+              child: DropdownButtonFormField<ServerFlashAttention>(
+                // Rebuild the form field when the value changes, so a Reload
+                // or a save that replaced the config shows the stored mode;
+                // `initialValue` is only applied when the state is created.
+                key: ValueKey(widget.config.flashAttention),
+                initialValue: widget.config.flashAttention,
+                decoration: const InputDecoration(
+                  labelText: 'Flash attention',
+                  isDense: true,
+                ),
+                items: const [
+                  DropdownMenuItem(
+                    value: ServerFlashAttention.auto,
+                    child: Text('auto'),
+                  ),
+                  DropdownMenuItem(
+                    value: ServerFlashAttention.on,
+                    child: Text('on'),
+                  ),
+                  DropdownMenuItem(
+                    value: ServerFlashAttention.off,
+                    child: Text('off'),
+                  ),
+                ],
+                onChanged: (ServerFlashAttention? mode) {
+                  if (mode == null) {
+                    return;
+                  }
+                  _dispatch(widget.config.copyWith(flashAttention: mode));
+                },
               ),
-              items: const [
-                DropdownMenuItem(
-                  value: ServerFlashAttention.auto,
-                  child: Text('auto'),
-                ),
-                DropdownMenuItem(
-                  value: ServerFlashAttention.on,
-                  child: Text('on'),
-                ),
-                DropdownMenuItem(
-                  value: ServerFlashAttention.off,
-                  child: Text('off'),
-                ),
-              ],
-              onChanged: (ServerFlashAttention? mode) {
-                if (mode == null) {
-                  return;
-                }
-                _dispatch(widget.config.copyWith(flashAttention: mode));
-              },
             ),
             const SizedBox(height: 4),
             SwitchListTile(

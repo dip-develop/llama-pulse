@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:llama_pulse/presentation/server/bloc/server_bloc.dart';
 import 'package:llama_pulse/presentation/server/bloc/server_dashboard_state.dart';
@@ -5,6 +7,7 @@ import 'package:llama_pulse/presentation/server/bloc/server_event.dart';
 import 'package:llama_pulse_core/llama_pulse_core.dart';
 
 import '../../../support/fake_server_controller.dart';
+import '../../../support/fake_server_state_repository.dart';
 
 const ServerConfigValidator _validator = ServerConfigValidator();
 
@@ -49,6 +52,7 @@ void main() {
   late InMemoryConfigStore store;
   late YamlServerConfigRepository repository;
   late FakeServerController controller;
+  late FakeServerStateRepository stateRepository;
 
   setUp(() {
     store = InMemoryConfigStore();
@@ -58,9 +62,11 @@ void main() {
       validator: _validator,
     );
     controller = FakeServerController();
+    stateRepository = FakeServerStateRepository();
   });
 
-  ServerBloc buildBloc() => ServerBloc(repository, _validator, controller);
+  ServerBloc buildBloc() =>
+      ServerBloc(repository, _validator, controller, stateRepository);
 
   Future<ServerBloc> startedBloc() async {
     final ServerBloc bloc = buildBloc();
@@ -106,6 +112,7 @@ void main() {
       _ThrowingConfigRepository(),
       _validator,
       controller,
+      stateRepository,
     );
     bloc.add(const ServerDashboardStarted());
     await _waitUntil(() => bloc.state.binaryInfo != null);
@@ -259,7 +266,89 @@ void main() {
     await bloc.close();
   });
 
+  test('Started seeds a server started outside the app', () async {
+    final ServerState recorded = _state(ServerPhase.running).rebuild(
+      (b) => b
+        ..supervisorPid = 4242
+        ..serverPid = 4243
+        ..startedAtEpochMs = 1,
+    );
+    stateRepository.recorded = recorded;
+    final ServerBloc bloc = await startedBloc();
+    await _waitUntil(() => bloc.state.externalRun);
+
+    expect(bloc.state.serverState, recorded);
+    expect(bloc.state.phase, ServerPhase.running);
+    expect(bloc.state.canStart, isFalse);
+    expect(bloc.state.canStop, isTrue);
+    await bloc.close();
+  });
+
+  test('StopRequested never stops an externally started server', () async {
+    stateRepository.recorded = _state(ServerPhase.running);
+    final ServerBloc bloc = await startedBloc();
+    await _waitUntil(() => bloc.state.externalRun);
+
+    bloc.add(const ServerStopRequested());
+    await _waitUntil(() => bloc.state.failure != null);
+
+    expect(controller.stopCalls, 0);
+    expect(bloc.state.failure?.message, contains('llamapulse stop'));
+    expect(bloc.state.phase, ServerPhase.running);
+    expect(bloc.state.externalRun, isTrue);
+    await bloc.close();
+  });
+
+  test(
+    'a successful local start clears the external run and failure',
+    () async {
+      stateRepository.recorded = _state(ServerPhase.running);
+      final ServerBloc bloc = await startedBloc();
+      await _waitUntil(() => bloc.state.externalRun);
+      bloc.add(const ServerStopRequested());
+      await _waitUntil(() => bloc.state.failure != null);
+
+      bloc.add(ServerConfigChanged(_validConfig()));
+      bloc.add(const ServerStartRequested());
+      await _waitUntil(() => controller.startedConfigs.isNotEmpty);
+      await _waitUntil(
+        () => bloc.state.failure == null && !bloc.state.externalRun,
+      );
+
+      expect(controller.startedConfigs.single, _validConfig());
+      expect(bloc.state.failure, isNull);
+      expect(bloc.state.externalRun, isFalse);
+      await bloc.close();
+    },
+  );
+
+  test('StartRequested does not block controller state events', () async {
+    final Completer<void> gate = Completer<void>();
+    controller.startGate = gate;
+    final ServerBloc bloc = await startedBloc();
+    bloc.add(ServerConfigChanged(_validConfig()));
+    bloc.add(const ServerStartRequested());
+    await _waitUntil(() => controller.startedConfigs.isNotEmpty);
+
+    // The start is still in flight, yet the transition reaches the state.
+    controller.emitState(_state(ServerPhase.starting));
+    await _waitUntil(() => bloc.state.phase == ServerPhase.starting);
+    expect(bloc.state.failure, isNull);
+
+    gate.complete();
+    for (var turn = 0; turn < 5; turn++) {
+      await Future<void>.delayed(Duration.zero);
+    }
+    expect(bloc.state.failure, isNull);
+    expect(bloc.state.phase, ServerPhase.starting);
+    await bloc.close();
+  });
+
   test('TestConnectionRequested records latency and toggles testing', () async {
+    await store.write(
+      ConfigNames.server,
+      repository.toDocument(_validConfig()),
+    );
     controller.probeResult = const ServerProbeResult(
       ok: true,
       latencyMs: 42,
@@ -277,6 +366,7 @@ void main() {
     bloc.add(const ServerTestConnectionRequested());
 
     expect((await testing).testingConnection, isTrue);
+    await _waitUntil(() => controller.probedConfigs.isNotEmpty);
     expect(controller.probedConfigs.single, _validConfig());
     final ServerDashboardState result = await done;
     expect(result.testingConnection, isFalse);

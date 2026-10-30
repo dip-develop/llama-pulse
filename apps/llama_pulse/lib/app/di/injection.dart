@@ -121,6 +121,7 @@ Future<void> configureDependencies({
         getIt<ServerConfigRepository>(),
         getIt<ServerConfigValidator>(),
         getIt<ServerController>(),
+        getIt<ServerStateRepository>(),
       ),
     )
     ..init();

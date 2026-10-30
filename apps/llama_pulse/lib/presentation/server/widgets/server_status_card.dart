@@ -16,34 +16,49 @@ class ServerStatusCard extends StatelessWidget {
     return BlocSelector<
       ServerBloc,
       ServerDashboardState,
-      (ServerState, ServerBinaryInfo?)
+      (ServerState, ServerBinaryInfo?, bool)
     >(
       selector: (ServerDashboardState state) =>
-          (state.serverState, state.binaryInfo),
-      builder: (BuildContext context, (ServerState, ServerBinaryInfo?) data) {
-        final (ServerState serverState, ServerBinaryInfo? binaryInfo) = data;
-        return _Card(serverState: serverState, binaryInfo: binaryInfo);
-      },
+          (state.serverState, state.binaryInfo, state.externalRun),
+      builder:
+          (BuildContext context, (ServerState, ServerBinaryInfo?, bool) data) {
+            final (
+              ServerState serverState,
+              ServerBinaryInfo? binaryInfo,
+              bool externalRun,
+            ) = data;
+            return _Card(
+              serverState: serverState,
+              binaryInfo: binaryInfo,
+              externalRun: externalRun,
+            );
+          },
     );
   }
 }
 
 class _Card extends StatelessWidget {
-  const _Card({required this.serverState, required this.binaryInfo});
+  const _Card({
+    required this.serverState,
+    required this.binaryInfo,
+    required this.externalRun,
+  });
 
   final ServerState serverState;
   final ServerBinaryInfo? binaryInfo;
+  final bool externalRun;
 
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
-    final String binaryPath = binaryInfo?.path.isNotEmpty ?? false
-        ? binaryInfo!.path
+    final ServerBinaryInfo? info = binaryInfo;
+    final String binaryPath = info != null && info.path.isNotEmpty
+        ? info.path
         : serverState.binaryPath;
     final String binaryVersion =
-        binaryInfo?.version ?? serverState.binaryVersion ?? '';
-    final bool supported = binaryInfo?.supported ?? true;
-    final String? warning = supported ? null : binaryInfo?.warning;
+        info?.version ?? serverState.binaryVersion ?? '';
+    final String? warning = info?.warning;
+    final ServerFailure? failure = serverState.failure;
     return Card(
       key: const ValueKey('server-status-card'),
       child: Padding(
@@ -88,18 +103,28 @@ class _Card extends StatelessWidget {
                 ),
               ),
             ],
+            if (externalRun)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text(
+                  'Started outside this app — stop it with llamapulse stop.',
+                  key: const ValueKey('server-external-run'),
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
             _row(theme, 'Uptime', _uptime(serverState)),
             _row(
               theme,
               'Last exit code',
               serverState.lastExitCode?.toString() ?? '—',
             ),
-            if (serverState.failure != null)
+            if (failure != null)
               _row(
                 theme,
                 'Last failure',
-                '${serverState.failure!.code.name}: '
-                    '${serverState.failure!.message}',
+                '${failure.code.name}: ${failure.message}',
               ),
             const SizedBox(height: 16),
             Wrap(
@@ -218,23 +243,27 @@ class _StatusChip extends StatelessWidget {
   static (String, Color, Color) _appearance(
     ServerPhase phase,
     ColorScheme scheme,
-  ) => switch (phase.name) {
-    'running' => (
+  ) => switch (phase) {
+    ServerPhase.running => (
       'Running',
       scheme.primaryContainer,
       scheme.onPrimaryContainer,
     ),
-    'starting' => (
+    ServerPhase.starting => (
       'Starting',
       scheme.tertiaryContainer,
       scheme.onTertiaryContainer,
     ),
-    'stopping' => (
+    ServerPhase.stopping => (
       'Stopping',
       scheme.tertiaryContainer,
       scheme.onTertiaryContainer,
     ),
-    'failed' => ('Failed', scheme.errorContainer, scheme.onErrorContainer),
+    ServerPhase.failed => (
+      'Failed',
+      scheme.errorContainer,
+      scheme.onErrorContainer,
+    ),
     _ => ('Stopped', scheme.surfaceContainerHighest, scheme.onSurfaceVariant),
   };
 }

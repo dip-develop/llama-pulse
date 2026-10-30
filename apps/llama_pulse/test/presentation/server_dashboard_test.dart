@@ -285,6 +285,62 @@ void main() {
     );
   });
 
+  testWidgets('shows the stored flash attention mode after Reload', (
+    tester,
+  ) async {
+    await pumpLlamaPulse(tester, serverController: FakeServerController());
+
+    expect(find.text('auto'), findsOneWidget);
+
+    await getIt<ServerConfigRepository>().save(
+      ServerConfig.defaults().copyWith(
+        flashAttention: ServerFlashAttention.off,
+      ),
+    );
+    await _tapKey(tester, 'server-reload');
+
+    expect(find.text('off'), findsOneWidget);
+    expect(find.text('auto'), findsNothing);
+  });
+
+  testWidgets('renders the warning of a supported binary', (tester) async {
+    final FakeServerController controller = FakeServerController(
+      binaryInfo: ServerBinaryInfo(
+        (b) => b
+          ..path = '/opt/llama-server'
+          ..version = '0.9.0'
+          ..supported = true
+          ..warning = 'build 9999 renamed a flag; it may be ignored'
+          ..rawOutput = 'llama-server 0.9.0',
+      ),
+    );
+    await pumpLlamaPulse(tester, serverController: controller);
+
+    expect(find.byKey(const ValueKey('server-binary-warning')), findsOneWidget);
+    expect(find.textContaining('build 9999'), findsOneWidget);
+  });
+
+  testWidgets('flags a server started outside the app', (tester) async {
+    final ServerState recorded = _state(ServerPhase.running).rebuild(
+      (b) => b
+        ..supervisorPid = 4242
+        ..serverPid = 4243
+        ..startedAtEpochMs = 1,
+    );
+    await pumpLlamaPulse(
+      tester,
+      serverController: FakeServerController(),
+      recordedState: recorded,
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.byKey(const ValueKey('server-external-run')), findsOneWidget);
+    expect(find.textContaining('llamapulse stop'), findsOneWidget);
+    expect(_enabled(tester, 'server-start'), isFalse);
+    expect(find.textContaining('Running'), findsOneWidget);
+  });
+
   testWidgets('puts the configuration beside the panels on wide windows', (
     tester,
   ) async {

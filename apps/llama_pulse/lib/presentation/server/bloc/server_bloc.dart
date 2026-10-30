@@ -13,14 +13,23 @@ import 'server_event.dart';
 /// [close] only cancels the subscriptions and never disposes it.
 class ServerBloc extends Bloc<ServerEvent, ServerDashboardState> {
   /// Creates the bloc over the configuration repository and the controller.
-  ServerBloc(this._configRepository, this._validator, this._controller)
-    : super(ServerDashboardState.initial(serverState: _controller.state)) {
+  ///
+  /// [stateRepository] reads the document the supervisor and the CLI share, so
+  /// the dashboard can report on a server it did not start.
+  ServerBloc(
+    this._configRepository,
+    this._validator,
+    this._controller,
+    this._stateRepository,
+  ) : super(ServerDashboardState.initial(serverState: _controller.state)) {
     on<ServerDashboardStarted>(_onStarted);
     on<ServerConfigChanged>(_onConfigChanged);
     on<ServerSaveRequested>(_onSaveRequested);
     on<ServerReloadRequested>(_onReloadRequested);
     on<ServerStartRequested>(_onStartRequested);
+    on<ServerStartCompleted>(_onStartCompleted);
     on<ServerStopRequested>(_onStopRequested);
+    on<ServerStopCompleted>(_onStopCompleted);
     on<ServerTestConnectionRequested>(_onTestConnectionRequested);
     on<ServerLogsCleared>(_onLogsCleared);
     on<ServerControllerStateReceived>(_onControllerState);
@@ -38,6 +47,7 @@ class ServerBloc extends Bloc<ServerEvent, ServerDashboardState> {
   final ServerConfigRepository _configRepository;
   final ServerConfigValidator _validator;
   final ServerController _controller;
+  final ServerStateRepository _stateRepository;
 
   StreamSubscription<ServerState>? _stateSubscription;
   StreamSubscription<ServerMetrics>? _metricsSubscription;
@@ -59,6 +69,9 @@ class ServerBloc extends Bloc<ServerEvent, ServerDashboardState> {
         'Could not load the server configuration: $error',
       );
     }
+    if (isClosed) {
+      return;
+    }
     _emit(
       emit,
       state.rebuild((b) {
@@ -72,13 +85,25 @@ class ServerBloc extends Bloc<ServerEvent, ServerDashboardState> {
         }
       }),
     );
+    // Subscribe before the remaining awaits so no transition published while
+    // the binary is probed is lost.
+    _subscribe();
 
     try {
       final ServerBinaryInfo binary = await _controller.locateBinary(config);
+      if (isClosed) {
+        return;
+      }
       _emit(emit, state.rebuild((b) => b..binaryInfo.replace(binary)));
     } on ServerException catch (exception) {
+      if (isClosed) {
+        return;
+      }
       _emit(emit, state.rebuild((b) => b..failure.replace(exception.failure)));
     } on Object catch (error) {
+      if (isClosed) {
+        return;
+      }
       _emit(
         emit,
         state.rebuild(
@@ -93,11 +118,33 @@ class ServerBloc extends Bloc<ServerEvent, ServerDashboardState> {
       );
     }
 
-    _subscribe();
+    final ServerState? recorded = await _loadRecordedState();
+    if (isClosed) {
+      return;
+    }
+
+    // A run recorded in the shared document that this controller does not own
+    // belongs to the CLI: show it, but never pretend to own its process.
+    final ServerState localState = _controller.state;
+    final bool externalRun =
+        recorded != null && recorded.isActive && !localState.isActive;
     _emit(
       emit,
-      state.rebuild((b) => b..serverState.replace(_controller.state)),
+      state.rebuild(
+        (b) => b
+          ..serverState.replace(externalRun ? recorded : localState)
+          ..externalRun = externalRun,
+      ),
     );
+  }
+
+  Future<ServerState?> _loadRecordedState() async {
+    try {
+      return await _stateRepository.load();
+    } on Object {
+      // The document is a reporting snapshot: a broken one means "unknown".
+      return null;
+    }
   }
 
   void _onConfigChanged(
@@ -191,10 +238,10 @@ class ServerBloc extends Bloc<ServerEvent, ServerDashboardState> {
     }
   }
 
-  Future<void> _onStartRequested(
+  void _onStartRequested(
     ServerStartRequested event,
     Emitter<ServerDashboardState> emit,
-  ) async {
+  ) {
     final List<String> violations = _validator.validateForStart(state.config);
     if (violations.isNotEmpty) {
       _emit(
@@ -208,11 +255,54 @@ class ServerBloc extends Bloc<ServerEvent, ServerDashboardState> {
       );
       return;
     }
+    final ServerConfig config = state.config;
+    // Never await here: the controller publishes `starting` while `start`
+    // runs, and waiting would queue that state behind this handler.
+    _emit(emit, state.rebuild((b) => b..failure = null));
+    unawaited(_start(config));
+  }
+
+  Future<void> _start(ServerConfig config) async {
+    ServerFailure? failure;
     try {
-      await _controller.start(state.config);
+      await _controller.start(config);
     } on ServerException catch (exception) {
-      _emit(emit, state.rebuild((b) => b..failure.replace(exception.failure)));
+      failure = exception.failure;
     } on Object catch (error) {
+      failure = _failure(
+        ServerFailureCode.unknown,
+        'Could not start llama-server: $error',
+      );
+    }
+    _add(ServerStartCompleted(failure: failure));
+  }
+
+  void _onStartCompleted(
+    ServerStartCompleted event,
+    Emitter<ServerDashboardState> emit,
+  ) {
+    final ServerFailure? failure = event.failure;
+    if (failure != null) {
+      _emit(emit, state.rebuild((b) => b..failure.replace(failure)));
+      return;
+    }
+    // The controller owns the process now, whatever the shared document
+    // reported before.
+    _emit(
+      emit,
+      state.rebuild(
+        (b) => b
+          ..failure = null
+          ..externalRun = false,
+      ),
+    );
+  }
+
+  void _onStopRequested(
+    ServerStopRequested event,
+    Emitter<ServerDashboardState> emit,
+  ) {
+    if (state.externalRun) {
       _emit(
         emit,
         state.rebuild(
@@ -220,36 +310,47 @@ class ServerBloc extends Bloc<ServerEvent, ServerDashboardState> {
             ..failure.replace(
               _failure(
                 ServerFailureCode.unknown,
-                'Could not start llama-server: $error',
+                'server was started outside this app; use `llamapulse stop`',
               ),
             ),
         ),
       );
+      return;
     }
+    _emit(emit, state.rebuild((b) => b..failure = null));
+    unawaited(_stop());
   }
 
-  Future<void> _onStopRequested(
-    ServerStopRequested event,
-    Emitter<ServerDashboardState> emit,
-  ) async {
+  Future<void> _stop() async {
+    ServerFailure? failure;
     try {
       await _controller.stop();
     } on ServerException catch (exception) {
-      _emit(emit, state.rebuild((b) => b..failure.replace(exception.failure)));
+      failure = exception.failure;
     } on Object catch (error) {
-      _emit(
-        emit,
-        state.rebuild(
-          (b) => b
-            ..failure.replace(
-              _failure(
-                ServerFailureCode.unknown,
-                'Could not stop llama-server: $error',
-              ),
-            ),
-        ),
+      failure = _failure(
+        ServerFailureCode.unknown,
+        'Could not stop llama-server: $error',
       );
     }
+    _add(ServerStopCompleted(failure: failure));
+  }
+
+  void _onStopCompleted(
+    ServerStopCompleted event,
+    Emitter<ServerDashboardState> emit,
+  ) {
+    final ServerFailure? failure = event.failure;
+    _emit(
+      emit,
+      state.rebuild((b) {
+        if (failure == null) {
+          b.failure = null;
+        } else {
+          b.failure.replace(failure);
+        }
+      }),
+    );
   }
 
   Future<void> _onTestConnectionRequested(
@@ -265,18 +366,23 @@ class ServerBloc extends Bloc<ServerEvent, ServerDashboardState> {
           ..connectionMessage = null,
       ),
     );
+    final ServerConfig config = await _configForProbe();
+    if (isClosed) {
+      return;
+    }
     try {
-      final ServerProbeResult result = await _controller.testConnection(
-        state.config,
-      );
+      final ServerProbeResult result = await _controller.testConnection(config);
       _emit(
         emit,
-        state.rebuild(
-          (b) => b
+        state.rebuild((b) {
+          b
             ..testingConnection = false
             ..connectionLatencyMs = result.latencyMs
-            ..connectionMessage = result.message,
-        ),
+            ..connectionMessage = result.message;
+          if (result.ok) {
+            b.failure = null;
+          }
+        }),
       );
     } on Object catch (error) {
       _emit(
@@ -287,6 +393,19 @@ class ServerBloc extends Bloc<ServerEvent, ServerDashboardState> {
             ..connectionMessage = '$error',
         ),
       );
+    }
+  }
+
+  /// The configuration to probe: the stored one whenever this app does not own
+  /// the running process, so unsaved edits cannot probe the wrong endpoint.
+  Future<ServerConfig> _configForProbe() async {
+    if (!state.externalRun && _controller.state.isActive) {
+      return state.config;
+    }
+    try {
+      return await _configRepository.load();
+    } on Object {
+      return state.config;
     }
   }
 
@@ -301,7 +420,16 @@ class ServerBloc extends Bloc<ServerEvent, ServerDashboardState> {
     ServerControllerStateReceived event,
     Emitter<ServerDashboardState> emit,
   ) {
-    _emit(emit, state.rebuild((b) => b..serverState.replace(event.state)));
+    final ServerState next = event.state;
+    _emit(
+      emit,
+      state.rebuild(
+        (b) => b
+          ..serverState.replace(next)
+          // An active state means this controller now owns the process.
+          ..externalRun = next.isActive ? false : state.externalRun,
+      ),
+    );
   }
 
   void _onControllerMetrics(

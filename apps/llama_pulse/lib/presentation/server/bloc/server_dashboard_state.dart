@@ -35,6 +35,12 @@ abstract class ServerDashboardState
   /// Whether a connection test is in flight.
   bool get testingConnection;
 
+  /// Whether the running server was started outside this app.
+  ///
+  /// Such a run is reported from the shared state document, so the dashboard
+  /// can observe it, but only the CLI that spawned it may stop it.
+  bool get externalRun;
+
   /// Round-trip time of the last connection test, when it completed.
   int? get connectionLatencyMs;
 
@@ -53,7 +59,9 @@ abstract class ServerDashboardState
 
   /// Whether a start request makes sense right now.
   bool get canStart =>
-      (phase == ServerPhase.stopped || phase == ServerPhase.failed) && !saving;
+      (phase == ServerPhase.stopped || phase == ServerPhase.failed) &&
+      !saving &&
+      !(externalRun && serverState.isActive);
 
   /// Whether a stop request makes sense right now.
   bool get canStop =>
@@ -75,7 +83,8 @@ abstract class ServerDashboardState
       ..logs = ListBuilder<ServerLogEntry>()
       ..saving = false
       ..dirty = false
-      ..testingConnection = false,
+      ..testingConnection = false
+      ..externalRun = false,
   );
 
   ServerDashboardState._();

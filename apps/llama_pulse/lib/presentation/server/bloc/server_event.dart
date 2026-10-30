@@ -52,6 +52,25 @@ final class ServerLogsCleared extends ServerEvent {
   const ServerLogsCleared();
 }
 
+/// Internal plumbing: the controller finished a start request.
+///
+/// The request itself is not awaited, so the dashboard keeps processing live
+/// events while the process spawns; the outcome arrives as this event.
+final class ServerStartCompleted extends ServerEvent {
+  const ServerStartCompleted({this.failure});
+
+  /// Why the start failed, or `null` when the process was spawned.
+  final ServerFailure? failure;
+}
+
+/// Internal plumbing: the controller finished a stop request.
+final class ServerStopCompleted extends ServerEvent {
+  const ServerStopCompleted({this.failure});
+
+  /// Why the stop failed, or `null` when the process is gone.
+  final ServerFailure? failure;
+}
+
 /// Internal plumbing: a lifecycle state published by the controller.
 ///
 /// It is part of the sealed hierarchy so the bloc can emit states from an

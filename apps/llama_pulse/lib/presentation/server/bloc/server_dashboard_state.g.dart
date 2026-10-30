@@ -59,6 +59,11 @@ class _$ServerDashboardStateSerializer
         object.testingConnection,
         specifiedType: const FullType(bool),
       ),
+      'externalRun',
+      serializers.serialize(
+        object.externalRun,
+        specifiedType: const FullType(bool),
+      ),
     ];
     Object? value;
     value = object.binaryInfo;
@@ -196,6 +201,14 @@ class _$ServerDashboardStateSerializer
                   )!
                   as bool;
           break;
+        case 'externalRun':
+          result.externalRun =
+              serializers.deserialize(
+                    value,
+                    specifiedType: const FullType(bool),
+                  )!
+                  as bool;
+          break;
         case 'connectionLatencyMs':
           result.connectionLatencyMs = serializers.deserialize(
             value,
@@ -235,6 +248,8 @@ class _$ServerDashboardState extends ServerDashboardState {
   @override
   final bool testingConnection;
   @override
+  final bool externalRun;
+  @override
   final int? connectionLatencyMs;
   @override
   final String? connectionMessage;
@@ -253,6 +268,7 @@ class _$ServerDashboardState extends ServerDashboardState {
     required this.saving,
     required this.dirty,
     required this.testingConnection,
+    required this.externalRun,
     this.connectionLatencyMs,
     this.connectionMessage,
   }) : super._();
@@ -278,6 +294,7 @@ class _$ServerDashboardState extends ServerDashboardState {
         saving == other.saving &&
         dirty == other.dirty &&
         testingConnection == other.testingConnection &&
+        externalRun == other.externalRun &&
         connectionLatencyMs == other.connectionLatencyMs &&
         connectionMessage == other.connectionMessage;
   }
@@ -294,6 +311,7 @@ class _$ServerDashboardState extends ServerDashboardState {
     _$hash = $jc(_$hash, saving.hashCode);
     _$hash = $jc(_$hash, dirty.hashCode);
     _$hash = $jc(_$hash, testingConnection.hashCode);
+    _$hash = $jc(_$hash, externalRun.hashCode);
     _$hash = $jc(_$hash, connectionLatencyMs.hashCode);
     _$hash = $jc(_$hash, connectionMessage.hashCode);
     _$hash = $jf(_$hash);
@@ -312,6 +330,7 @@ class _$ServerDashboardState extends ServerDashboardState {
           ..add('saving', saving)
           ..add('dirty', dirty)
           ..add('testingConnection', testingConnection)
+          ..add('externalRun', externalRun)
           ..add('connectionLatencyMs', connectionLatencyMs)
           ..add('connectionMessage', connectionMessage))
         .toString();
@@ -367,6 +386,10 @@ class ServerDashboardStateBuilder
   set testingConnection(bool? testingConnection) =>
       _$this._testingConnection = testingConnection;
 
+  bool? _externalRun;
+  bool? get externalRun => _$this._externalRun;
+  set externalRun(bool? externalRun) => _$this._externalRun = externalRun;
+
   int? _connectionLatencyMs;
   int? get connectionLatencyMs => _$this._connectionLatencyMs;
   set connectionLatencyMs(int? connectionLatencyMs) =>
@@ -391,6 +414,7 @@ class ServerDashboardStateBuilder
       _saving = $v.saving;
       _dirty = $v.dirty;
       _testingConnection = $v.testingConnection;
+      _externalRun = $v.externalRun;
       _connectionLatencyMs = $v.connectionLatencyMs;
       _connectionMessage = $v.connectionMessage;
       _$v = null;
@@ -437,6 +461,11 @@ class ServerDashboardStateBuilder
               testingConnection,
               r'ServerDashboardState',
               'testingConnection',
+            ),
+            externalRun: BuiltValueNullFieldError.checkNotNull(
+              externalRun,
+              r'ServerDashboardState',
+              'externalRun',
             ),
             connectionLatencyMs: connectionLatencyMs,
             connectionMessage: connectionMessage,

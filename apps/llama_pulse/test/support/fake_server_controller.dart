@@ -30,6 +30,12 @@ final class FakeServerController implements ServerController {
   /// Error [start] throws instead of starting.
   ServerException? startFailure;
 
+  /// When set, [start] waits for it before it completes.
+  ///
+  /// A test can complete it later to keep a start in flight while the
+  /// controller publishes transitions.
+  Completer<void>? startGate;
+
   /// Configurations passed to [start], in call order.
   final List<ServerConfig> startedConfigs = [];
 
@@ -108,6 +114,10 @@ final class FakeServerController implements ServerController {
     final ServerException? failure = startFailure;
     if (failure != null) {
       throw failure;
+    }
+    final Completer<void>? gate = startGate;
+    if (gate != null) {
+      await gate.future;
     }
   }
 

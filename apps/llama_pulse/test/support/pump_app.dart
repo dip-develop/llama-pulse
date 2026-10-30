@@ -19,6 +19,9 @@ import 'fake_server_controller.dart';
 /// registrations. The file dialogs and the clipboard are replaced by fakes,
 /// and a [FakeServerController] stands in for the supervisor unless the caller
 /// passes its own, so no test spawns a process or reaches a platform plugin.
+///
+/// A [recordedState] is written to the shared state document before the first
+/// frame, as if a CLI run had left it behind.
 Future<void> pumpLlamaPulse(
   WidgetTester tester, {
   ServerController? serverController,
@@ -26,6 +29,7 @@ Future<void> pumpLlamaPulse(
   ModelPathPicker? picker,
   ServerBinaryPicker? binaryPicker,
   ClipboardService? clipboard,
+  ServerState? recordedState,
   bool demoServer = false,
   bool demoEngine = false,
 }) async {
@@ -51,6 +55,9 @@ Future<void> pumpLlamaPulse(
     engine: engine,
     serverController: controller,
   );
+  if (recordedState != null) {
+    await getIt<ServerStateRepository>().save(recordedState);
+  }
 
   await tester.pumpWidget(
     LlamaPulseApp(
