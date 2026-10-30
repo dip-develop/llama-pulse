@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'dart:io' show File, FileSystemEntityType, pid;
+import 'dart:io' show File, FileSystemEntityType, Platform, pid;
 
 import '../../domain/entities/server_binary_info.dart';
 import '../../domain/entities/server_config.dart';
@@ -13,6 +13,7 @@ import '../../domain/entities/server_phase.dart';
 import '../../domain/entities/server_probe_result.dart';
 import '../../domain/entities/server_state.dart';
 import '../../domain/exceptions/server_exception.dart';
+import '../../domain/gateways/config_store.dart';
 import '../../domain/gateways/port_probe.dart';
 import '../../domain/gateways/server_binary_locator.dart';
 import '../../domain/gateways/server_controller.dart';
@@ -20,8 +21,15 @@ import '../../domain/gateways/server_http_client.dart';
 import '../../domain/gateways/server_process.dart';
 import '../../domain/gateways/server_state_repository.dart';
 import '../../domain/server_config_validator.dart';
+import '../config/app_paths.dart';
+import '../config/yaml_server_state_repository.dart';
+import '../serialization/serializers.dart';
+import 'dart_http_client.dart';
+import 'dart_process_launcher.dart';
 import 'server_argument_builder.dart';
+import 'server_binary_locator_impl.dart';
 import 'server_log_store.dart';
+import 'socket_port_probe.dart';
 import 'supervisor_tuning.dart';
 
 int _nowEpochMs() => DateTime.now().millisecondsSinceEpoch;
@@ -49,6 +57,31 @@ final class LlamaServerSupervisor implements ServerController {
   }) {
     _state = ServerState.stopped(updatedAtEpochMs: _clock());
   }
+
+  /// Creates the production wiring: real processes, HTTP probes and files.
+  ///
+  /// The binary locator resolves `llama-server` from the configuration, the
+  /// `LLAMA_PULSE_SERVER` environment variable, the running executable's
+  /// directory, [AppPaths.binDirectory] and `PATH`, in that order. State is
+  /// stored in `server-state.yaml` and logs in [AppPaths.serverLogFile].
+  factory LlamaServerSupervisor.production({
+    required AppPaths paths,
+    required ConfigStore configStore,
+  }) => LlamaServerSupervisor(
+    launcher: const DartProcessLauncher(),
+    httpClient: DartServerHttpClient(),
+    portProbe: const SocketPortProbe(),
+    binaryLocator: ServerBinaryLocatorImpl(
+      paths: paths,
+      executablePath: Platform.resolvedExecutable,
+    ),
+    stateRepository: YamlServerStateRepository(
+      store: configStore,
+      serializers: serializers,
+    ),
+    logStore: ServerLogStore(filePath: paths.serverLogFile),
+    validator: const ServerConfigValidator(),
+  );
 
   /// Builds before this one use the legacy `--mlock` / `--no-mmap` flags.
   static const int loadModeMinimumBuild = 10875;
