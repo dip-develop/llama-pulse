@@ -1,9 +1,31 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:llama_pulse_core/llama_pulse_core.dart';
+
+import '../../app/platform/model_path_picker.dart';
+import 'bloc/inference_bloc.dart';
+import 'bloc/inference_state.dart';
+import 'bloc/inference_status.dart';
+import 'widgets/failure_banner.dart';
+import 'widgets/generation_controls.dart';
+import 'widgets/generation_output.dart';
+import 'widgets/metrics_panel.dart';
+import 'widgets/model_params_form.dart';
+import 'widgets/status_chip.dart';
 
 /// Inference workspace: startup parameters, generation output and metrics.
 class InferenceScreen extends StatelessWidget {
-  const InferenceScreen({super.key});
+  const InferenceScreen({
+    super.key,
+    required this.picker,
+    this.demoEngine = false,
+  });
+
+  /// File dialog seam handed to the parameter form.
+  final ModelPathPicker picker;
+
+  /// Whether output comes from the synthetic stub engine.
+  final bool demoEngine;
 
   @override
   Widget build(BuildContext context) {
@@ -13,47 +35,110 @@ class InferenceScreen extends StatelessWidget {
         actions: const [
           Padding(
             padding: EdgeInsets.only(right: 16),
-            child: Center(child: _StatusChip()),
+            child: Center(child: StatusChip()),
           ),
         ],
       ),
       body: SafeArea(
-        child: LayoutBuilder(
-          builder: (BuildContext context, BoxConstraints constraints) {
-            // Below 900 px a 380 px parameter column would leave too little
-            // room for output, so the layout stacks instead.
-            if (constraints.maxWidth >= 900) {
-              return const _WideLayout();
-            }
-            return const _NarrowLayout();
-          },
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (demoEngine) const _DemoEngineBanner(),
+            const FailureBanner(),
+            const Padding(
+              padding: EdgeInsets.fromLTRB(16, 16, 16, 0),
+              child: _PromptSection(),
+            ),
+            Expanded(
+              child: LayoutBuilder(
+                builder: (BuildContext context, BoxConstraints constraints) {
+                  // Below 900 px a 380 px parameter column would leave too
+                  // little room for output, so the layout stacks instead.
+                  if (constraints.maxWidth >= 900) {
+                    return _WideLayout(picker: picker);
+                  }
+                  return _NarrowLayout(picker: picker);
+                },
+              ),
+            ),
+          ],
         ),
       ),
     );
   }
 }
 
-class _WideLayout extends StatelessWidget {
-  const _WideLayout();
+class _DemoEngineBanner extends StatelessWidget {
+  const _DemoEngineBanner();
 
   @override
   Widget build(BuildContext context) {
-    return const Padding(
-      padding: EdgeInsets.all(24),
+    final ThemeData theme = Theme.of(context);
+    return Container(
+      key: const ValueKey('demo-engine-banner'),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      color: theme.colorScheme.tertiaryContainer,
+      child: Text(
+        'Demo engine — output is synthetic.',
+        style: theme.textTheme.bodySmall?.copyWith(
+          color: theme.colorScheme.onTertiaryContainer,
+        ),
+      ),
+    );
+  }
+}
+
+class _PromptSection extends StatelessWidget {
+  const _PromptSection();
+
+  @override
+  Widget build(BuildContext context) {
+    return BlocSelector<
+      InferenceBloc,
+      InferenceState,
+      (InferenceStatus, String)
+    >(
+      selector: (InferenceState state) => (state.status, state.prompt),
+      builder: (BuildContext context, (InferenceStatus, String) data) {
+        final (InferenceStatus status, String prompt) = data;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const PromptEditor(),
+            const SizedBox(height: 8),
+            GenerationControls(status: status, prompt: prompt),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _WideLayout extends StatelessWidget {
+  const _WideLayout({required this.picker});
+
+  final ModelPathPicker picker;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(24),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           SizedBox(
             width: 380,
-            child: SingleChildScrollView(child: _ParametersCard()),
+            child: SingleChildScrollView(
+              child: _ParametersSection(picker: picker),
+            ),
           ),
-          SizedBox(width: 16),
-          Expanded(
+          const SizedBox(width: 16),
+          const Expanded(
             child: Column(
               children: [
-                Expanded(flex: 3, child: _OutputCard()),
+                Expanded(flex: 3, child: GenerationOutput()),
                 SizedBox(height: 16),
-                Expanded(flex: 2, child: _MetricsCard()),
+                Expanded(flex: 2, child: MetricsPanel()),
               ],
             ),
           ),
@@ -64,202 +149,58 @@ class _WideLayout extends StatelessWidget {
 }
 
 class _NarrowLayout extends StatelessWidget {
-  const _NarrowLayout();
+  const _NarrowLayout({required this.picker});
+
+  final ModelPathPicker picker;
 
   @override
   Widget build(BuildContext context) {
-    return const SingleChildScrollView(
-      padding: EdgeInsets.all(16),
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _ParametersCard(),
-          SizedBox(height: 16),
-          _OutputCard(),
-          SizedBox(height: 16),
-          _MetricsCard(),
+          _ParametersSection(picker: picker),
+          const SizedBox(height: 16),
+          const SizedBox(height: 320, child: GenerationOutput()),
+          const SizedBox(height: 16),
+          const SizedBox(height: 260, child: MetricsPanel()),
         ],
       ),
     );
   }
 }
 
-class _StatusChip extends StatelessWidget {
-  const _StatusChip();
+class _ParametersSection extends StatelessWidget {
+  const _ParametersSection({required this.picker});
+
+  final ModelPathPicker picker;
 
   @override
   Widget build(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.secondaryContainer,
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Text(
-        'Idle',
-        style: theme.textTheme.labelMedium?.copyWith(
-          color: theme.colorScheme.onSecondaryContainer,
-        ),
-      ),
-    );
-  }
-}
-
-class _ParametersCard extends StatelessWidget {
-  const _ParametersCard();
-
-  @override
-  Widget build(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
-    final ModelParams params = ModelParams.defaults();
-    return Card(
-      key: const ValueKey('parameters-card'),
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Model parameters', style: theme.textTheme.titleMedium),
-            const SizedBox(height: 4),
-            Text(
-              'Defaults — not yet editable',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-            const SizedBox(height: 16),
-            _ParameterRow(
-              label: 'Model path',
-              value: params.modelPath.isEmpty ? 'Not set' : params.modelPath,
-            ),
-            _ParameterRow(
-              label: 'Context size',
-              value: '${params.contextSize}',
-            ),
-            _ParameterRow(label: 'GPU layers', value: '${params.gpuLayers}'),
-            _ParameterRow(label: 'Threads', value: '${params.threads}'),
-            _ParameterRow(label: 'Temperature', value: '${params.temperature}'),
-            _ParameterRow(label: 'Top-p', value: '${params.topP}'),
-            _ParameterRow(label: 'Top-k', value: '${params.topK}'),
-            _ParameterRow(label: 'Max tokens', value: '${params.maxTokens}'),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ParameterRow extends StatelessWidget {
-  const _ParameterRow({required this.label, required this.value});
-
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(label, style: theme.textTheme.bodyMedium),
-          Text(
-            value,
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _OutputCard extends StatelessWidget {
-  const _OutputCard();
-
-  @override
-  Widget build(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
-    return Card(
-      key: const ValueKey('output-card'),
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Generation output', style: theme.textTheme.titleMedium),
-            const SizedBox(height: 12),
-            ConstrainedBox(
-              constraints: const BoxConstraints(minHeight: 120),
-              child: const _EmptyState(
-                icon: Icons.notes_outlined,
-                message: 'No output yet. Inference is not wired in yet.',
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _MetricsCard extends StatelessWidget {
-  const _MetricsCard();
-
-  @override
-  Widget build(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
-    return Card(
-      key: const ValueKey('metrics-card'),
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Metrics', style: theme.textTheme.titleMedium),
-            const SizedBox(height: 12),
-            const _EmptyState(
-              icon: Icons.speed_outlined,
-              message:
-                  'Tokens per second and eval timings appear here after a '
-                  'generation.',
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _EmptyState extends StatelessWidget {
-  const _EmptyState({required this.icon, required this.message});
-
-  final IconData icon;
-  final String message;
-
-  @override
-  Widget build(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Icon(icon, size: 20, color: theme.colorScheme.onSurfaceVariant),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Text(
-            message,
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-        ),
-      ],
+    return BlocSelector<
+      InferenceBloc,
+      InferenceState,
+      (InferenceStatus, ModelParams, InferenceFailure?)
+    >(
+      selector: (InferenceState state) =>
+          (state.status, state.params, state.failure),
+      builder:
+          (
+            BuildContext context,
+            (InferenceStatus, ModelParams, InferenceFailure?) data,
+          ) {
+            final (
+              InferenceStatus status,
+              ModelParams params,
+              InferenceFailure? _,
+            ) = data;
+            return ModelParamsForm(
+              status: status,
+              params: params,
+              picker: picker,
+            );
+          },
     );
   }
 }

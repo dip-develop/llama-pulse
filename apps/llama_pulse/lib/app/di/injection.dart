@@ -8,15 +8,25 @@ import 'injection.config.dart';
 /// Service locator shared by the whole app.
 final GetIt getIt = GetIt.instance;
 
+/// Whether the stub engine is opted into at compile time.
+///
+/// The flag is a `bool.fromEnvironment`, so a release build can never silently
+/// emit synthetic tokens: it requires `--dart-define` at build time.
+const bool _stubEngineEnabled = bool.fromEnvironment('LLAMAPULSE_STUB_ENGINE');
+
 /// Registers every dependency the app needs.
 ///
 /// Core types are wired by hand: `injectable` only generates code for this
 /// package, while `llama_pulse_core` deliberately stays DI-framework free.
+///
+/// An explicit [engine] always wins; otherwise [useStubEngine] (or the
+/// compile-time flag) selects the synthetic [WorkerLlamaEngine].
 @InjectableInit()
 Future<void> configureDependencies({
   LlamaEngine? engine,
   ConfigStore? configStore,
   AppPaths? paths,
+  bool? useStubEngine,
 }) async {
   final AppPaths resolvedPaths = paths ?? AppPaths.resolve();
   getIt
@@ -53,6 +63,8 @@ Future<void> configureDependencies({
     );
   if (engine != null) {
     getIt.registerLazySingleton<LlamaEngine>(() => engine);
+  } else if (useStubEngine ?? _stubEngineEnabled) {
+    getIt.registerLazySingleton<LlamaEngine>(WorkerLlamaEngine.new);
   }
   getIt
     ..registerFactory<InferenceBloc>(

@@ -70,10 +70,38 @@ void main() {
       configStore: InMemoryConfigStore(),
     );
 
+    expect(getIt.isRegistered<LlamaEngine>(), isFalse);
     expect(() => getIt<LlamaEngine>(), throwsA(isA<StateError>()));
 
     final InferenceBloc bloc = getIt<InferenceBloc>();
     expect(bloc, isA<InferenceBloc>());
     await bloc.close();
+  });
+
+  test('registers the worker stub engine on request', () async {
+    await getIt.reset();
+    await configureDependencies(
+      paths: AppPaths(configDirectory: tempDir.path),
+      configStore: InMemoryConfigStore(),
+      useStubEngine: true,
+    );
+
+    expect(getIt<LlamaEngine>(), isA<WorkerLlamaEngine>());
+    // The worker is spawned lazily, so disposing before any call is safe and
+    // leaves no isolate behind for the next test.
+    await getIt<LlamaEngine>().dispose();
+    await getIt.reset();
+  });
+
+  test('an explicit engine wins over the stub flag', () async {
+    await getIt.reset();
+    await configureDependencies(
+      paths: AppPaths(configDirectory: tempDir.path),
+      configStore: InMemoryConfigStore(),
+      engine: FakeLlamaEngine(),
+      useStubEngine: true,
+    );
+
+    expect(getIt<LlamaEngine>(), isA<FakeLlamaEngine>());
   });
 }
