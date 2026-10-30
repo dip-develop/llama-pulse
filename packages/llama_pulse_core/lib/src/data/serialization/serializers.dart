@@ -9,6 +9,10 @@ import '../../domain/entities/inference_failure.dart';
 import '../../domain/entities/inference_failure_code.dart';
 import '../../domain/entities/model_file_info.dart';
 import '../../domain/entities/model_params.dart';
+import '../../domain/entities/worker_request.dart';
+import '../../domain/entities/worker_request_kind.dart';
+import '../../domain/entities/worker_response.dart';
+import '../../domain/entities/worker_response_kind.dart';
 
 part 'serializers.g.dart';
 
@@ -25,6 +29,10 @@ part 'serializers.g.dart';
   InferenceFailure,
   InferenceFailureCode,
   ModelFileInfo,
+  WorkerRequest,
+  WorkerRequestKind,
+  WorkerResponse,
+  WorkerResponseKind,
 ])
 final Serializers serializers =
     (_$serializers.toBuilder()..addPlugin(StandardJsonPlugin())).build();

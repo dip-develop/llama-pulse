@@ -15,7 +15,11 @@ Serializers _$serializers =
           ..add(InferenceFailure.serializer)
           ..add(InferenceFailureCode.serializer)
           ..add(ModelFileInfo.serializer)
-          ..add(ModelParams.serializer))
+          ..add(ModelParams.serializer)
+          ..add(WorkerRequest.serializer)
+          ..add(WorkerRequestKind.serializer)
+          ..add(WorkerResponse.serializer)
+          ..add(WorkerResponseKind.serializer))
         .build();
 
 // ignore_for_file: deprecated_member_use_from_same_package,type=lint

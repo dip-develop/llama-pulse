@@ -14,6 +14,9 @@ final class FakeLlamaEngine implements LlamaEngine {
   /// Number of times [dispose] was called.
   int disposeCalls = 0;
 
+  /// Number of times [unload] was called.
+  int unloadCalls = 0;
+
   @override
   Future<void> load(ModelParams params) async {
     loadedParams.add(params);
@@ -28,6 +31,11 @@ final class FakeLlamaEngine implements LlamaEngine {
   @override
   Future<void> cancel(int requestId) async {
     cancelledRequestIds.add(requestId);
+  }
+
+  @override
+  Future<void> unload() async {
+    unloadCalls++;
   }
 
   @override
