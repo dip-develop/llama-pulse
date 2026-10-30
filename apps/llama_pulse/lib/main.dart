@@ -1,3 +1,3 @@
 import 'app/bootstrap.dart';
 
-void main() => runLlamaPulse();
+Future<void> main() => runLlamaPulse();

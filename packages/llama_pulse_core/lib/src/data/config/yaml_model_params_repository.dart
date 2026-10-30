@@ -3,6 +3,7 @@ import 'package:built_value/serializer.dart';
 import '../../domain/entities/model_params.dart';
 import '../../domain/exceptions/invalid_model_params_exception.dart';
 import '../../domain/gateways/config_store.dart';
+import '../../domain/gateways/model_params_repository.dart';
 import '../../domain/model_params_validator.dart';
 import 'config_names.dart';
 
@@ -11,7 +12,7 @@ import 'config_names.dart';
 /// Loading is forgiving: a missing, stale or malformed document falls back to
 /// [ModelParams.defaults] instead of throwing. Saving validates first and
 /// refuses to write invalid parameters.
-final class YamlModelParamsRepository {
+final class YamlModelParamsRepository implements ModelParamsRepository {
   /// Creates a repository backed by [store].
   factory YamlModelParamsRepository({
     required ConfigStore store,
@@ -26,6 +27,7 @@ final class YamlModelParamsRepository {
   final ModelParamsValidator _validator;
 
   /// Reads the stored parameters, falling back to defaults.
+  @override
   Future<ModelParams> load() async {
     try {
       final document = await _store.read(ConfigNames.params);
@@ -70,6 +72,7 @@ final class YamlModelParamsRepository {
 
   /// Validates and writes [params], throwing [InvalidModelParamsException] and
   /// writing nothing when validation fails.
+  @override
   Future<void> save(ModelParams params) async {
     final violations = _validator.validate(params);
     if (violations.isNotEmpty) {

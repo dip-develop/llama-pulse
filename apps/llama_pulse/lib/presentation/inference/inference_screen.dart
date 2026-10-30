@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:llama_pulse_core/llama_pulse_core.dart';
 
 /// Inference workspace: startup parameters, generation output and metrics.
 class InferenceScreen extends StatelessWidget {
@@ -111,7 +112,9 @@ class _ParametersCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
+    final ModelParams params = ModelParams.defaults();
     return Card(
+      key: const ValueKey('parameters-card'),
       child: Padding(
         padding: const EdgeInsets.all(20),
         child: Column(
@@ -119,14 +122,28 @@ class _ParametersCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text('Model parameters', style: theme.textTheme.titleMedium),
+            const SizedBox(height: 4),
+            Text(
+              'Defaults — not yet editable',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
             const SizedBox(height: 16),
-            const _ParameterRow(label: 'Model path', value: 'Not set'),
-            const _ParameterRow(label: 'Context size', value: '2048'),
-            const _ParameterRow(label: 'GPU layers', value: '0'),
-            const _ParameterRow(label: 'Threads', value: '4'),
-            const _ParameterRow(label: 'Temperature', value: '0.8'),
-            const _ParameterRow(label: 'Top-p', value: '0.95'),
-            const _ParameterRow(label: 'Top-k', value: '40'),
+            _ParameterRow(
+              label: 'Model path',
+              value: params.modelPath.isEmpty ? 'Not set' : params.modelPath,
+            ),
+            _ParameterRow(
+              label: 'Context size',
+              value: '${params.contextSize}',
+            ),
+            _ParameterRow(label: 'GPU layers', value: '${params.gpuLayers}'),
+            _ParameterRow(label: 'Threads', value: '${params.threads}'),
+            _ParameterRow(label: 'Temperature', value: '${params.temperature}'),
+            _ParameterRow(label: 'Top-p', value: '${params.topP}'),
+            _ParameterRow(label: 'Top-k', value: '${params.topK}'),
+            _ParameterRow(label: 'Max tokens', value: '${params.maxTokens}'),
           ],
         ),
       ),
@@ -168,6 +185,7 @@ class _OutputCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
     return Card(
+      key: const ValueKey('output-card'),
       child: Padding(
         padding: const EdgeInsets.all(20),
         child: Column(
@@ -197,6 +215,7 @@ class _MetricsCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
     return Card(
+      key: const ValueKey('metrics-card'),
       child: Padding(
         padding: const EdgeInsets.all(20),
         child: Column(
