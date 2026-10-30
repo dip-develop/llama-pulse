@@ -6,7 +6,9 @@ local models directory. Inference is not part of the CLI yet: `run` and `bench`
 arrive together with the worker engine.
 
 Run it from source with `dart run bin/llamapulse.dart <command>` or build a
-native executable with `dart compile exe bin/llamapulse.dart`.
+native executable with `dart compile exe bin/llamapulse.dart`. From the
+repository root, `dart run llama_pulse_cli:llamapulse <command>` also works, and
+`dart run melos run build:cli` writes `build/llamapulse`.
 
 ## Commands
 
