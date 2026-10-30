@@ -30,7 +30,8 @@ The repository is one pub workspace and one Melos workspace.
   Melos 7+ reads its config there; there is no `melos.yaml`.
 - Members are `packages/llama_pulse_core`, `apps/llama_pulse` and
   `apps/llama_pulse_cli`, each declaring `resolution: workspace`.
-- Exactly one `pubspec.lock`, at the root. Never commit a member lockfile.
+- Exactly one `pubspec.lock`, at the root. It is generated and git-ignored;
+  never commit it or a member lockfile.
 - Run `flutter pub get` at the root only; never inside a member directory.
 - `melos` is a root dev-dependency. Use `dart run melos …`; no global install.
 - The `gen` script runs build_runner in dependency order: core, then app.
@@ -79,7 +80,9 @@ The root also sets `dependency_overrides: cli_util: ^0.6.0`.
 package is self-contained.
 
 Rules: no new dependency without a one-line justification in the PR that adds
-it; `pubspec.lock` is committed.
+it. Reproducibility comes from the exact pins above, the
+`dependency_overrides` pin, and the codegen-idempotency gate: `melos run gen`
+must leave the tree clean when run twice.
 
 ## 4. Layout and dependency rule
 

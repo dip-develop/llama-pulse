@@ -16,7 +16,7 @@ Status: alpha — the inference engine is not wired in yet.
 ```
 llama-pulse/
 ├── pubspec.yaml            pub-workspace root and Melos 8 configuration
-├── pubspec.lock            one lockfile for all three packages
+├── pubspec.lock            generated, git-ignored; shared by all members
 ├── analysis_options.yaml   shared lint rules
 ├── apps/llama_pulse/       Flutter desktop app
 ├── apps/llama_pulse_cli/   pure-Dart CLI, executable `llamapulse`

@@ -41,6 +41,8 @@ migrate_working_dir/
 **/.dart_tool/
 **/flutter/ephemeral/
 pubspec_overrides.yaml
+pubspec.lock
+**/pubspec.lock
 
 # Symbolication related
 app.*.symbols
