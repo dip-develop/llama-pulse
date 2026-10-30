@@ -3,8 +3,9 @@
 A small command-line companion to the LlamaPulse desktop app. It reads and
 writes the same `params.yaml` the desktop app uses and lists the `.gguf` files
 in the local models directory. `run` and `bench` generate text against the
-deterministic stub engine; the native llama.cpp session is the next milestone,
-and until it lands both commands require `--stub`.
+deterministic `StubLlamaSession` when `--stub` is passed; `--stub` selects it
+explicitly and is not a fallback. The native llama.cpp session is the next
+milestone, and until it lands both commands require `--stub`.
 
 Run it from source with `dart run bin/llamapulse.dart <command>` or build a
 native executable with `dart compile exe bin/llamapulse.dart`. From the
@@ -83,8 +84,10 @@ modified: 2026-10-30T12:00:00.000Z
 ### `run`
 
 Generate one prompt. The native engine is not implemented yet, so `--stub` is
-mandatory: without it the command exits 1 with an `engineUnavailable` failure
-and never falls back silently. In stub mode the model path is echoed into the
+mandatory: it selects the deterministic stub session inside the worker. Without
+it the command exits 1 with
+`error: engineUnavailable: the native session is unavailable; pass --stub` and
+never falls back silently. In stub mode the model path is echoed into the
 request but not read, so no file-existence check happens.
 
 ```
@@ -118,8 +121,10 @@ $ llamapulse run --stub --model /models/demo.gguf --prompt "Hello" --max-tokens 
 ### `bench`
 
 Run the fixed prompt `The quick brown fox jumps over the lazy dog.` several
-times and report aggregate throughput. `--stub` is mandatory, as for `run`; with
-no configured model, stub mode uses the `<stub>` placeholder path.
+times and report aggregate throughput. `--stub` is mandatory, as for `run`, and
+selects the same deterministic stub session; without it the same
+`engineUnavailable` message exits 1. With no configured model, stub mode uses the
+`<stub>` placeholder path.
 
 ```
 $ llamapulse bench --stub --runs 3

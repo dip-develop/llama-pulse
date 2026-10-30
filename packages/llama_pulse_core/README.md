@@ -34,13 +34,20 @@ import 'package:llama_pulse_core/llama_pulse_core.dart';
 isolate, spawned lazily on the first `load`, `unload` or `generate`. Requests
 and responses are the `built_value` `WorkerRequest`/`WorkerResponse` DTOs; the
 transport waits up to 10 s for the worker's `WorkerReady` handshake and surfaces
-isolate errors and unexpected exits as failures.
+isolate errors and unexpected exits as failures. A handshake timeout aborts the
+start and the same transport can be started again; `close()` cleans up a spawn
+that is still in flight, so a worker never leaks.
 
 Guarantees the worker loop provides:
 
-- The worker isolate owns the `LlamaSession`; the caller never runs it.
+- The worker isolate owns the `LlamaSession`; the caller never runs it. Dispose
+  waits for the in-flight generation and any pending cancel, so `cancel()` and
+  `dispose()` never overlap.
 - Cancellation is cooperative. A `cancel` request is checked between generation
-  steps; `Isolate.kill` is never used during generation.
+  steps; `Isolate.kill` is used only by `WorkerTransport` on handshake abort and
+  on `close()` after a 2 s grace, never to cancel a generation.
+- Reusing an in-flight request id is rejected with one `failed` event carrying
+  `engineBusy`; the live request keeps running.
 - Exactly one terminal event per request: `completed`, `cancelled` or `failed`.
 - Token batches are coalesced and metrics arrive every 250 ms.
 - Load failures throw `InferenceFailureException`; every other engine failure
@@ -50,9 +57,11 @@ The native session is **not** included yet. `WorkerConfig.useStubSession`
 selects the session inside the worker: `true` runs `StubLlamaSession`, which
 produces deterministic text and respects the token cap; the default runs
 `UnavailableLlamaSession`, whose `load` fails with `engineUnavailable` so a
-normal build can never emit synthetic output silently. The native llama.cpp
-session replaces the placeholder and implements the same `LlamaSession`
-interface without changing `LlamaEngine` or its callers.
+normal build can never emit synthetic output silently. The selection is always
+explicit: `--stub` in the CLI, `LLAMAPULSE_STUB_ENGINE` (or an injected engine)
+in the app, never a runtime fallback. The native llama.cpp session replaces the
+placeholder and implements the same `LlamaSession` interface without changing
+`LlamaEngine` or its callers.
 
 ## Configuration
 

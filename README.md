@@ -3,9 +3,10 @@
 Run local language models through llama.cpp, from a desktop GUI or the command
 line. Maintained by DIP Dev.
 
-Status: alpha — the stub worker engine, the desktop GUI and the CLI
-`run`/`bench` commands are wired end to end. The native llama.cpp session is the
-next milestone.
+Status: alpha — the worker layer with an opt-in deterministic stub, the desktop
+GUI and the CLI `run`/`bench` commands are wired end to end. The plain app ships
+no engine and reports `engineUnavailable`; the demo build runs the stub. The
+native llama.cpp session is the next milestone.
 
 ## Why
 
@@ -40,13 +41,16 @@ Naming: app `llama_pulse`, CLI `llamapulse`, package `llama_pulse_core`.
 - Core entities, validation, YAML config storage, model-file scanning and the
   worker-isolate inference layer (`WorkerRequest`/`WorkerResponse`,
   `WorkerTransport`, `WorkerLlamaEngine`, `WorkerLoop`, `StubLlamaSession`).
-  The worker selects the stub session only when asked; the default fails
-  `load` with `engineUnavailable`. There is no `dart:ffi` code yet.
-- Demo-mode GUI: editable parameters persisted to the shared `params.yaml`, a
-  prompt editor, Generate/Cancel/Unload, streamed output, a live tokens/sec
-  metrics panel and a failure banner. A normal build ships no engine and says
-  so; `melos run app:stub` enables the synthetic engine.
-- 237 tests across the three packages (155 core, 53 CLI, 29 app).
+  The worker selects `StubLlamaSession` only when asked explicitly
+  (`--stub` in the CLI, `LLAMAPULSE_STUB_ENGINE` or `melos run app:stub` in the
+  app); by default `UnavailableLlamaSession` fails `load` with
+  `engineUnavailable`. There is no `dart:ffi` code yet.
+- GUI: editable parameters persisted to the shared `params.yaml`, a prompt
+  editor, Generate/Cancel/Unload, streamed output, a live tokens/sec metrics
+  panel and a failure banner. A plain build ships no engine and reports
+  `engineUnavailable` until the native session lands; the demo build
+  (`melos run app:stub`) runs the synthetic stub and shows its banner.
+- 258 tests across the three packages (165 core, 61 CLI, 32 app).
 
 The native llama.cpp session is the next milestone. It slots in behind
 `LlamaSession` without changing the `LlamaEngine` API or the GUI.
@@ -216,10 +220,15 @@ All engine work runs in a worker isolate; the UI isolate never touches it.
 
 - `WorkerLlamaEngine` spawns exactly one long-lived isolate, lazily on the first
   `load`, `unload` or `generate`, and speaks `WorkerRequest`/`WorkerResponse`
-  over ports. Caller request ids are non-negative and unique per request;
-  control requests use negative ids so they cannot collide.
+  over ports. Caller request ids are non-negative and unique while in flight;
+  reusing an in-flight id is rejected with `engineBusy`, and control requests use
+  negative ids so they cannot collide. A handshake timeout aborts the start and
+  the transport can be started again; `close()` racing a spawn still cleans up
+  the worker.
 - The worker isolate owns the `LlamaSession`. Cancellation is cooperative: a
-  `cancel` request is checked between steps and never becomes `Isolate.kill`.
+  `cancel` request is checked between steps. `WorkerTransport` is the only code
+  that kills the isolate, on handshake abort and on `close()` after a 2 s grace;
+  a generation is never cancelled that way.
 - The worker coalesces token batches and emits metrics every 250 ms; exactly one
   terminal response (`completed`, `cancelled` or `failed`) ends each request.
 - Persisted models and UI state are immutable `built_value` values, with

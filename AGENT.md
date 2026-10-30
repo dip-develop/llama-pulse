@@ -6,11 +6,12 @@ LlamaPulse is a workspace for running local LLMs through llama.cpp: a Flutter
 desktop GUI (`apps/llama_pulse`), a command-line companion
 (`apps/llama_pulse_cli`) and a shared Dart package (`packages/llama_pulse_core`).
 The MVP goal: pick a model and a llama.cpp library, tune the startup parameters,
-watch the run. Today the GUI runs against the stub engine with an editable
-parameter form, streaming output and live metrics; the CLI reads and writes the
-shared configuration, lists local model files, and its `run`/`bench` commands
-also run against the stub behind `--stub`. Native inference is the next
-milestone.
+watch the run. Today the GUI has an editable parameter form, streaming output and
+live metrics; a plain build ships no engine and reports `engineUnavailable`,
+while the opt-in demo build (`melos run app:stub`) runs the stub behind a demo
+banner. The CLI reads and writes the shared configuration, lists local model
+files, and its `run`/`bench` commands run the same stub behind `--stub`. Native
+inference is the next milestone.
 
 MVP:
 
@@ -64,7 +65,6 @@ Pins are deliberate; do not loosen them without reproducing the resolution:
 | `flutter_bloc` | `^9.1.1` | app state management for the inference screen |
 | `file_selector` | `^1.1.0` | native file dialog behind `ModelPathPicker` |
 | `bloc_test` (dev) | `^10.0.0` | bloc transition tests in the app |
-| `mocktail` (dev) | `^1.0.5` | engine and picker fakes in app tests |
 | `injectable_generator` | `3.1.3` | exact; paired with `injectable ^3.0.0` |
 | `get_it` | `^9.3.0` | DI container in the app |
 | `injectable` | `^3.0.0` | annotations for app-owned registrations |
@@ -187,8 +187,10 @@ A worker isolate exists. Core's `data/inference/` holds the protocol
 `WorkerLlamaEngine`, `WorkerLoop`, `StubLlamaSession`, the
 `UnavailableLlamaSession` placeholder and the `@pragma('vm:entry-point')`
 `llamaWorkerMain` entrypoint. There is no `dart:ffi` code yet;
-`WorkerConfig.useStubSession` selects the stub inside the worker and defaults to
-the unavailable placeholder.
+`--stub` and `LLAMAPULSE_STUB_ENGINE` set `WorkerConfig.useStubSession`
+explicitly. The default session is `UnavailableLlamaSession`, whose `load`
+fails with `engineUnavailable` ("the native llama.cpp session is not implemented
+yet"), so a plain build has no engine.
 
 - One long-lived worker isolate per engine, spawned lazily on the first
   `load`/`unload`/`generate`. A failed start is retried on the next call. No
@@ -196,18 +198,26 @@ the unavailable placeholder.
 - `Isolate.spawn` resolves the entrypoint by value, so `llamaWorkerMain` keeps
   its `@pragma('vm:entry-point')`.
 - Messages across the port are `built_value` DTOs. Caller request ids are
-  non-negative and unique while in flight; control requests use negative ids so
-  they cannot collide.
+  non-negative and unique while in flight; reusing an in-flight id is rejected
+  with one `failed` event carrying `engineBusy` and leaves the live request
+  untouched. Control requests use negative ids so they cannot collide.
 - The worker isolate owns the session: it is the only place that calls `open`,
   `load`, `begin`/`next`, `cancel`, `unload` and `dispose` on a `LlamaSession`.
+  Dispose awaits the in-flight generation and any pending cancel before calling
+  `LlamaSession.dispose`, so `cancel()` and `dispose()` never overlap.
 - Cancellation is cooperative: a `cancel` request is checked between decode
-  steps. Never `Isolate.kill` during generation — it leaks native memory.
+  steps. `Isolate.kill` is used only by `WorkerTransport`, on handshake abort and
+  on `close()` after a 2 s grace; it is never used to cancel a generation, which
+  would leak native memory.
 - Exactly one terminal event per request: `completed`, `cancelled` or `failed`.
 - Token batches are coalesced and metrics are emitted every 250 ms.
 - `WorkerTransport` waits up to 10 s for the `WorkerReady` handshake and
-  surfaces isolate errors and unexpected exits as failures. `WorkerLlamaEngine`
-  applies a 30 s load/unload timeout and a 5 min per-request timeout, and its
-  `dispose` is idempotent.
+  surfaces isolate errors and unexpected exits as failures. A handshake timeout
+  aborts the start and the transport can be started again; a `close()` that
+  races an in-flight spawn still kills the worker, so nothing leaks.
+  `WorkerLlamaEngine` applies a 30 s load/unload timeout and a 5 min per-request
+  timeout, and its `dispose` is idempotent, awaits the transport teardown and
+  cancels its subscriptions.
 - Failures cross the port as `InferenceFailure` values, never as thrown
   exceptions. Load failures throw `InferenceFailureException` on the caller
   side.
@@ -259,9 +269,11 @@ Core has no annotations and no `get_it`; it only defines gateways.
 Commands: `version`, `params get`, `params set`, `models list`,
 `models inspect`, `run` and `bench`.
 
-- `run` and `bench` require `--stub` until the native engine lands. Without it,
-  both exit `1` with `engineUnavailable`. The CLI never silently falls back to
-  the stub.
+- `run` and `bench` require `--stub` until the native engine lands. `--stub`
+  explicitly selects the deterministic `StubLlamaSession` inside the worker; it
+  is not a fallback. Without it, both exit `1` with
+  `engineUnavailable: the native session is unavailable; pass --stub`. The CLI
+  never silently falls back to the stub.
 - `run` flags: `--model`, `--prompt`, `--file` (`-` reads stdin), `--stream`,
   `--json`, `--threads`, `--temperature`, `--top-p`, `--top-k`, `--max-tokens`
   and `--context-size`. `--prompt` and `--file` are mutually exclusive; one is
@@ -318,7 +330,7 @@ APIs, no `!` on nullable values, no empty `catch` blocks.
 
 From the root, `dart run melos test`. Melos picks `flutter test` for the app and
 `dart test` for core and CLI. Test the critical seams, not every line. Coverage
-is not a target. The suites hold 237 tests today: 155 core, 53 CLI, 29 app.
+is not a target. The suites hold 258 tests today: 165 core, 61 CLI, 32 app.
 
 Must test today:
 
@@ -327,19 +339,26 @@ Must test today:
   invalid parameters.
 - Scanner warnings and path resolution.
 - CLI exit codes, `--json` shape, and `run`/`bench` NDJSON and exit codes
-  (`0`, `1`, `2`, `130`) with the stdout/stderr split.
+  (`0`, `1`, `2`, `130`) with the stdout/stderr split. `run` validates flags,
+  options and the model before reading stdin, and invalid UTF-8 from `--file` is
+  a usage error (exit 2). A stream that ends without a terminal is reported as
+  `failed(unknown, 'the engine stream ended without a result')`.
 - The worker layer: `WorkerLoop` responses, `WorkerTransport` through a real
-  isolate (handshake timeout, crash and exit), and `WorkerLlamaEngine`
-  (lazy spawn, per-request timeout, cooperative cancel, idempotent dispose).
-- `InferenceBloc` state machine, including terminal events, cancellation and the
-  100-entry metrics-history cap.
+  isolate (handshake timeout and reuse after an aborted start, crash and exit,
+  `close()` racing a spawn), and `WorkerLlamaEngine` (lazy spawn, per-request
+  timeout, cooperative cancel, duplicate request ids, idempotent dispose).
+- `InferenceBloc` state machine, including terminal events, cancellation, the
+  100-entry metrics-history cap, unload rejected with `engineBusy` while
+  generating, Generate re-validating params, and stored params never clobbering
+  edits made before `Started` completes.
 - Widget tests for streamed output, Generate/Cancel, the editable form and the
   demo-engine banner.
 - DI registration and the test overrides.
 - Screen layout: wide and narrow windows.
 
-Real-isolate tests live in core's `dart test`, never in `flutter test`:
-Flutter's test binding and an actual isolate handshake do not mix reliably.
+Real-isolate tests run only in the pure-Dart suites: core's `dart test` and the
+CLI's `dart test`; never in `flutter test`. Flutter's test binding and an actual
+isolate handshake do not mix reliably.
 
 Tests mirror the package layout. Most core fakes are declared inline in the
 test file that uses them; the app keeps shared fakes in `test/support/`. Never
@@ -446,8 +465,9 @@ local paths.
 
 - [ ] The workspace resolves with one lockfile (`flutter pub get` at the root).
 - [ ] `pubspec.lock` stays untracked.
-- [ ] `dart run melos run check` is green (237 tests: 155 core, 53 CLI, 29 app).
-- [ ] The stub path works end to end from the compiled CLI and the demo app.
+- [ ] `dart run melos run check` is green (258 tests: 165 core, 61 CLI, 32 app).
+- [ ] The stub path works end to end from the compiled CLI (`--stub`) and the
+  demo app (`melos run app:stub`); the plain app reports `engineUnavailable`.
 - [ ] No `dart:ffi` in this batch.
 - [ ] `dart run melos run gen` twice leaves `git status` clean.
 - [ ] Layers respected; no Flutter imports in core, no `dart:ffi` on the UI
