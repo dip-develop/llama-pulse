@@ -1,10 +1,11 @@
 # llamapulse CLI
 
 A small command-line companion to the LlamaPulse desktop app. It reads and
-writes the same `params.yaml` the desktop app will use (the app's parameter form
-is not wired yet) and lists the `.gguf` files in the local models directory.
-Inference is not part of the CLI yet: `run` and `bench` arrive together with the
-worker engine.
+writes the same `params.yaml` the desktop app uses and lists the `.gguf` files
+in the local models directory. `run` and `bench` generate text against the
+deterministic `StubLlamaSession` when `--stub` is passed; `--stub` selects it
+explicitly and is not a fallback. The native llama.cpp session is the next
+milestone, and until it lands both commands require `--stub`.
 
 Run it from source with `dart run bin/llamapulse.dart <command>` or build a
 native executable with `dart compile exe bin/llamapulse.dart`. From the
@@ -80,13 +81,77 @@ sizeMiB: 1918.42
 modified: 2026-10-30T12:00:00.000Z
 ```
 
+### `run`
+
+Generate one prompt. The native engine is not implemented yet, so `--stub` is
+mandatory: it selects the deterministic stub session inside the worker. Without
+it the command exits 1 with
+`error: engineUnavailable: the native session is unavailable; pass --stub` and
+never falls back silently. In stub mode the model path is echoed into the
+request but not read, so no file-existence check happens.
+
+```
+$ llamapulse run --stub --model /models/demo.gguf --prompt "Hello" --max-tokens 8
+Local models run on your machine. No
+$ echo "Hello" | llamapulse run --stub --model /models/demo.gguf --file - --stream
+```
+
+Flags: `--model`, `--prompt`, `--file` (`-` reads stdin), `--stream`, `--json`,
+`--threads`, `--temperature`, `--top-p`, `--top-k`, `--max-tokens` and
+`--context-size`. `--prompt` and `--file` are mutually exclusive; one is
+required. `--json` and `--stream` cannot be combined.
+
+`--stream` writes NDJSON: one schema-v1 object per line. Event types are
+`started`, `token`, `metrics`, `completed`, `cancelled` and `failed`. A
+`metrics` object carries `promptTokenCount`, `generatedTokenCount`,
+`promptEvalMs`, `evalMs`, `tokensPerSecond` and `promptTokensPerSecond`; a
+`failure` object carries `code`, `message` and `details`.
+
+```console
+$ llamapulse run --stub --model /models/demo.gguf --prompt "Hello" --max-tokens 8 --stream
+{"schemaVersion":1,"type":"started","requestId":1}
+{"schemaVersion":1,"type":"token","requestId":1,"text":"Local"}
+{"schemaVersion":1,"type":"token","requestId":1,"text":" models"}
+{"schemaVersion":1,"type":"metrics","requestId":1,"metrics":{"promptTokenCount":1,"generatedTokenCount":8,"promptEvalMs":3,"evalMs":189,"tokensPerSecond":42.33,"promptTokensPerSecond":333.33}}
+{"schemaVersion":1,"type":"completed","requestId":1,"text":"Local models run on your machine. No","metrics":{"promptTokenCount":1,"generatedTokenCount":8,"promptEvalMs":3,"evalMs":189,"tokensPerSecond":42.33,"promptTokensPerSecond":333.33}}
+```
+
+`run --json` prints exactly one final JSON object instead of the stream.
+
+### `bench`
+
+Run the fixed prompt `The quick brown fox jumps over the lazy dog.` several
+times and report aggregate throughput. `--stub` is mandatory, as for `run`, and
+selects the same deterministic stub session; without it the same
+`engineUnavailable` message exits 1. With no configured model, stub mode uses the
+`<stub>` placeholder path.
+
+```
+$ llamapulse bench --stub --runs 3
+runs: 3  generatedTokens: 36  evalMs: 818  tokensPerSecond: 44.01
+$ llamapulse bench --stub --runs 3 --json
+{"schemaVersion":1,"type":"bench","runs":3,"modelPath":"<stub>","promptChars":44,"promptTokenCount":11,"generatedTokenCount":36,"evalMs":818,"tokensPerSecond":44.01,"perRun":[{"requestId":1,"generatedTokenCount":12,"evalMs":274,"tokensPerSecond":43.8},{"requestId":2,"generatedTokenCount":12,"evalMs":272,"tokensPerSecond":44.12},{"requestId":3,"generatedTokenCount":12,"evalMs":272,"tokensPerSecond":44.12}]}
+```
+
+Flags: `--runs` (1..50, default 3), `--json`, `--max-tokens` (default 32), plus
+the shared `--model`, `--threads`, `--temperature`, `--top-p`, `--top-k` and
+`--context-size` overrides. Without `--json`, per-run progress lines go to
+stderr and the aggregate line goes to stdout.
+
+### stdout and stderr
+
+stdout carries command data only: generated text, NDJSON events or the final
+JSON object. stderr carries diagnostics, the human completion summary, per-run
+bench progress and usage errors.
+
 ## `--json`
 
 Every leaf command (`version`, `params get`, `params set`, `models list`,
-`models inspect`) accepts `--json` and prints a single-line JSON object instead
-of human-readable text. The `params` and `models` groups are not invocable and
-have no `--json` of their own. The YAML document used by `params get` and
-`params set` stays YAML on disk; `--json` only changes the presentation.
+`models inspect`, `run`, `bench`) accepts `--json` and prints a single-line JSON
+object instead of human-readable text. `run` also accepts `--stream`. The
+`params` and `models` groups are not invocable and have no `--json` of their
+own. The YAML document used by `params get` and `params set` stays YAML on disk;
+`--json` only changes the presentation.
 
 ```
 $ llamapulse version --json
@@ -112,9 +177,10 @@ location.
 | Code | Meaning |
 |---|---|
 | 0 | Success |
-| 1 | Unexpected failure |
+| 1 | Unexpected failure, including `engineUnavailable` without `--stub` |
 | 2 | Invalid arguments or parameters that failed validation |
 | 3 | The requested model file was not found or is not a readable `.gguf` file |
+| 130 | Generation cancelled by SIGINT |
 
 ## Help
 

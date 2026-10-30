@@ -3,11 +3,13 @@
 Shared, Flutter-free core for LlamaPulse. This package owns:
 
 - `built_value` entities: `ModelParams`, `GenerationRequest`,
-  `GenerationMetrics`, `GenerationEvent`, `InferenceFailure` and
-  `ModelFileInfo`, with their serializers.
+  `GenerationMetrics`, `GenerationEvent`, `InferenceFailure`,
+  `WorkerRequest`/`WorkerResponse` and `ModelFileInfo`, with their serializers.
 - `ModelParamLimits` and `ModelParamsValidator`.
-- Gateways: `LlamaEngine`, `ModelParamsRepository`, `ModelScanner`,
-  `ConfigStore`.
+- Gateways: `LlamaEngine`, `LlamaSession`, `ModelParamsRepository`,
+  `ModelScanner`, `ConfigStore`.
+- The worker-isolate inference layer: `WorkerTransport`, `WorkerLlamaEngine`,
+  `WorkerLoop`, `StubLlamaSession` and the `llamaWorkerMain` entrypoint.
 - Use cases: `LoadModelParams`, `SaveModelParams`, `ListModels`,
   `InspectModel`.
 - The YAML configuration layer: `AppPaths`, `YamlEncoder`, `YamlDecoder`,
@@ -16,8 +18,9 @@ Shared, Flutter-free core for LlamaPulse. This package owns:
 - `ModelFileScanner` and `Utf8TokenAccumulator`.
 
 It has no Flutter imports and no DI annotations. The import rules are enforced
-by `test/architecture/core_imports_test.dart`. `dart:ffi` is allowed here
-because the native bridge will only run inside the worker isolate.
+by `test/architecture/core_imports_test.dart`. `dart:ffi` will be allowed here
+because native code will only run inside the worker isolate; no FFI code exists
+yet.
 
 The public entrypoint is:
 
@@ -25,10 +28,45 @@ The public entrypoint is:
 import 'package:llama_pulse_core/llama_pulse_core.dart';
 ```
 
+## Inference engine
+
+`WorkerLlamaEngine` implements `LlamaEngine` on top of one long-lived worker
+isolate, spawned lazily on the first `load`, `unload` or `generate`. Requests
+and responses are the `built_value` `WorkerRequest`/`WorkerResponse` DTOs; the
+transport waits up to 10 s for the worker's `WorkerReady` handshake and surfaces
+isolate errors and unexpected exits as failures. A handshake timeout aborts the
+start and the same transport can be started again; `close()` cleans up a spawn
+that is still in flight, so a worker never leaks.
+
+Guarantees the worker loop provides:
+
+- The worker isolate owns the `LlamaSession`; the caller never runs it. Dispose
+  waits for the in-flight generation and any pending cancel, so `cancel()` and
+  `dispose()` never overlap.
+- Cancellation is cooperative. A `cancel` request is checked between generation
+  steps; `Isolate.kill` is used only by `WorkerTransport` on handshake abort and
+  on `close()` after a 2 s grace, never to cancel a generation.
+- Reusing an in-flight request id is rejected with one `failed` event carrying
+  `engineBusy`; the live request keeps running.
+- Exactly one terminal event per request: `completed`, `cancelled` or `failed`.
+- Token batches are coalesced and metrics arrive every 250 ms.
+- Load failures throw `InferenceFailureException`; every other engine failure
+  surfaces as an `InferenceFailure` value.
+
+The native session is **not** included yet. `WorkerConfig.useStubSession`
+selects the session inside the worker: `true` runs `StubLlamaSession`, which
+produces deterministic text and respects the token cap; the default runs
+`UnavailableLlamaSession`, whose `load` fails with `engineUnavailable` so a
+normal build can never emit synthetic output silently. The selection is always
+explicit: `--stub` in the CLI, `LLAMAPULSE_STUB_ENGINE` (or an injected engine)
+in the app, never a runtime fallback. The native llama.cpp session replaces the
+placeholder and implements the same `LlamaSession` interface without changing
+`LlamaEngine` or its callers.
+
 ## Configuration
 
-Configuration is YAML. `params.yaml` is written by the CLI today; the desktop
-app will use the same file:
+Configuration is YAML. Both the CLI and the desktop app read and write the same
+`params.yaml`; the app persists the form when you press Save:
 
 ```yaml
 schemaVersion: 1

@@ -11,4 +11,7 @@ abstract final class ExitCodes {
 
   /// The requested model file does not exist or is not a `.gguf` file.
   static const int notFound = 3;
+
+  /// The user interrupted the running command (128 + SIGINT).
+  static const int interrupted = 130;
 }

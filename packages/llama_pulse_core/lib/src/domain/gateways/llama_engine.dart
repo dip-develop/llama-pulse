@@ -17,6 +17,11 @@ abstract interface class LlamaEngine {
   /// Cooperatively cancels the request identified by [requestId].
   Future<void> cancel(int requestId);
 
+  /// Releases the loaded model but keeps the engine alive.
+  ///
+  /// [load] may follow; [dispose] is terminal.
+  Future<void> unload();
+
   /// Releases native resources held by the engine.
   Future<void> dispose();
 }

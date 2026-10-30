@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:llama_pulse/app/di/injection.dart';
+import 'package:llama_pulse/presentation/inference/bloc/inference_bloc.dart';
 import 'package:llama_pulse_core/llama_pulse_core.dart';
 
 import '../../support/fake_llama_engine.dart';
@@ -26,7 +27,7 @@ void main() {
     }
   });
 
-  test('registers the app dependencies', () {
+  test('registers the app dependencies', () async {
     expect(getIt<AppPaths>().configDirectory, tempDir.path);
     expect(getIt<ConfigStore>(), isA<InMemoryConfigStore>());
     expect(getIt<ModelParamsRepository>(), isA<YamlModelParamsRepository>());
@@ -37,6 +38,10 @@ void main() {
     expect(getIt.isRegistered<SaveModelParams>(), isTrue);
     expect(getIt.isRegistered<ListModels>(), isTrue);
     expect(getIt.isRegistered<InspectModel>(), isTrue);
+    expect(getIt.isRegistered<InferenceBloc>(), isTrue);
+    final InferenceBloc bloc = getIt<InferenceBloc>();
+    expect(bloc, isA<InferenceBloc>());
+    await bloc.close();
   });
 
   test('loads defaults from an empty store', () async {
@@ -65,6 +70,38 @@ void main() {
       configStore: InMemoryConfigStore(),
     );
 
+    expect(getIt.isRegistered<LlamaEngine>(), isFalse);
     expect(() => getIt<LlamaEngine>(), throwsA(isA<StateError>()));
+
+    final InferenceBloc bloc = getIt<InferenceBloc>();
+    expect(bloc, isA<InferenceBloc>());
+    await bloc.close();
+  });
+
+  test('registers the worker stub engine on request', () async {
+    await getIt.reset();
+    await configureDependencies(
+      paths: AppPaths(configDirectory: tempDir.path),
+      configStore: InMemoryConfigStore(),
+      useStubEngine: true,
+    );
+
+    expect(getIt<LlamaEngine>(), isA<WorkerLlamaEngine>());
+    // The worker is spawned lazily, so disposing before any call is safe and
+    // leaves no isolate behind for the next test.
+    await getIt<LlamaEngine>().dispose();
+    await getIt.reset();
+  });
+
+  test('an explicit engine wins over the stub flag', () async {
+    await getIt.reset();
+    await configureDependencies(
+      paths: AppPaths(configDirectory: tempDir.path),
+      configStore: InMemoryConfigStore(),
+      engine: FakeLlamaEngine(),
+      useStubEngine: true,
+    );
+
+    expect(getIt<LlamaEngine>(), isA<FakeLlamaEngine>());
   });
 }
