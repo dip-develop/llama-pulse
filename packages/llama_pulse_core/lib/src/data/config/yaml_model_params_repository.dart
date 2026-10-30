@@ -52,13 +52,12 @@ final class YamlModelParamsRepository {
     }
   }
 
-  /// Validates and writes [params], throwing [InvalidModelParamsException] and
-  /// writing nothing when validation fails.
-  Future<void> save(ModelParams params) async {
-    final violations = _validator.validate(params);
-    if (violations.isNotEmpty) {
-      throw InvalidModelParamsException(violations);
-    }
+  /// Returns the `params.yaml` document that stores [params].
+  ///
+  /// The shape is fixed here so that [save], which calls this method, and
+  /// callers that preview a document (for example the CLI's `params get`)
+  /// cannot drift apart.
+  Map<String, Object?> toDocument(ModelParams params) {
     final serialized = _serializers.serializeWith(
       ModelParams.serializer,
       params,
@@ -66,9 +65,16 @@ final class YamlModelParamsRepository {
     if (serialized is! Map<String, Object?>) {
       throw StateError('ModelParams did not serialize to a map');
     }
-    await _store.write(ConfigNames.params, {
-      'schemaVersion': ModelParams.schemaVersion,
-      'params': serialized,
-    });
+    return {'schemaVersion': ModelParams.schemaVersion, 'params': serialized};
+  }
+
+  /// Validates and writes [params], throwing [InvalidModelParamsException] and
+  /// writing nothing when validation fails.
+  Future<void> save(ModelParams params) async {
+    final violations = _validator.validate(params);
+    if (violations.isNotEmpty) {
+      throw InvalidModelParamsException(violations);
+    }
+    await _store.write(ConfigNames.params, toDocument(params));
   }
 }

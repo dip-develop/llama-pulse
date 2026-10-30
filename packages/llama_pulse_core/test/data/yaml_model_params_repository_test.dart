@@ -43,6 +43,13 @@ void main() {
     expect(await paramsFile.readAsString(), golden);
   });
 
+  test('toDocument encodes to the golden document byte for byte', () async {
+    final golden = await File('test/fixtures/params_golden.yaml')
+        .readAsString();
+
+    expect(YamlEncoder.encode(repository.toDocument(_params())), golden);
+  });
+
   test('load reads the golden document', () async {
     final golden = await File('test/fixtures/params_golden.yaml')
         .readAsString();
