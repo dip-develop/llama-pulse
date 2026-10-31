@@ -33,7 +33,7 @@ void main() {
     final lines = File('${pinDirectory.path}/SHA256SUMS').readAsLinesSync()
       ..removeWhere((line) => line.trim().isEmpty);
 
-    expect(lines, hasLength(6));
+    expect(lines, hasLength(8));
     for (final line in lines) {
       final match = RegExp(r'^([0-9a-f]{64})  (.+)$').firstMatch(line);
       expect(match, isNotNull, reason: 'malformed line: $line');
