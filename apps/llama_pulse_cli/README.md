@@ -254,11 +254,17 @@ and still exit `0`.
 
 Both generate against the embedded worker path. The native session runs by
 default and `--lib` names the llama.cpp shared library; without it the worker
-searches `LLAMA_PULSE_LIB`, the bundle, the executable directory, the config
-directory and finally the bare soname. A missing library exits `1` with
-`libraryNotFound` and the searched paths. `--stub` selects the deterministic
-`StubLlamaSession` explicitly; it is not a fallback. In stub mode the model path
-is echoed but not read.
+searches `LLAMA_PULSE_LIB`, `<exeDir>/lib`, `<exeDir>`, the macOS `Frameworks`
+directory, `<config>/lib` and finally the bare soname. The library must report
+exactly `0.8.0` from `llama_version()`, or the load fails with
+`libraryVersionMismatch`; build one from the pinned tag with
+[`third_party/llama_cpp/v0.8.0/BUILD.md`](../../third_party/llama_cpp/v0.8.0/BUILD.md)
+and prefer `LLAMA_PULSE_LIB` over a copy next to the executable, because the
+sibling `libggml*` libraries must be reachable too. A missing library exits `1`
+with `libraryNotFound` and every searched path on stderr (or in the `failed`
+object's `details`). `--stub` selects the deterministic `StubLlamaSession`
+explicitly; it is not a fallback. In stub mode the model path is echoed but not
+read.
 
 ```
 $ llamapulse run --stub --model /models/demo.gguf --prompt "Hello" --max-tokens 8
@@ -275,8 +281,8 @@ exclusive; one is required. `--json` and `--stream` cannot be combined.
 `--stream` writes NDJSON with `started`, `token`, `metrics`, `completed`,
 `cancelled` and `failed`. `bench` flags: `--runs` (1..50, default 3), `--json`,
 `--max-tokens` (default 32) and the shared overrides. Without `--stub`,
-`bench` requires a readable `.gguf` model: a blank path exits `2` and a missing
-file exits `3`.
+`bench` requires a readable `.gguf` model: a blank path exits `2` and a missing,
+non-`.gguf` or unreadable file exits `3`.
 
 ## `--json`
 
