@@ -216,4 +216,36 @@ void main() {
     // Tests run without `--dart-define`, so the release-safe defaults hold.
     expect(stubServerEnabled, isFalse);
   });
+
+  test('the signal guard follows the platform', () {
+    expect(supportsTerminationSignals, !Platform.isWindows);
+  });
+
+  test('handleTerminationSignal disposes once and is re-entry safe', () async {
+    final FakeServerController fake = FakeServerController();
+    await getIt.reset();
+    await configureDependencies(
+      paths: AppPaths(configDirectory: tempDir.path),
+      configStore: InMemoryConfigStore(),
+      serverController: fake,
+    );
+    final List<int> exitCodes = <int>[];
+
+    await handleTerminationSignal(
+      ProcessSignal.sigterm,
+      exitProcess: exitCodes.add,
+    );
+
+    expect(exitCodes, <int>[0]);
+    expect(fake.disposeCalls, 1);
+
+    // A second signal exits immediately instead of disposing again.
+    await handleTerminationSignal(
+      ProcessSignal.sigint,
+      exitProcess: exitCodes.add,
+    );
+
+    expect(exitCodes, <int>[0, 130]);
+    expect(fake.disposeCalls, 1);
+  });
 }

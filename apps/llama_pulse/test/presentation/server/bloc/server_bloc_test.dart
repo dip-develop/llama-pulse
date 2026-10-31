@@ -48,6 +48,20 @@ Future<void> _waitUntil(bool Function() condition) async {
   throw StateError('condition was not met');
 }
 
+/// Waits on real time, for conditions driven by a [Timer].
+Future<void> _waitForCondition(
+  bool Function() condition, {
+  Duration timeout = const Duration(seconds: 2),
+}) async {
+  final DateTime deadline = DateTime.now().add(timeout);
+  while (!condition()) {
+    if (DateTime.now().isAfter(deadline)) {
+      throw StateError('condition was not met');
+    }
+    await Future<void>.delayed(const Duration(milliseconds: 5));
+  }
+}
+
 void main() {
   late InMemoryConfigStore store;
   late YamlServerConfigRepository repository;
@@ -65,11 +79,22 @@ void main() {
     stateRepository = FakeServerStateRepository();
   });
 
-  ServerBloc buildBloc() =>
-      ServerBloc(repository, _validator, controller, stateRepository);
+  ServerBloc buildBloc({
+    Duration externalStatePollInterval = const Duration(seconds: 2),
+  }) => ServerBloc(
+    repository,
+    _validator,
+    controller,
+    stateRepository,
+    externalStatePollInterval: externalStatePollInterval,
+  );
 
-  Future<ServerBloc> startedBloc() async {
-    final ServerBloc bloc = buildBloc();
+  Future<ServerBloc> startedBloc({
+    Duration externalStatePollInterval = const Duration(seconds: 2),
+  }) async {
+    final ServerBloc bloc = buildBloc(
+      externalStatePollInterval: externalStatePollInterval,
+    );
     bloc.add(const ServerDashboardStarted());
     await _waitUntil(() => bloc.state.binaryInfo != null);
     return bloc;
@@ -308,6 +333,9 @@ void main() {
       bloc.add(const ServerStopRequested());
       await _waitUntil(() => bloc.state.failure != null);
 
+      // The CLI stopped the run: the document no longer reports an active
+      // server, so the Start button is usable again.
+      stateRepository.recorded = ServerState.stopped(updatedAtEpochMs: 2);
       bloc.add(ServerConfigChanged(_validConfig()));
       bloc.add(const ServerStartRequested());
       await _waitUntil(() => controller.startedConfigs.isNotEmpty);
@@ -318,6 +346,126 @@ void main() {
       expect(controller.startedConfigs.single, _validConfig());
       expect(bloc.state.failure, isNull);
       expect(bloc.state.externalRun, isFalse);
+      await bloc.close();
+    },
+  );
+
+  test('an external run clears when the document turns stopped', () async {
+    stateRepository.recorded = _state(ServerPhase.running);
+    final ServerBloc bloc = await startedBloc(
+      externalStatePollInterval: const Duration(milliseconds: 15),
+    );
+    await _waitUntil(() => bloc.state.externalRun);
+    expect(bloc.state.canStart, isFalse);
+
+    stateRepository.recorded = ServerState.stopped(updatedAtEpochMs: 2);
+    await _waitForCondition(
+      () => !bloc.state.externalRun && bloc.state.phase == ServerPhase.stopped,
+    );
+
+    expect(bloc.state.canStart, isTrue);
+    await bloc.close();
+    // Nothing refreshes the document once the bloc is closed.
+    await Future<void>.delayed(const Duration(milliseconds: 40));
+    final int readsAfterClose = stateRepository.loadCalls;
+    await Future<void>.delayed(const Duration(milliseconds: 60));
+    expect(stateRepository.loadCalls, readsAfterClose);
+  });
+
+  test('an external run clears when the document disappears', () async {
+    stateRepository.recorded = _state(ServerPhase.running);
+    final ServerBloc bloc = await startedBloc(
+      externalStatePollInterval: const Duration(milliseconds: 15),
+    );
+    await _waitUntil(() => bloc.state.externalRun);
+
+    stateRepository.recorded = null;
+    await _waitForCondition(
+      () => !bloc.state.externalRun && bloc.state.phase == ServerPhase.stopped,
+    );
+
+    expect(bloc.state.canStart, isTrue);
+    await bloc.close();
+  });
+
+  test('ReloadRequested re-reads the config and the shared state', () async {
+    stateRepository.recorded = _state(ServerPhase.running);
+    final ServerBloc bloc = await startedBloc(
+      externalStatePollInterval: const Duration(seconds: 30),
+    );
+    await _waitUntil(() => bloc.state.externalRun);
+    final int stateReads = stateRepository.loadCalls;
+    await store.write(
+      ConfigNames.server,
+      repository.toDocument(_storedConfig()),
+    );
+    stateRepository.recorded = ServerState.stopped(updatedAtEpochMs: 2);
+
+    bloc.add(const ServerReloadRequested());
+    await _waitForCondition(
+      () => bloc.state.config == _storedConfig() && !bloc.state.externalRun,
+    );
+
+    expect(stateRepository.loadCalls, greaterThan(stateReads));
+    expect(bloc.state.phase, ServerPhase.stopped);
+    expect(bloc.state.canStart, isTrue);
+    await bloc.close();
+  });
+
+  test('close cancels the external refresh timer', () async {
+    stateRepository.recorded = _state(ServerPhase.running);
+    final ServerBloc bloc = await startedBloc(
+      externalStatePollInterval: const Duration(milliseconds: 10),
+    );
+    await _waitUntil(() => bloc.state.externalRun);
+
+    await bloc.close();
+    await Future<void>.delayed(const Duration(milliseconds: 40));
+    final int readsAfterClose = stateRepository.loadCalls;
+    await Future<void>.delayed(const Duration(milliseconds: 60));
+
+    expect(bloc.isClosed, isTrue);
+    expect(stateRepository.loadCalls, readsAfterClose);
+  });
+
+  test('StartRequested refreshes a stale document before starting', () async {
+    stateRepository.recorded = _state(ServerPhase.running);
+    final ServerBloc bloc = await startedBloc(
+      externalStatePollInterval: const Duration(seconds: 30),
+    );
+    await _waitUntil(() => bloc.state.externalRun);
+
+    // The document is stale: the CLI already stopped that run.
+    stateRepository.recorded = ServerState.stopped(updatedAtEpochMs: 2);
+    final int stateReads = stateRepository.loadCalls;
+    bloc.add(ServerConfigChanged(_validConfig()));
+    bloc.add(const ServerStartRequested());
+    await _waitUntil(() => controller.startedConfigs.isNotEmpty);
+
+    expect(stateRepository.loadCalls, greaterThan(stateReads));
+    expect(bloc.state.externalRun, isFalse);
+    expect(bloc.state.failure, isNull);
+    await bloc.close();
+  });
+
+  test(
+    'StartRequested keeps the guidance while the external run is real',
+    () async {
+      stateRepository.recorded = _state(ServerPhase.running);
+      final ServerBloc bloc = await startedBloc(
+        externalStatePollInterval: const Duration(seconds: 30),
+      );
+      await _waitUntil(() => bloc.state.externalRun);
+      final int stateReads = stateRepository.loadCalls;
+
+      bloc.add(ServerConfigChanged(_validConfig()));
+      bloc.add(const ServerStartRequested());
+      await _waitUntil(() => bloc.state.failure != null);
+
+      expect(stateRepository.loadCalls, greaterThan(stateReads));
+      expect(bloc.state.failure?.message, contains('llamapulse stop'));
+      expect(controller.startedConfigs, isEmpty);
+      expect(bloc.state.externalRun, isTrue);
       await bloc.close();
     },
   );

@@ -99,6 +99,14 @@ final class ServerControllerLogReceived extends ServerEvent {
   final ServerLogEntry entry;
 }
 
+/// Internal plumbing: the external-run refresh timer ticked.
+///
+/// The tick re-reads the shared state document, so a run started by the CLI is
+/// no longer reported after the CLI stops it. UI code never adds it.
+final class ServerExternalStatePolled extends ServerEvent {
+  const ServerExternalStatePolled();
+}
+
 /// Internal plumbing: one of the controller's streams ended.
 final class ServerControllerStreamEnded extends ServerEvent {
   const ServerControllerStreamEnded(this.error);

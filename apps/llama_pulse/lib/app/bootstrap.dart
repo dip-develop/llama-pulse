@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'dart:io';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
@@ -17,6 +19,20 @@ const bool stubServerEnabled = bool.fromEnvironment('LLAMAPULSE_STUB_SERVER');
 
 /// Keeps the exit listener registered with the widget binding alive.
 AppLifecycleListener? _lifecycleListener;
+
+/// Watchers for [ProcessSignal.sigterm] and [ProcessSignal.sigint].
+final List<StreamSubscription<ProcessSignal>> _signalWatchers = [];
+
+/// Whether a termination signal is already being handled.
+///
+/// A second signal must not wait for the first teardown: it exits at once.
+bool _terminationInProgress = false;
+
+/// Whether this platform delivers POSIX termination signals.
+///
+/// Windows has no `sigterm`/`sigint` streams; tests check this guard directly
+/// instead of raising a real process signal.
+bool get supportsTerminationSignals => !Platform.isWindows;
 
 /// Builds the root widget with the compile-time demo flags applied.
 ///
@@ -40,6 +56,8 @@ Future<void> runLlamaPulse() async {
     useStubServer: stubServerEnabled,
   );
 
+  await _watchTerminationSignals();
+
   // A hot restart runs [runLlamaPulse] again: dispose the previous hook so a
   // single exit request is not handled twice.
   _lifecycleListener?.dispose();
@@ -47,6 +65,7 @@ Future<void> runLlamaPulse() async {
   // stop it, otherwise the next launch finds a port already in use.
   _lifecycleListener = AppLifecycleListener(
     onExitRequested: () async {
+      await _cancelSignalWatchers();
       await disposeAppDependencies();
       return AppExitResponse.exit;
     },
@@ -54,6 +73,64 @@ Future<void> runLlamaPulse() async {
 
   runApp(buildRootApp());
 }
+
+/// Watches the POSIX termination signals once, when the platform has them.
+Future<void> _watchTerminationSignals() async {
+  await _cancelSignalWatchers();
+  if (!supportsTerminationSignals) {
+    return;
+  }
+  _signalWatchers
+    ..add(
+      ProcessSignal.sigterm.watch().listen(
+        (ProcessSignal signal) => unawaited(handleTerminationSignal(signal)),
+      ),
+    )
+    ..add(
+      ProcessSignal.sigint.watch().listen(
+        (ProcessSignal signal) => unawaited(handleTerminationSignal(signal)),
+      ),
+    );
+}
+
+Future<void> _cancelSignalWatchers() async {
+  final List<StreamSubscription<ProcessSignal>> watchers = List.of(
+    _signalWatchers,
+  );
+  _signalWatchers.clear();
+  for (final StreamSubscription<ProcessSignal> watcher in watchers) {
+    await watcher.cancel();
+  }
+}
+
+/// Handles one termination signal: tears the app down, then exits.
+///
+/// SIGTERM exits with 0 and SIGINT with 130, the conventional shell code for
+/// an interrupted process. A second signal exits immediately instead of
+/// waiting for the first teardown to finish.
+///
+/// [exitProcess] is a seam so tests can observe the code without ending the
+/// test process.
+Future<void> handleTerminationSignal(
+  ProcessSignal signal, {
+  void Function(int exitCode) exitProcess = _exitProcess,
+}) async {
+  final int code = signal == ProcessSignal.sigint ? 130 : 0;
+  if (_terminationInProgress) {
+    exitProcess(code);
+    return;
+  }
+  _terminationInProgress = true;
+  try {
+    await disposeAppDependencies();
+  } on Object catch (error, stack) {
+    debugPrint('Could not tear down on $signal: $error\n$stack');
+  }
+  await _cancelSignalWatchers();
+  exitProcess(code);
+}
+
+void _exitProcess(int code) => exit(code);
 
 /// Disposes the app-wide singletons so no server process outlives the window.
 ///

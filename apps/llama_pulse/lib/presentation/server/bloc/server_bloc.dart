@@ -16,12 +16,16 @@ class ServerBloc extends Bloc<ServerEvent, ServerDashboardState> {
   ///
   /// [stateRepository] reads the document the supervisor and the CLI share, so
   /// the dashboard can report on a server it did not start.
+  ///
+  /// [externalStatePollInterval] is how often the shared document is re-read
+  /// while [ServerDashboardState.externalRun] is true; tests shorten it.
   ServerBloc(
     this._configRepository,
     this._validator,
     this._controller,
-    this._stateRepository,
-  ) : super(ServerDashboardState.initial(serverState: _controller.state)) {
+    this._stateRepository, {
+    this.externalStatePollInterval = const Duration(seconds: 2),
+  }) : super(ServerDashboardState.initial(serverState: _controller.state)) {
     on<ServerDashboardStarted>(_onStarted);
     on<ServerConfigChanged>(_onConfigChanged);
     on<ServerSaveRequested>(_onSaveRequested);
@@ -36,6 +40,7 @@ class ServerBloc extends Bloc<ServerEvent, ServerDashboardState> {
     on<ServerControllerMetricsReceived>(_onControllerMetrics);
     on<ServerControllerLogReceived>(_onControllerLog);
     on<ServerControllerStreamEnded>(_onControllerStreamEnded);
+    on<ServerExternalStatePolled>(_onExternalStatePolled);
   }
 
   /// Keeps the dashboard bounded, regardless of how long the server runs.
@@ -43,6 +48,9 @@ class ServerBloc extends Bloc<ServerEvent, ServerDashboardState> {
 
   /// Keeps the log pane bounded; older lines stay in the log file.
   static const int maxLogs = 1000;
+
+  /// How often the shared state document is re-read during an external run.
+  final Duration externalStatePollInterval;
 
   final ServerConfigRepository _configRepository;
   final ServerConfigValidator _validator;
@@ -52,6 +60,7 @@ class ServerBloc extends Bloc<ServerEvent, ServerDashboardState> {
   StreamSubscription<ServerState>? _stateSubscription;
   StreamSubscription<ServerMetrics>? _metricsSubscription;
   StreamSubscription<ServerLogEntry>? _logSubscription;
+  Timer? _externalPollTimer;
   bool _subscribed = false;
 
   Future<void> _onStarted(
@@ -136,6 +145,9 @@ class ServerBloc extends Bloc<ServerEvent, ServerDashboardState> {
           ..externalRun = externalRun,
       ),
     );
+    // The CLI may stop the run at any time: keep the document under watch for
+    // as long as it is the only report on the server.
+    _syncExternalPolling(externalRun);
   }
 
   Future<ServerState?> _loadRecordedState() async {
@@ -211,37 +223,89 @@ class ServerBloc extends Bloc<ServerEvent, ServerDashboardState> {
     ServerReloadRequested event,
     Emitter<ServerDashboardState> emit,
   ) async {
+    ServerConfig? config;
+    ServerFailure? loadFailure;
     try {
-      final ServerConfig config = await _configRepository.load();
-      _emit(
-        emit,
-        state.rebuild(
-          (b) => b
-            ..config.replace(config)
-            ..dirty = false
-            ..failure = null,
-        ),
-      );
+      config = await _configRepository.load();
     } on Object catch (error) {
+      loadFailure = _failure(
+        ServerFailureCode.unknown,
+        'Could not load the server configuration: $error',
+      );
+    }
+    if (isClosed) {
+      return;
+    }
+    // Reloading discards edits, so it also refreshes the run the dashboard
+    // reports: the shared document is the only source for an external one.
+    await _refreshExternalState(emit);
+    if (isClosed) {
+      return;
+    }
+    final ServerConfig? loaded = config;
+    _emit(
+      emit,
+      state.rebuild((b) {
+        if (loaded != null) {
+          b
+            ..config.replace(loaded)
+            ..dirty = false
+            ..failure = null;
+        }
+        if (loadFailure != null) {
+          b.failure.replace(loadFailure);
+        }
+      }),
+    );
+  }
+
+  /// Re-reads the shared document and updates the run the dashboard reports.
+  ///
+  /// Returns whether the run is still external. Only the controller owns a
+  /// local process, so an active controller state always wins over the
+  /// document.
+  Future<bool> _refreshExternalState(Emitter<ServerDashboardState> emit) async {
+    final ServerState? recorded = await _loadRecordedState();
+    if (isClosed) {
+      return false;
+    }
+    final ServerState localState = _controller.state;
+    final bool externalRun =
+        recorded != null && recorded.isActive && !localState.isActive;
+    final ServerState next = externalRun ? recorded : localState;
+    if (!externalRun) {
+      _stopExternalPolling();
+    } else {
+      _ensureExternalPolling();
+    }
+    if (next != state.serverState || externalRun != state.externalRun) {
       _emit(
         emit,
         state.rebuild(
           (b) => b
-            ..failure.replace(
-              _failure(
-                ServerFailureCode.unknown,
-                'Could not load the server configuration: $error',
-              ),
-            ),
+            ..serverState.replace(next)
+            ..externalRun = externalRun,
         ),
       );
     }
+    return externalRun;
   }
 
-  void _onStartRequested(
+  Future<void> _onExternalStatePolled(
+    ServerExternalStatePolled event,
+    Emitter<ServerDashboardState> emit,
+  ) async {
+    if (!state.externalRun) {
+      _stopExternalPolling();
+      return;
+    }
+    await _refreshExternalState(emit);
+  }
+
+  Future<void> _onStartRequested(
     ServerStartRequested event,
     Emitter<ServerDashboardState> emit,
-  ) {
+  ) async {
     final List<String> violations = _validator.validateForStart(state.config);
     if (violations.isNotEmpty) {
       _emit(
@@ -256,9 +320,24 @@ class ServerBloc extends Bloc<ServerEvent, ServerDashboardState> {
       return;
     }
     final ServerConfig config = state.config;
-    // Never await here: the controller publishes `starting` while `start`
+    // Never await the controller here: it publishes `starting` while `start`
     // runs, and waiting would queue that state behind this handler.
     _emit(emit, state.rebuild((b) => b..failure = null));
+    if (state.externalRun) {
+      // The document may be stale: re-read it before the recorded run blocks a
+      // legitimate start.
+      final bool stillExternal = await _refreshExternalState(emit);
+      if (isClosed) {
+        return;
+      }
+      if (stillExternal) {
+        _emit(
+          emit,
+          state.rebuild((b) => b..failure.replace(_externalRunFailure())),
+        );
+        return;
+      }
+    }
     unawaited(_start(config));
   }
 
@@ -288,6 +367,7 @@ class ServerBloc extends Bloc<ServerEvent, ServerDashboardState> {
     }
     // The controller owns the process now, whatever the shared document
     // reported before.
+    _stopExternalPolling();
     _emit(
       emit,
       state.rebuild(
@@ -305,15 +385,7 @@ class ServerBloc extends Bloc<ServerEvent, ServerDashboardState> {
     if (state.externalRun) {
       _emit(
         emit,
-        state.rebuild(
-          (b) => b
-            ..failure.replace(
-              _failure(
-                ServerFailureCode.unknown,
-                'server was started outside this app; use `llamapulse stop`',
-              ),
-            ),
-        ),
+        state.rebuild((b) => b..failure.replace(_externalRunFailure())),
       );
       return;
     }
@@ -341,6 +413,11 @@ class ServerBloc extends Bloc<ServerEvent, ServerDashboardState> {
     Emitter<ServerDashboardState> emit,
   ) {
     final ServerFailure? failure = event.failure;
+    if (failure == null) {
+      // A local stop never happens during an external run, but no refresh may
+      // outlive a run this app no longer reports as external.
+      _stopExternalPolling();
+    }
     _emit(
       emit,
       state.rebuild((b) {
@@ -421,13 +498,17 @@ class ServerBloc extends Bloc<ServerEvent, ServerDashboardState> {
     Emitter<ServerDashboardState> emit,
   ) {
     final ServerState next = event.state;
+    // An active state means this controller now owns the process.
+    final bool externalRun = next.isActive ? false : state.externalRun;
+    if (!externalRun) {
+      _stopExternalPolling();
+    }
     _emit(
       emit,
       state.rebuild(
         (b) => b
           ..serverState.replace(next)
-          // An active state means this controller now owns the process.
-          ..externalRun = next.isActive ? false : state.externalRun,
+          ..externalRun = externalRun,
       ),
     );
   }
@@ -504,6 +585,35 @@ class ServerBloc extends Bloc<ServerEvent, ServerDashboardState> {
     );
   }
 
+  /// Keeps the refresh timer in step with the external-run flag.
+  void _syncExternalPolling(bool externalRun) {
+    if (externalRun) {
+      _ensureExternalPolling();
+    } else {
+      _stopExternalPolling();
+    }
+  }
+
+  void _ensureExternalPolling() {
+    if (isClosed || _externalPollTimer != null) {
+      return;
+    }
+    _externalPollTimer = Timer.periodic(
+      externalStatePollInterval,
+      (_) => _add(const ServerExternalStatePolled()),
+    );
+  }
+
+  void _stopExternalPolling() {
+    _externalPollTimer?.cancel();
+    _externalPollTimer = null;
+  }
+
+  ServerFailure _externalRunFailure() => _failure(
+    ServerFailureCode.unknown,
+    'server was started outside this app; use `llamapulse stop`',
+  );
+
   void _add(ServerEvent event) {
     if (isClosed) {
       return;
@@ -531,6 +641,7 @@ class ServerBloc extends Bloc<ServerEvent, ServerDashboardState> {
 
   @override
   Future<void> close() async {
+    _stopExternalPolling();
     _subscribed = false;
     await _stateSubscription?.cancel();
     await _metricsSubscription?.cancel();
