@@ -136,17 +136,23 @@ final class ServerLogStore {
 
   Future<void> _loadExisting(int max) async {
     final current = await _parse(File(_filePath));
-    var combined = current;
-    if (current.length < max) {
-      final backup = await _parse(File(_backupPath));
-      combined = <ServerLogEntry>[...backup, ...current];
+    final backup = await _parse(File(_backupPath));
+    // Continue numbering after the newest stored line, across both files, so a
+    // supervisor restart keeps `tail()` monotonic. Every entry keeps its own
+    // stored sequence.
+    for (final entry in <ServerLogEntry>[...backup, ...current]) {
+      if (entry.sequence > _sequence) {
+        _sequence = entry.sequence;
+      }
     }
+    final combined = current.length < max
+        ? <ServerLogEntry>[...backup, ...current]
+        : current;
     final selected = combined.length > max
         ? combined.sublist(combined.length - max)
         : combined;
     for (final entry in selected) {
-      final next = entry.rebuild((b) => b..sequence = ++_sequence);
-      _remember(next);
+      _remember(entry);
     }
   }
 

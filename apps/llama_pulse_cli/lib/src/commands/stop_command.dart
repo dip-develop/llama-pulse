@@ -48,7 +48,7 @@ final class StopCommand extends LlamaPulseCommand {
     final json = parsedArgs.flag('json');
     final repository = services.serverStateRepository;
     final state = await repository.load();
-    if (state == null || !state.isActive) {
+    if (state == null || _isGone(state)) {
       return _reportStopped(json: json, pid: null, forced: false);
     }
 
@@ -60,11 +60,20 @@ final class StopCommand extends LlamaPulseCommand {
     );
 
     // A forced kill cannot be handled by the process, so only the graceful
-    // attempt waits for the state document.
-    if (!force && (attempt.signalled == null || !await _waitUntilGone())) {
-      forced = true;
-      final latest = await repository.load() ?? state;
-      attempt = _signal(latest, ServerKillMode.force);
+    // attempt looks for acceptance before escalating.
+    if (!force) {
+      final gone = attempt.signalled != null && await _waitUntilGone();
+      if (!gone) {
+        forced = true;
+        final latest = await repository.load() ?? state;
+        if (!_isGone(latest)) {
+          attempt = _signal(latest, ServerKillMode.force);
+        }
+      }
+    }
+
+    if (forced) {
+      await _waitUntilGone();
     }
 
     final latest = await repository.load();
@@ -93,15 +102,34 @@ final class StopCommand extends LlamaPulseCommand {
     );
   }
 
-  /// Sends [mode] to the supervisor, falling back to the child when the
-  /// supervisor cannot be signalled.
+  /// Sends [mode] to the recorded process, or processes.
+  ///
+  /// A graceful stop goes to the supervisor so it can reap its child. A forced
+  /// stop signals the child first and then the supervisor, so a forced kill
+  /// leaves neither process behind.
   ({int? signalled, int? attempted}) _signal(
     ServerState state,
     ServerKillMode mode,
   ) {
     final supervisorPid = state.supervisorPid;
     final serverPid = state.serverPid;
+    final childIsDistinct = serverPid != null && serverPid != supervisorPid;
+    final force = mode == ServerKillMode.force;
+
     if (supervisorPid != null) {
+      if (force && childIsDistinct) {
+        final childAccepted = services.processSignaller.send(serverPid, mode);
+        final supervisorAccepted = services.processSignaller.send(
+          supervisorPid,
+          mode,
+        );
+        return (
+          signalled: childAccepted
+              ? serverPid
+              : (supervisorAccepted ? supervisorPid : null),
+          attempted: supervisorPid,
+        );
+      }
       if (services.processSignaller.send(supervisorPid, mode)) {
         return (signalled: supervisorPid, attempted: supervisorPid);
       }

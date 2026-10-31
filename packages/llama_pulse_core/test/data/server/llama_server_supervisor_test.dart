@@ -121,7 +121,12 @@ void main() {
   });
 
   tearDown(() async {
-    await supervisor?.dispose();
+    try {
+      await supervisor?.dispose();
+    } on ServerException {
+      // Some tests deliberately leave a child that survived SIGKILL; dispose
+      // reports it and still closes every resource.
+    }
     await process.close();
     if (await directory.exists()) {
       await directory.delete(recursive: true);
@@ -470,6 +475,8 @@ void main() {
       ServerPhase.stopping,
       ServerPhase.stopped,
     ]);
+    expect(states.first.serverPid, process.pid);
+    expect(states.first.supervisorPid, pid);
     expect(created.state.phase, ServerPhase.stopped);
     expect(created.state.serverPid, isNull);
     expect(created.state.supervisorPid, isNull);
@@ -583,7 +590,7 @@ void main() {
     expect(created.state.health, ServerHealth.degraded);
   });
 
-  test('a stale exit watcher cannot poison the next run', () async {
+  test('clears a retained pid when the child finally exits', () async {
     final processA = process..exitOnGraceful = false;
     final created = create();
     await startHealthy(created);
@@ -595,6 +602,17 @@ void main() {
       throwsServerFailure(ServerFailureCode.processExited),
     );
     expect(created.state.phase, ServerPhase.failed);
+    expect(created.state.serverPid, processA.pid);
+
+    final terminal = created.states.firstWhere(
+      (state) => state.phase == ServerPhase.failed && state.serverPid == null,
+    );
+    processA.exit(9);
+    final state = await terminal;
+
+    expect(state.serverPid, isNull);
+    expect(state.lastExitCode, 9);
+    expect(created.state.serverPid, isNull);
 
     final processB = FakeServerProcess(pid: 9876)..exitOnGraceful = true;
     addTearDown(processB.close);
@@ -710,6 +728,208 @@ void main() {
       expect(created.state.supervisorPid, isNull);
     },
   );
+
+  test('a failed stop can be retried while the child is retained', () async {
+    process.exitOnGraceful = false;
+    final created = create();
+    await startHealthy(created);
+
+    await expectLater(
+      created.stop(),
+      throwsServerFailure(ServerFailureCode.processExited),
+    );
+
+    process.exitOnForce = true;
+    await created.stop();
+
+    expect(created.state.phase, ServerPhase.stopped);
+    expect(created.state.serverPid, isNull);
+    expect(created.state.lastExitCode, 0);
+    expect(process.kills, [
+      ServerKillMode.graceful,
+      ServerKillMode.force,
+      ServerKillMode.graceful,
+      ServerKillMode.force,
+    ]);
+  });
+
+  test('stop without a process handle keeps the pid and refuses', () async {
+    process.exitOnGraceful = false;
+    final created = create();
+    await startHealthy(created);
+    await expectLater(
+      created.stop(),
+      throwsServerFailure(ServerFailureCode.processExited),
+    );
+    created.forgetProcessForTest();
+
+    final states = <ServerState>[];
+    final subscription = created.states.listen(states.add);
+    addTearDown(subscription.cancel);
+
+    await expectLater(
+      created.stop(),
+      throwsA(
+        isA<ServerException>()
+            .having(
+              (error) => error.failure.code,
+              'failure.code',
+              ServerFailureCode.processExited,
+            )
+            .having(
+              (error) => error.failure.details,
+              'failure.details',
+              contains('kill it manually'),
+            ),
+      ),
+    );
+    await pumpEventQueue();
+
+    expect(
+      states.where((state) => state.phase == ServerPhase.stopped),
+      isEmpty,
+    );
+    expect(states.single.phase, ServerPhase.failed);
+    expect(states.single.serverPid, process.pid);
+    expect(created.state.serverPid, process.pid);
+  });
+
+  test('rejects a start while a stale pid is recorded', () async {
+    process.exitOnGraceful = false;
+    final created = create();
+    await startHealthy(created);
+    await expectLater(
+      created.stop(),
+      throwsServerFailure(ServerFailureCode.processExited),
+    );
+
+    await expectLater(
+      created.start(_config(modelPath)),
+      throwsA(
+        isA<ServerException>()
+            .having(
+              (error) => error.failure.code,
+              'failure.code',
+              ServerFailureCode.invalidConfig,
+            )
+            .having(
+              (error) => error.failure.message,
+              'failure.message',
+              contains('a previous server process is still recorded'),
+            ),
+      ),
+    );
+    expect(launcher.calls, 1);
+  });
+
+  test('two concurrent stops await one termination', () async {
+    process.exitOnGraceful = true;
+    final created = create();
+    await startHealthy(created);
+
+    final states = <ServerState>[];
+    final subscription = created.states.listen(states.add);
+    addTearDown(subscription.cancel);
+
+    final first = created.stop();
+    final second = created.stop();
+    await Future.wait(<Future<void>>[first, second]);
+    await pumpEventQueue();
+
+    expect(process.kills, [ServerKillMode.graceful]);
+    expect(
+      states.where((state) => state.phase == ServerPhase.stopping),
+      hasLength(1),
+    );
+    expect(states.last.phase, ServerPhase.stopped);
+    expect(created.state.phase, ServerPhase.stopped);
+  });
+
+  test('dispose during an in-flight stop waits and closes resources', () async {
+    var delayCalls = 0;
+    final gate = Completer<void>();
+    final created = LlamaServerSupervisor(
+      launcher: launcher,
+      httpClient: httpClient,
+      portProbe: portProbe,
+      binaryLocator: binaryLocator,
+      stateRepository: stateRepository,
+      logStore: logStore,
+      validator: const ServerConfigValidator(),
+      tuning: _tuning,
+      clock: () => now,
+      delay: (duration) async {
+        now += duration.inMilliseconds;
+        delayCalls++;
+        if (delayCalls == 1) {
+          await gate.future;
+        }
+      },
+    );
+    supervisor = created;
+    process
+      ..exitOnGraceful = false
+      ..exitOnForce = true;
+    await startHealthy(created);
+
+    final stopping = created.stop();
+    await pumpEventQueue();
+    final disposing = created.dispose();
+    await pumpEventQueue();
+    gate.complete();
+    await stopping;
+    await disposing;
+
+    expect(created.state.phase, ServerPhase.stopped);
+    expect(process.kills, [ServerKillMode.graceful, ServerKillMode.force]);
+    expect(httpClient.closed, isTrue);
+  });
+
+  test('dispose closes resources even when stop fails', () async {
+    process
+      ..exitOnGraceful = false
+      ..exitOnForce = false;
+    final created = create();
+    await startHealthy(created);
+
+    await expectLater(
+      created.dispose(),
+      throwsServerFailure(ServerFailureCode.processExited),
+    );
+
+    expect(httpClient.closed, isTrue);
+    expect(created.state.phase, ServerPhase.failed);
+    expect(created.state.serverPid, process.pid);
+    await expectLater(created.states, emitsDone);
+    await created.dispose();
+  });
+
+  test('a failed abort of a start fails start and keeps the child', () async {
+    final health = Completer<ServerHttpResponse>();
+    httpClient.addResponse('/health', health.future);
+    process
+      ..exitOnGraceful = false
+      ..exitOnForce = false;
+    final created = create();
+
+    final starting = created.start(_config(modelPath));
+    await waitUntil(() => httpClient.paths.contains('/health'));
+    final stopping = created.stop();
+    await pumpEventQueue();
+    health.complete(_healthy);
+
+    await expectLater(
+      starting,
+      throwsServerFailure(ServerFailureCode.processExited),
+    );
+    await expectLater(
+      stopping,
+      throwsServerFailure(ServerFailureCode.processExited),
+    );
+
+    expect(created.state.phase, ServerPhase.failed);
+    expect(created.state.serverPid, process.pid);
+  });
 
   test('redacts the api key from logs and failure details', () async {
     httpClient.addResponse('/health', _healthy);

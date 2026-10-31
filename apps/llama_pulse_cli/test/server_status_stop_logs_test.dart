@@ -91,6 +91,15 @@ void main() {
       ..updatedAtEpochMs = 0,
   );
 
+  ServerState failedState({int serverPid = 124}) =>
+      runningState(supervisorPid: 123).rebuild(
+        (b) => b
+          ..phase = ServerPhase.failed
+          ..health = ServerHealth.unreachable
+          ..supervisorPid = null
+          ..serverPid = serverPid,
+      );
+
   test('status reports a running healthy server and exits 0', () async {
     final servicesUnderTest = services(controller: FakeServerController());
     await servicesUnderTest.serverStateRepository.save(
@@ -310,6 +319,7 @@ void main() {
 
     expect(signaller.calls, [
       (123, ServerKillMode.graceful),
+      (124, ServerKillMode.force),
       (123, ServerKillMode.force),
     ]);
     final result = _lines(out.toString()).single;
@@ -328,7 +338,10 @@ void main() {
     final runner = LlamaPulseCommandRunner(servicesUnderTest);
 
     expect(await runner.run(['stop', '--force']), ExitCodes.ok);
-    expect(signaller.calls, [(123, ServerKillMode.force)]);
+    expect(signaller.calls, [
+      (124, ServerKillMode.force),
+      (123, ServerKillMode.force),
+    ]);
     expect(out.toString(), 'stopped\n');
   });
 
@@ -346,8 +359,8 @@ void main() {
       expect(await runner.run(['stop', '--force', '--json']), ExitCodes.ok);
 
       expect(signaller.calls, [
-        (123, ServerKillMode.force),
         (124, ServerKillMode.force),
+        (123, ServerKillMode.force),
       ]);
       final result = _lines(out.toString()).single;
       expect(result['stopped'], isTrue);
@@ -367,13 +380,13 @@ void main() {
     expect(signaller.calls, [
       (123, ServerKillMode.graceful),
       (124, ServerKillMode.graceful),
-      (123, ServerKillMode.force),
       (124, ServerKillMode.force),
+      (123, ServerKillMode.force),
     ]);
     final result = _lines(out.toString()).single;
     expect(result['stopped'], isFalse);
     expect(result['forced'], isTrue);
-    expect(result['pid'], 124);
+    expect(result['pid'], 123);
     expect(err.toString(), contains('could not stop'));
 
     final retained = await servicesUnderTest.serverStateRepository.load();
@@ -382,6 +395,55 @@ void main() {
     expect(retained.supervisorPid, 123);
     expect(retained.serverPid, 124);
   });
+
+  test(
+    'stop does not report success while a failed run keeps its pid',
+    () async {
+      final signaller = _RecordingSignaller();
+      final servicesUnderTest = services(signaller: signaller);
+      await servicesUnderTest.serverStateRepository.save(failedState());
+      final runner = LlamaPulseCommandRunner(servicesUnderTest);
+
+      expect(await runner.run(['stop', '--json']), ExitCodes.failure);
+
+      expect(signaller.calls, [
+        (124, ServerKillMode.graceful),
+        (124, ServerKillMode.force),
+      ]);
+      final result = _lines(out.toString()).single;
+      expect(result['stopped'], isFalse);
+      expect(result['forced'], isTrue);
+      expect(result['pid'], 124);
+      expect(err.toString(), contains('could not stop'));
+
+      final retained = await servicesUnderTest.serverStateRepository.load();
+      expect(retained, isNotNull);
+      expect(retained!.phase, ServerPhase.failed);
+      expect(retained.serverPid, 124);
+    },
+  );
+
+  test(
+    'stop signals the child of a failed run and clears it once gone',
+    () async {
+      late CliServices servicesUnderTest;
+      final signaller = _RecordingSignaller();
+      servicesUnderTest = services(signaller: signaller);
+      signaller.onSend = (pid, mode) =>
+          unawaited(servicesUnderTest.serverStateRepository.clear());
+      await servicesUnderTest.serverStateRepository.save(failedState());
+      final runner = LlamaPulseCommandRunner(servicesUnderTest);
+
+      expect(await runner.run(['stop', '--json']), ExitCodes.ok);
+
+      expect(signaller.calls, [(124, ServerKillMode.graceful)]);
+      final result = _lines(out.toString()).single;
+      expect(result['stopped'], isTrue);
+      expect(result['forced'], isFalse);
+      expect(result['pid'], 124);
+      expect(await servicesUnderTest.serverStateRepository.load(), isNull);
+    },
+  );
 
   test('stop clears the state once the run is gone', () async {
     late CliServices servicesUnderTest;

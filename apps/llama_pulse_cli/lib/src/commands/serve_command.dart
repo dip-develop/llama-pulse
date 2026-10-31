@@ -261,10 +261,7 @@ final class ServeCommand extends LlamaPulseCommand {
               emitStarting(state);
               emitReady(state);
             case ServerPhase.stopping:
-              if (!stopRequested && !failedEmitted) {
-                stopRequested = true;
-                emitStopping('child-exit');
-              }
+              break;
             case ServerPhase.stopped:
               terminalSeen = true;
               if (json) {

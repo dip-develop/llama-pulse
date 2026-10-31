@@ -105,15 +105,15 @@ void main() {
   test('skips unparsable lines and caps loadExisting', () async {
     await File(filePath).writeAsString(
       'garbage\n'
-      '1\tstdout\talpha\n'
-      '2\tunknown\tbeta\n'
-      '3\tstderr\tgamma\n',
+      '1\t1\tstdout\talpha\n'
+      '2\t2\tunknown\tbeta\n'
+      '3\t3\tstderr\tgamma\n',
     );
 
     await store.loadExisting(max: 2);
 
     expect(store.recent.map((entry) => entry.line), ['alpha', 'gamma']);
-    expect(store.recent.map((entry) => entry.sequence), [1, 2]);
+    expect(store.recent.map((entry) => entry.sequence), [1, 3]);
   });
 
   test('rotates to a single backup at the size limit', () async {
@@ -158,12 +158,46 @@ void main() {
   });
 
   test('append after loadExisting continues the sequence', () async {
-    await File(filePath).writeAsString('1\tstdout\talpha\n');
+    await File(filePath).writeAsString('1\t1\tstdout\talpha\n');
     await store.loadExisting();
 
     store.append(ServerLogStream.stdout, 'beta');
 
     expect(store.recent.map((entry) => entry.sequence), [1, 2]);
     expect(store.recent.last.line, 'beta');
+  });
+
+  test('a reload keeps numbering after the stored lines', () async {
+    for (var index = 1; index <= 5; index++) {
+      store.append(ServerLogStream.stdout, 'line $index');
+    }
+    await store.flush();
+
+    final reloaded = ServerLogStore(filePath: filePath, capacity: 10);
+    addTearDown(reloaded.dispose);
+    await reloaded.loadExisting();
+
+    expect(reloaded.recent.map((entry) => entry.sequence), [1, 2, 3, 4, 5]);
+
+    reloaded.append(ServerLogStream.stdout, 'line 6');
+    await reloaded.flush();
+    expect(reloaded.recent.last.sequence, 6);
+    expect((await reloaded.tail(1)).single.sequence, 6);
+  });
+
+  test('loadExisting seeds from the maximum of a rotated pair', () async {
+    await File('$filePath.1').writeAsString(
+      '1\t1\tstdout\told one\n'
+      '1\t2\tstdout\told two\n'
+      '1\t9\tstdout\told nine\n',
+    );
+    await File(filePath).writeAsString('1\t3\tstdout\tnew three\n');
+
+    await store.loadExisting();
+
+    expect(store.recent.map((entry) => entry.sequence), [1, 2, 9, 3]);
+
+    store.append(ServerLogStream.stdout, 'next');
+    expect(store.recent.last.sequence, 10);
   });
 }

@@ -130,6 +130,7 @@ final class LlamaServerSupervisor implements ServerController {
   Future<void> _saveChain = Future<void>.value();
   Future<void>? _startFuture;
 
+  Future<void>? _stopFuture;
   Timer? _metricsTimer;
   Timer? _healthTimer;
   bool _sampling = false;
@@ -156,6 +157,15 @@ final class LlamaServerSupervisor implements ServerController {
 
   @override
   Stream<ServerLogEntry> get logs => _logStore.entries;
+
+  /// Drops the process handle while keeping the published state.
+  ///
+  /// Only for tests that model a state document whose process was lost; the
+  /// production supervisor never calls this.
+  void forgetProcessForTest() {
+    _process = null;
+    _exitCompleter = null;
+  }
 
   @override
   Future<ServerBinaryInfo> locateBinary(ServerConfig config) async {
@@ -187,6 +197,14 @@ final class LlamaServerSupervisor implements ServerController {
     if (_starting || _state.isActive) {
       return Future<void>.error(
         _error(ServerFailureCode.invalidConfig, 'a server is already running'),
+      );
+    }
+    if (_state.serverPid != null) {
+      return Future<void>.error(
+        _error(
+          ServerFailureCode.invalidConfig,
+          'a previous server process is still recorded; stop it first',
+        ),
       );
     }
 
@@ -374,8 +392,10 @@ final class LlamaServerSupervisor implements ServerController {
         _exitCompleter = null;
       } on ServerException {
         // The child survived SIGKILL: keep it and the failed state so a later
-        // command can still signal it.
-        return;
+        // command can still signal it, and fail the start so the UI keeps its
+        // failure banner.
+        _ready = false;
+        rethrow;
       }
     }
     _ready = false;
@@ -393,25 +413,69 @@ final class LlamaServerSupervisor implements ServerController {
   }
 
   @override
-  Future<void> stop() async {
+  Future<void> stop() {
     _stopRequested = true;
+    final existing = _stopFuture;
+    if (existing != null) {
+      return existing;
+    }
+    final future = _stop();
+    late final Future<void> tracked;
+    tracked = future.whenComplete(() {
+      if (identical(_stopFuture, tracked)) {
+        _stopFuture = null;
+      }
+    });
+    _stopFuture = tracked;
+    return tracked;
+  }
+
+  Future<void> _stop() async {
     final inFlight = _startFuture;
     if (inFlight != null) {
       await inFlight;
     }
-    if (_stopping) {
-      return;
-    }
     final process = _process;
-    if (process == null || !_state.isActive) {
-      return;
+    if (process == null) {
+      final recordedPid = _state.serverPid;
+      if (recordedPid == null) {
+        return;
+      }
+      // The state document still names a child we cannot signal: never report
+      // a successful stop, and tell the operator how to finish the job.
+      final failure = ServerFailure(
+        (b) => b
+          ..code = ServerFailureCode.processExited
+          ..message =
+              'a server process is still recorded; kill pid $recordedPid'
+          ..details =
+              'no process handle for pid $recordedPid; '
+              'kill it manually and clear the state',
+      );
+      _emit(
+        _stateFor(
+          ServerPhase.failed,
+          ServerHealth.unreachable,
+          serverPid: recordedPid,
+          lastExitCode: _lastExitCode,
+          failure: failure,
+        ),
+      );
+      throw ServerException(failure);
     }
 
     _stopping = true;
     try {
       _ready = false;
       _stopMonitors();
-      _emit(_stateFor(ServerPhase.stopping, _state.health));
+      _emit(
+        _stateFor(
+          ServerPhase.stopping,
+          _state.health,
+          serverPid: _state.serverPid,
+          lastExitCode: _state.lastExitCode,
+        ),
+      );
       final exit = _exitCompleter;
       if (exit == null) {
         throw _error(
@@ -489,14 +553,21 @@ final class LlamaServerSupervisor implements ServerController {
       return;
     }
     _disposed = true;
-    await stop();
-    await _cancelSubscriptions();
-    _stopMonitors();
-    await _saveChain;
-    _httpClient.close();
-    await _logStore.dispose();
-    await _statesController.close();
-    await _metricsController.close();
+    try {
+      await stop();
+    } finally {
+      await _cancelSubscriptions();
+      _stopMonitors();
+      await _saveChain;
+      _httpClient.close();
+      await _logStore.dispose();
+      if (!_statesController.isClosed) {
+        await _statesController.close();
+      }
+      if (!_metricsController.isClosed) {
+        await _metricsController.close();
+      }
+    }
   }
 
   Future<void> _awaitReady(
@@ -755,7 +826,36 @@ final class LlamaServerSupervisor implements ServerController {
     }
     _process = null;
     _lastExitCode = code;
-    if (!_ready || _stopping) {
+    if (_stopping) {
+      return;
+    }
+    if (!_ready) {
+      final recordedPid = _state.serverPid;
+      if (recordedPid == null) {
+        return;
+      }
+      // A child we kept after a failed stop exited on its own: publish the
+      // terminal state so the document never names a dead pid.
+      _stopMonitors();
+      _exitCompleter = null;
+      final failure = ServerFailure(
+        (b) => b
+          ..code = ServerFailureCode.processExited
+          ..message = 'llama-server exited (exit code $code)'
+          ..details = _tail(),
+      );
+      _logStore.append(
+        ServerLogStream.supervisor,
+        'llama-server exited with code $code',
+      );
+      _emit(
+        _stateFor(
+          ServerPhase.failed,
+          ServerHealth.unreachable,
+          lastExitCode: code,
+          failure: failure,
+        ),
+      );
       return;
     }
 
@@ -825,12 +925,16 @@ final class LlamaServerSupervisor implements ServerController {
         return;
       }
       _metricsController.add(sample);
-    } on ServerException {
+    } catch (error) {
+      // A monitor bug must not take down the supervisor, but it does mean the
+      // numbers are stale, so degrade the health instead of ignoring it.
       if (_isRunning(generation)) {
+        _logStore.append(
+          ServerLogStream.supervisor,
+          'metrics sampling failed: ${_redact('$error')}',
+        );
         _setHealth(ServerHealth.degraded);
       }
-    } catch (_) {
-      // A monitor bug must not take down the supervisor.
     } finally {
       _sampling = false;
     }
