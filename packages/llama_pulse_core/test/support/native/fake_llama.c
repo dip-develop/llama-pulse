@@ -52,6 +52,57 @@ static char g_memory_sentinel;
 static char g_sampler_sentinel;
 
 // ---------------------------------------------------------------------------
+// Generation script and recorders.
+// ---------------------------------------------------------------------------
+
+#define FAKE_MAX_TOKENS 8192
+#define FAKE_MAX_PIECES 256
+#define FAKE_MAX_TOKEN_PIECES 128
+#define FAKE_PIECE_BYTES 64
+
+// How many tokens llama_tokenize should produce. Negative values make the
+// first probe return that value and the following call fill the buffer.
+static int g_tokenize_result = 0;
+static int g_tokenize_calls = 0;
+static int g_tokenize_probe_pending = 0;
+
+// Token ids the sampler returns, in order.
+static int32_t g_tokens[FAKE_MAX_TOKENS];
+static int g_token_count = 0;
+static int g_sample_index = 0;
+static int g_sample_calls = 0;
+
+// Pieces aligned with the indices of g_tokens.
+static char g_piece_data[FAKE_MAX_PIECES][FAKE_PIECE_BYTES];
+static int g_piece_lengths[FAKE_MAX_PIECES];
+static int g_piece_count = 0;
+
+// Raw-byte pieces keyed by token id, used by the UTF-8 split test.
+static struct fake_token_piece {
+    int32_t token;
+    unsigned char bytes[FAKE_PIECE_BYTES];
+    int length;
+} g_token_pieces[FAKE_MAX_TOKEN_PIECES];
+static int g_token_piece_count = 0;
+
+static int g_decode_result = 0;
+static int g_decode_calls = 0;
+static int g_batch_chunks = 0;
+static int g_max_batch_tokens = 0;
+static int g_total_batch_tokens = 0;
+static int g_first_batch_pos = 0;
+static int g_last_batch_pos = 0;
+static int g_logits_count = 0;
+static int g_logits_mismatch = 0;
+static int g_batch_free_count = 0;
+static int g_memory_clear_count = 0;
+static int g_sampler_init_count = 0;
+static int g_sampler_free_count = 0;
+
+static struct llama_perf_context_data g_perf;
+static int g_perf_reset_count = 0;
+
+// ---------------------------------------------------------------------------
 // Test control surface.
 // ---------------------------------------------------------------------------
 
@@ -72,6 +123,90 @@ void fake_llama_set_fail_ctx(int fail) {
     g_fail_ctx = fail;
 }
 
+void fake_llama_set_tokenize_result(int count) {
+    g_tokenize_result = count;
+    g_tokenize_probe_pending = 0;
+}
+
+void fake_llama_set_tokens(const int32_t *ids, int n) {
+    if (n < 0) {
+        n = 0;
+    }
+    if (n > FAKE_MAX_TOKENS) {
+        n = FAKE_MAX_TOKENS;
+    }
+    if (ids != NULL) {
+        memcpy(g_tokens, ids, (size_t) n * sizeof(int32_t));
+    }
+    g_token_count = n;
+    g_sample_index = 0;
+}
+
+void fake_llama_set_pieces(const char *const *pieces, int n) {
+    if (n < 0) {
+        n = 0;
+    }
+    if (n > FAKE_MAX_PIECES) {
+        n = FAKE_MAX_PIECES;
+    }
+    g_piece_count = n;
+    for (int i = 0; i < n; i++) {
+        const char *piece = pieces == NULL ? NULL : pieces[i];
+        int length = 0;
+        if (piece != NULL) {
+            while (piece[length] != '\0' && length < FAKE_PIECE_BYTES - 1) {
+                g_piece_data[i][length] = piece[length];
+                length++;
+            }
+        }
+        g_piece_data[i][length] = '\0';
+        g_piece_lengths[i] = length;
+    }
+}
+
+void fake_llama_set_piece_bytes(int token, const uint8_t *bytes, int n) {
+    if (n < 0) {
+        n = 0;
+    }
+    if (n > FAKE_PIECE_BYTES) {
+        n = FAKE_PIECE_BYTES;
+    }
+    int slot = -1;
+    for (int i = 0; i < g_token_piece_count; i++) {
+        if (g_token_pieces[i].token == token) {
+            slot = i;
+            break;
+        }
+    }
+    if (slot < 0) {
+        if (g_token_piece_count >= FAKE_MAX_TOKEN_PIECES) {
+            return;
+        }
+        slot = g_token_piece_count++;
+        g_token_pieces[slot].token = token;
+    }
+    if (bytes != NULL && n > 0) {
+        memcpy(g_token_pieces[slot].bytes, bytes, (size_t) n);
+    }
+    g_token_pieces[slot].length = n;
+}
+
+void fake_llama_set_decode_result(int code) {
+    g_decode_result = code;
+}
+
+void fake_llama_set_sample_index(int idx) {
+    g_sample_index = idx;
+}
+
+void fake_llama_set_perf(double p_eval_ms, double eval_ms, int n_p_eval,
+                         int n_eval) {
+    g_perf.t_p_eval_ms = p_eval_ms;
+    g_perf.t_eval_ms = eval_ms;
+    g_perf.n_p_eval = n_p_eval;
+    g_perf.n_eval = n_eval;
+}
+
 void fake_llama_reset(void) {
     g_version_overridden = 0;
     g_backend_init_count = 0;
@@ -88,6 +223,29 @@ void fake_llama_reset(void) {
     g_no_perf = true;
     g_fail_model = -1;
     g_fail_ctx = -1;
+    g_tokenize_result = 0;
+    g_tokenize_calls = 0;
+    g_tokenize_probe_pending = 0;
+    g_token_count = 0;
+    g_sample_index = 0;
+    g_sample_calls = 0;
+    g_piece_count = 0;
+    g_token_piece_count = 0;
+    g_decode_result = 0;
+    g_decode_calls = 0;
+    g_batch_chunks = 0;
+    g_max_batch_tokens = 0;
+    g_total_batch_tokens = 0;
+    g_first_batch_pos = 0;
+    g_last_batch_pos = 0;
+    g_logits_count = 0;
+    g_logits_mismatch = 0;
+    g_batch_free_count = 0;
+    g_memory_clear_count = 0;
+    g_sampler_init_count = 0;
+    g_sampler_free_count = 0;
+    memset(&g_perf, 0, sizeof g_perf);
+    g_perf_reset_count = 0;
 }
 
 int fake_llama_gpu_layers(void) { return g_gpu_layers; }
@@ -102,6 +260,22 @@ int fake_llama_no_perf(void) { return g_no_perf ? 1 : 0; }
 int fake_llama_model_free_count(void) { return g_model_free_count; }
 int fake_llama_ctx_free_count(void) { return g_ctx_free_count; }
 int fake_llama_backend_init_count(void) { return g_backend_init_count; }
+
+int fake_llama_tokenize_calls(void) { return g_tokenize_calls; }
+int fake_llama_decode_calls(void) { return g_decode_calls; }
+int fake_llama_batch_nodes(void) { return g_batch_chunks; }
+int fake_llama_max_batch_tokens(void) { return g_max_batch_tokens; }
+int fake_llama_total_batch_tokens(void) { return g_total_batch_tokens; }
+int fake_llama_first_batch_pos(void) { return g_first_batch_pos; }
+int fake_llama_last_batch_pos(void) { return g_last_batch_pos; }
+int fake_llama_logits_count(void) { return g_logits_count; }
+int fake_llama_logits_last_only(void) { return g_logits_mismatch == 0; }
+int fake_llama_batch_free_count(void) { return g_batch_free_count; }
+int fake_llama_memory_clear_count(void) { return g_memory_clear_count; }
+int fake_llama_sampler_init_count(void) { return g_sampler_init_count; }
+int fake_llama_sampler_free_count(void) { return g_sampler_free_count; }
+int fake_llama_sample_calls(void) { return g_sample_calls; }
+int fake_llama_perf_reset_count(void) { return g_perf_reset_count; }
 
 // ---------------------------------------------------------------------------
 // llama.cpp API.
@@ -224,11 +398,31 @@ int32_t llama_tokenize(
     (void) vocab;
     (void) text;
     (void) text_len;
-    (void) tokens;
-    (void) n_tokens_max;
     (void) add_special;
     (void) parse_special;
-    return 0;
+    g_tokenize_calls += 1;
+
+    int need;
+    if (g_tokenize_result < 0) {
+        if (!g_tokenize_probe_pending) {
+            g_tokenize_probe_pending = 1;
+            return g_tokenize_result;
+        }
+        g_tokenize_probe_pending = 0;
+        need = -g_tokenize_result;
+    } else {
+        need = g_tokenize_result;
+    }
+    if (need == 0) {
+        return 0;
+    }
+    if (tokens == NULL || n_tokens_max < need) {
+        return -need;
+    }
+    for (int i = 0; i < need; i++) {
+        tokens[i] = (i % 9) + 1;
+    }
+    return need;
 }
 
 int32_t llama_token_to_piece(
@@ -239,34 +433,101 @@ int32_t llama_token_to_piece(
         int32_t lstrip,
         bool special) {
     (void) vocab;
-    (void) token;
-    (void) buf;
-    (void) length;
     (void) lstrip;
     (void) special;
-    return 0;
+
+    const unsigned char *source = NULL;
+    int source_length = 0;
+
+    for (int i = 0; i < g_token_piece_count; i++) {
+        if (g_token_pieces[i].token == token) {
+            source = g_token_pieces[i].bytes;
+            source_length = g_token_pieces[i].length;
+            break;
+        }
+    }
+    if (source == NULL) {
+        for (int i = 0; i < g_token_count && i < g_piece_count; i++) {
+            if (g_tokens[i] == token) {
+                source = (const unsigned char *) g_piece_data[i];
+                source_length = g_piece_lengths[i];
+                break;
+            }
+        }
+    }
+    if (source == NULL || source_length == 0) {
+        return 0;
+    }
+    if (buf == NULL || length < source_length) {
+        return -source_length;
+    }
+    memcpy(buf, source, (size_t) source_length);
+    return source_length;
 }
 
 struct llama_batch llama_batch_init(
         int32_t n_tokens,
         int32_t embd,
         int32_t n_seq_max) {
-    (void) n_tokens;
     (void) embd;
-    (void) n_seq_max;
+    if (n_tokens < 0) {
+        n_tokens = 0;
+    }
+    if (n_seq_max < 1) {
+        n_seq_max = 1;
+    }
+    const size_t count = (size_t) (n_tokens > 0 ? n_tokens : 1);
     struct llama_batch batch;
     memset(&batch, 0, sizeof batch);
+    batch.n_tokens = n_tokens;
+    batch.token = calloc(count, sizeof(llama_token));
+    batch.pos = calloc(count, sizeof(llama_pos));
+    batch.n_seq_id = calloc(count, sizeof(int32_t));
+    batch.seq_id = calloc(count, sizeof(int32_t *));
+    batch.logits = calloc(count, sizeof(int8_t));
+    for (int32_t i = 0; i < n_tokens; i++) {
+        batch.seq_id[i] = calloc((size_t) n_seq_max, sizeof(int32_t));
+    }
     return batch;
 }
 
 void llama_batch_free(struct llama_batch batch) {
-    (void) batch;
+    if (batch.seq_id != NULL) {
+        for (int32_t i = 0; i < batch.n_tokens; i++) {
+            free(batch.seq_id[i]);
+        }
+    }
+    free(batch.token);
+    free(batch.pos);
+    free(batch.n_seq_id);
+    free(batch.seq_id);
+    free(batch.logits);
+    g_batch_free_count += 1;
 }
 
 int32_t llama_decode(struct llama_context *ctx, struct llama_batch batch) {
     (void) ctx;
-    (void) batch;
-    return 0;
+    g_decode_calls += 1;
+    g_batch_chunks += 1;
+    g_total_batch_tokens += batch.n_tokens;
+    if (batch.n_tokens > g_max_batch_tokens) {
+        g_max_batch_tokens = batch.n_tokens;
+    }
+    if (batch.n_tokens > 0) {
+        if (g_batch_chunks == 1) {
+            g_first_batch_pos = batch.pos[0];
+        }
+        g_last_batch_pos = batch.pos[batch.n_tokens - 1];
+        for (int32_t i = 0; i < batch.n_tokens; i++) {
+            if (batch.logits[i] != 0) {
+                g_logits_count += 1;
+                if (i != batch.n_tokens - 1) {
+                    g_logits_mismatch = 1;
+                }
+            }
+        }
+    }
+    return g_decode_result;
 }
 
 llama_memory_t llama_get_memory(const struct llama_context *ctx) {
@@ -277,11 +538,13 @@ llama_memory_t llama_get_memory(const struct llama_context *ctx) {
 void llama_memory_clear(llama_memory_t mem, bool data) {
     (void) mem;
     (void) data;
+    g_memory_clear_count += 1;
 }
 
 struct llama_sampler *llama_sampler_chain_init(
         struct llama_sampler_chain_params params) {
     (void) params;
+    g_sampler_init_count += 1;
     return (struct llama_sampler *) &g_sampler_sentinel;
 }
 
@@ -326,21 +589,26 @@ llama_token llama_sampler_sample(
     (void) smpl;
     (void) ctx;
     (void) idx;
-    return 0;
+    g_sample_calls += 1;
+    if (g_sample_index < 0 || g_sample_index >= g_token_count) {
+        return 2;
+    }
+    return g_tokens[g_sample_index++];
 }
 
 void llama_sampler_free(struct llama_sampler *smpl) {
     (void) smpl;
+    g_sampler_free_count += 1;
 }
 
 struct llama_perf_context_data llama_perf_context(
         const struct llama_context *ctx) {
     (void) ctx;
-    struct llama_perf_context_data data;
-    memset(&data, 0, sizeof data);
-    return data;
+    return g_perf;
 }
 
 void llama_perf_context_reset(struct llama_context *ctx) {
     (void) ctx;
+    memset(&g_perf, 0, sizeof g_perf);
+    g_perf_reset_count += 1;
 }

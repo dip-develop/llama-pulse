@@ -110,6 +110,45 @@ final class FakeLlama {
   late final void Function() _reset = _library
       .lookupFunction<ffi.Void Function(), void Function()>('fake_llama_reset');
 
+  late final void Function(int) _setTokenizeResult = _library
+      .lookupFunction<ffi.Void Function(ffi.Int32), void Function(int)>(
+        'fake_llama_set_tokenize_result',
+      );
+
+  late final void Function(ffi.Pointer<ffi.Int32>, int) _setTokens = _library
+      .lookupFunction<
+        ffi.Void Function(ffi.Pointer<ffi.Int32>, ffi.Int32),
+        void Function(ffi.Pointer<ffi.Int32>, int)
+      >('fake_llama_set_tokens');
+
+  late final void Function(ffi.Pointer<ffi.Pointer<Utf8>>, int) _setPieces =
+      _library.lookupFunction<
+        ffi.Void Function(ffi.Pointer<ffi.Pointer<Utf8>>, ffi.Int32),
+        void Function(ffi.Pointer<ffi.Pointer<Utf8>>, int)
+      >('fake_llama_set_pieces');
+
+  late final void Function(int, ffi.Pointer<ffi.Uint8>, int) _setPieceBytes =
+      _library.lookupFunction<
+        ffi.Void Function(ffi.Int32, ffi.Pointer<ffi.Uint8>, ffi.Int32),
+        void Function(int, ffi.Pointer<ffi.Uint8>, int)
+      >('fake_llama_set_piece_bytes');
+
+  late final void Function(int) _setDecodeResult = _library
+      .lookupFunction<ffi.Void Function(ffi.Int32), void Function(int)>(
+        'fake_llama_set_decode_result',
+      );
+
+  late final void Function(int) _setSampleIndex = _library
+      .lookupFunction<ffi.Void Function(ffi.Int32), void Function(int)>(
+        'fake_llama_set_sample_index',
+      );
+
+  late final void Function(double, double, int, int) _setPerf = _library
+      .lookupFunction<
+        ffi.Void Function(ffi.Double, ffi.Double, ffi.Int32, ffi.Int32),
+        void Function(double, double, int, int)
+      >('fake_llama_set_perf');
+
   late final int Function() _gpuLayers = _intGetter('fake_llama_gpu_layers');
 
   late final int Function() _ctxSize = _intGetter('fake_llama_ctx_size');
@@ -140,6 +179,64 @@ final class FakeLlama {
     'fake_llama_backend_init_count',
   );
 
+  late final int Function() _tokenizeCalls = _intGetter(
+    'fake_llama_tokenize_calls',
+  );
+
+  late final int Function() _decodeCalls = _intGetter(
+    'fake_llama_decode_calls',
+  );
+
+  late final int Function() _batchNodes = _intGetter('fake_llama_batch_nodes');
+
+  late final int Function() _maxBatchTokens = _intGetter(
+    'fake_llama_max_batch_tokens',
+  );
+
+  late final int Function() _totalBatchTokens = _intGetter(
+    'fake_llama_total_batch_tokens',
+  );
+
+  late final int Function() _firstBatchPos = _intGetter(
+    'fake_llama_first_batch_pos',
+  );
+
+  late final int Function() _lastBatchPos = _intGetter(
+    'fake_llama_last_batch_pos',
+  );
+
+  late final int Function() _logitsCount = _intGetter(
+    'fake_llama_logits_count',
+  );
+
+  late final int Function() _logitsLastOnly = _intGetter(
+    'fake_llama_logits_last_only',
+  );
+
+  late final int Function() _batchFreeCount = _intGetter(
+    'fake_llama_batch_free_count',
+  );
+
+  late final int Function() _memoryClearCount = _intGetter(
+    'fake_llama_memory_clear_count',
+  );
+
+  late final int Function() _samplerInitCount = _intGetter(
+    'fake_llama_sampler_init_count',
+  );
+
+  late final int Function() _samplerFreeCount = _intGetter(
+    'fake_llama_sampler_free_count',
+  );
+
+  late final int Function() _sampleCalls = _intGetter(
+    'fake_llama_sample_calls',
+  );
+
+  late final int Function() _perfResetCount = _intGetter(
+    'fake_llama_perf_reset_count',
+  );
+
   late final ffi.Pointer<Utf8> Function() _modelPath = _library
       .lookupFunction<
         ffi.Pointer<Utf8> Function(),
@@ -164,6 +261,69 @@ final class FakeLlama {
 
   /// Makes `llama_init_from_model` return null.
   void setFailContext(bool fail) => _setFailContext(fail ? 1 : 0);
+
+  /// Sets how many tokens `llama_tokenize` reports.
+  ///
+  /// A negative [count] makes the first probe return [count] and the next call
+  /// fill a buffer of `-count` tokens.
+  void setTokenizeResult(int count) => _setTokenizeResult(count);
+
+  /// Sets the token ids the sampler returns, in order.
+  void setTokens(List<int> ids) {
+    final pointer = calloc<ffi.Int32>(ids.isEmpty ? 1 : ids.length);
+    try {
+      pointer.asTypedList(ids.length).setAll(0, ids);
+      _setTokens(pointer, ids.length);
+    } finally {
+      calloc.free(pointer);
+    }
+  }
+
+  /// Sets text pieces aligned with the scripted token ids.
+  void setPieces(List<String> pieces) {
+    final pointers = calloc<ffi.Pointer<Utf8>>(
+      pieces.isEmpty ? 1 : pieces.length,
+    );
+    final strings = <ffi.Pointer<Utf8>>[];
+    try {
+      for (var i = 0; i < pieces.length; i++) {
+        final string = pieces[i].toNativeUtf8();
+        strings.add(string);
+        pointers[i] = string;
+      }
+      _setPieces(pointers, pieces.length);
+    } finally {
+      for (final string in strings) {
+        malloc.free(string);
+      }
+      calloc.free(pointers);
+    }
+  }
+
+  /// Sets the raw bytes `llama_token_to_piece` returns for [token].
+  void setPieceBytes(int token, List<int> bytes) {
+    final pointer = calloc<ffi.Uint8>(bytes.isEmpty ? 1 : bytes.length);
+    try {
+      pointer.asTypedList(bytes.length).setAll(0, bytes);
+      _setPieceBytes(token, pointer, bytes.length);
+    } finally {
+      calloc.free(pointer);
+    }
+  }
+
+  /// Sets the value `llama_decode` returns.
+  void setDecodeResult(int code) => _setDecodeResult(code);
+
+  /// Sets the index into the scripted token list the next sample reads.
+  void setSampleIndex(int index) => _setSampleIndex(index);
+
+  /// Sets the data `llama_perf_context` reports.
+  void setPerf({
+    required double promptEvalMs,
+    required double evalMs,
+    required int promptTokens,
+    required int generatedTokens,
+  }) => _setPerf(promptEvalMs, evalMs, promptTokens, generatedTokens);
 
   /// Clears every recorded value and failure switch.
   void reset() => _reset();
@@ -194,6 +354,36 @@ final class FakeLlama {
   int get ctxFreeCount => _ctxFreeCount();
 
   int get backendInitCount => _backendInitCount();
+
+  int get tokenizeCalls => _tokenizeCalls();
+
+  int get decodeCalls => _decodeCalls();
+
+  int get batchNodes => _batchNodes();
+
+  int get maxBatchTokens => _maxBatchTokens();
+
+  int get totalBatchTokens => _totalBatchTokens();
+
+  int get firstBatchPos => _firstBatchPos();
+
+  int get lastBatchPos => _lastBatchPos();
+
+  int get logitsCount => _logitsCount();
+
+  bool get logitsLastOnly => _logitsLastOnly() != 0;
+
+  int get batchFreeCount => _batchFreeCount();
+
+  int get memoryClearCount => _memoryClearCount();
+
+  int get samplerInitCount => _samplerInitCount();
+
+  int get samplerFreeCount => _samplerFreeCount();
+
+  int get sampleCalls => _sampleCalls();
+
+  int get perfResetCount => _perfResetCount();
 
   int Function() _intGetter(String symbol) =>
       _library.lookupFunction<ffi.Int32 Function(), int Function()>(symbol);

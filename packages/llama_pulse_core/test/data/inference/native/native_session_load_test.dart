@@ -267,21 +267,15 @@ void main() {
     expect(fake.ctxFreeCount, 1);
   });
 
-  test('begin and next are not implemented yet; cancel is safe', () async {
+  test('cancel before a load is safe and next returns null', () async {
     if (skipReason != null) {
       markTestSkipped(skipReason!);
       return;
     }
 
     final session = await openSession();
-    final request = GenerationRequest.create(
-      requestId: 1,
-      prompt: 'hello',
-      params: params(),
-    );
 
-    expect(() => session.begin(request), throwsUnimplementedError);
-    await expectLater(session.next(), throwsUnimplementedError);
     await session.cancel();
+    expect(await session.next(), isNull);
   });
 }
