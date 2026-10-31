@@ -109,8 +109,66 @@ void main() {
     expect(steps.last.metrics?.generatedTokenCount, 3);
     expect(steps.last.metrics?.promptTokenCount, 1);
     expect(fake.sampleCalls, 4, reason: 'three tokens plus the EOG sample');
-    expect(fake.batchNodes, 1, reason: 'only the prompt is prefilled');
+    expect(
+      fake.decodeCalls,
+      4,
+      reason:
+          'one prefill decode plus one per emitted token; EOG is not decoded',
+    );
+    expect(fake.batchNodes, 4, reason: 'one prefill batch plus one per token');
     expect(await session.next(), isNull, reason: 'a finished stream stays end');
+  });
+
+  test(
+    'each sampled token is decoded at the position after the prompt',
+    () async {
+      if (skipReason != null) {
+        markTestSkipped(skipReason!);
+        return;
+      }
+      final session = await loadedSession();
+      fake.setTokenizeResult(3);
+      fake.setTokens([10, 11]);
+      fake.setPieces(['a', 'b']);
+
+      session.begin(request());
+      final first = await session.next();
+      expect(first?.text, 'a');
+      expect(fake.decodeCalls, 2, reason: 'prefill plus the first token');
+      expect(fake.decodeLastPos(0), 2, reason: 'prefill ends at p - 1');
+      expect(fake.decodeLastPos(1), 3, reason: 'the first token decodes at p');
+
+      final second = await session.next();
+      expect(second?.text, 'b');
+      expect(fake.decodeCalls, 3);
+      expect(fake.decodeLastPos(2), 4, reason: 'positions advance by one');
+      expect(fake.lastBatchPos, 4);
+    },
+  );
+
+  test('two sampled tokens add two decodes on top of the prefill', () async {
+    if (skipReason != null) {
+      markTestSkipped(skipReason!);
+      return;
+    }
+    // 600 prompt tokens split into two prefill chunks of at most 512.
+    final session = await loadedSession(contextSize: 1024);
+    fake.setTokenizeResult(600);
+    fake.setTokens([10, 11]);
+    fake.setPieces(['a', 'b']);
+
+    session.begin(request());
+    await session.next();
+    expect(fake.decodeCalls, 1, reason: 'first prefill chunk');
+    await session.next();
+    expect(fake.decodeCalls, 3, reason: 'second prefill chunk plus token one');
+    await session.next();
+    expect(
+      fake.decodeCalls,
+      4,
+      reason: 'two prefill chunks plus two sampled tokens',
+    );
+    expect(fake.lastBatchPos, 601);
   });
 
   test('a UTF-8 code point split across tokens is emitted once', () async {

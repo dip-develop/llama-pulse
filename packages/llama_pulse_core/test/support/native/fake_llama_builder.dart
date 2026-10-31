@@ -205,6 +205,11 @@ final class FakeLlama {
     'fake_llama_last_batch_pos',
   );
 
+  late final int Function(int) _decodeLastPos = _library
+      .lookupFunction<ffi.Int32 Function(ffi.Int32), int Function(int)>(
+        'fake_llama_decode_last_pos',
+      );
+
   late final int Function() _logitsCount = _intGetter(
     'fake_llama_logits_count',
   );
@@ -368,6 +373,10 @@ final class FakeLlama {
   int get firstBatchPos => _firstBatchPos();
 
   int get lastBatchPos => _lastBatchPos();
+
+  /// The position of the last token in decode call [index], or -1 when no
+  /// such decode happened.
+  int decodeLastPos(int index) => _decodeLastPos(index);
 
   int get logitsCount => _logitsCount();
 

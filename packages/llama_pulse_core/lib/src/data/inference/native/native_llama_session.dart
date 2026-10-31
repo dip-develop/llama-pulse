@@ -357,6 +357,8 @@ final class NativeLlamaSession implements LlamaSession {
       );
     }
 
+    // `llama_sampler_sample` accepts internally: the chain sees the sampled
+    // token exactly once.
     final sampled = bindings.llamaSamplerSample(sampler, context, -1);
     if (bindings.llamaVocabIsEog(vocab, sampled)) {
       final text = _accumulator.flush();
@@ -367,6 +369,26 @@ final class NativeLlamaSession implements LlamaSession {
         done: true,
       );
     }
+
+    // Feed the sampled token back in so the next sample sees its logits instead
+    // of the prefill logits.
+    final batch = bindings.llamaBatchInit(1, 0, 1);
+    try {
+      batch.nTokens = 1;
+      batch.token[0] = sampled;
+      batch.pos[0] = _position;
+      batch.nSeqId[0] = 1;
+      batch.seqId[0][0] = 0;
+      batch.logits[0] = 1;
+      final result = bindings.llamaDecode(context, batch);
+      if (result != 0) {
+        _stopGeneration();
+        throw _decodeFailure(result);
+      }
+    } finally {
+      bindings.llamaBatchFree(batch);
+    }
+    _position += 1;
 
     _accumulator.add(_tokenBytes(bindings, vocab, sampled));
     _generated += 1;
@@ -600,11 +622,10 @@ final class NativeLlamaSession implements LlamaSession {
   /// Snapshots the cumulative counters.
   ///
   /// llama.cpp reports `n_eval` as the tokens evaluated during generation,
-  /// which is one less than the emitted token count because the first token
-  /// comes from the prompt's final logits. The counts here come from
-  /// `_generated`, so they stay authoritative even when the native counter
-  /// lags. Timings fall back to the request stopwatch when the library reports
-  /// zero for a phase.
+  /// which is one per emitted token because each sampled token is decoded
+  /// before the next sample. The counts here come from `_generated`, so they
+  /// stay authoritative even when the native counter lags. Timings fall back
+  /// to the request stopwatch when the library reports zero for a phase.
   GenerationMetrics _metrics(
     LlamaBindings bindings,
     ffi.Pointer<LlamaContext> context,

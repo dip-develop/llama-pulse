@@ -59,6 +59,7 @@ static char g_sampler_sentinel;
 #define FAKE_MAX_PIECES 256
 #define FAKE_MAX_TOKEN_PIECES 128
 #define FAKE_PIECE_BYTES 64
+#define FAKE_MAX_DECODES 8192
 
 // How many tokens llama_tokenize should produce. Negative values make the
 // first probe return that value and the following call fill the buffer.
@@ -92,6 +93,8 @@ static int g_max_batch_tokens = 0;
 static int g_total_batch_tokens = 0;
 static int g_first_batch_pos = 0;
 static int g_last_batch_pos = 0;
+// Last position of every decode call, indexed by call order.
+static int g_decode_last_pos[FAKE_MAX_DECODES];
 static int g_logits_count = 0;
 static int g_logits_mismatch = 0;
 static int g_batch_free_count = 0;
@@ -238,6 +241,7 @@ void fake_llama_reset(void) {
     g_total_batch_tokens = 0;
     g_first_batch_pos = 0;
     g_last_batch_pos = 0;
+    memset(g_decode_last_pos, 0, sizeof g_decode_last_pos);
     g_logits_count = 0;
     g_logits_mismatch = 0;
     g_batch_free_count = 0;
@@ -268,6 +272,12 @@ int fake_llama_max_batch_tokens(void) { return g_max_batch_tokens; }
 int fake_llama_total_batch_tokens(void) { return g_total_batch_tokens; }
 int fake_llama_first_batch_pos(void) { return g_first_batch_pos; }
 int fake_llama_last_batch_pos(void) { return g_last_batch_pos; }
+int fake_llama_decode_last_pos(int index) {
+    if (index < 0 || index >= g_decode_calls || index >= FAKE_MAX_DECODES) {
+        return -1;
+    }
+    return g_decode_last_pos[index];
+}
 int fake_llama_logits_count(void) { return g_logits_count; }
 int fake_llama_logits_last_only(void) { return g_logits_mismatch == 0; }
 int fake_llama_batch_free_count(void) { return g_batch_free_count; }
@@ -518,6 +528,9 @@ int32_t llama_decode(struct llama_context *ctx, struct llama_batch batch) {
             g_first_batch_pos = batch.pos[0];
         }
         g_last_batch_pos = batch.pos[batch.n_tokens - 1];
+        if (g_decode_calls <= FAKE_MAX_DECODES) {
+            g_decode_last_pos[g_decode_calls - 1] = g_last_batch_pos;
+        }
         for (int32_t i = 0; i < batch.n_tokens; i++) {
             if (batch.logits[i] != 0) {
                 g_logits_count += 1;
