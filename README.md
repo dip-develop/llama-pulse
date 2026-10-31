@@ -102,7 +102,7 @@ Naming: app `llama_pulse`, CLI `llamapulse`, package `llama_pulse_core`.
   that order. Builds below `b4000` warn, and an unknown or unreadable
   `llama-server --version` reports `supported: true` with a warning; nothing
   blocks a start on the version.
-- **661 tests** across the three packages (450 core, 124 CLI, 87 app); one
+- **678 tests** across the three packages (458 core, 133 CLI, 87 app); one
   further core integration test is skipped unless a native library and model are
   set.
 

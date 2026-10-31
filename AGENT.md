@@ -287,9 +287,10 @@ Native session rules:
   `data/inference/native/`; the `llama_pulse_core.dart` barrel does not export
   the native layer.
 - **ABI test.** `test/data/inference/native/abi_layout_test.dart` compiles
-  `abi_check.c` with clang and compares every struct size and field offset
-  against the Dart classes. `dart:ffi` has no `offsetOf`, so offsets are probed
-  from the compiled C output; a red test means the binding, not the test.
+  `abi_check.c` with clang and compares every struct size, field offset and
+  field width against the Dart classes. `dart:ffi` has no `offsetOf`, so offsets
+  are probed from the compiled C output; a red test means the binding, not the
+  test.
 - **Loading.** Best-effort sibling `libggml*` preload, then
   `DynamicLibrary.open`. `llama_backend_init` runs once per process, so there is
   one engine per process. No `dlclose` exists in `dart:ffi`; a library stays
@@ -560,7 +561,8 @@ APIs, no `!` on nullable values, no empty `catch` blocks.
 
 From the root, `dart run melos test`. Melos picks `flutter test` for the app and
 `dart test` for core and CLI. Test the critical seams, not every line. Coverage
-is not a target. The suites hold 661 tests today: 450 core, 124 CLI, 87 app.
+is not a target. The suites hold 678 tests today: 458 core (plus one
+env-gated skip), 133 CLI, 87 app.
 
 Must test today:
 
@@ -578,11 +580,15 @@ Must test today:
   `test/support/native/fake_llama.c` is compiled with clang by
   `FakeLlamaBuilder`, so the binding lookups and behaviour run end to end.
   Cover the ABI layout (`abi_layout_test.dart` compiles `abi_check.c` and
-  compares every struct size and field offset), the exact `0.8.0` version gate
+  compares every struct size, field offset and the 72-entry field-width table),
+  the exact `0.8.0` version gate
   (`libraryVersionMismatch` for anything else), the locator order and
   `libraryNotFound` details, library open and model load, generation
   (prefill, truncation, sampler chain, EOG, UTF-8 split tokens), metrics and
-  cooperative cancel. These tests skip when clang is not installed.
+  cooperative cancel. The shim enforces the batch and sampler contract, so the
+  tests catch a wrong `n_seq_id`/`seq_id`, non-monotonic positions, logits on
+  non-final tokens, `idx != -1` and sampling without logits. These tests skip
+  when clang is not installed.
 - The worker layer: `WorkerLoop` responses, `WorkerTransport` through a real
   isolate (handshake timeout and reuse after an aborted start, crash and exit,
   `close()` racing a spawn), and `WorkerLlamaEngine` (lazy spawn, per-request
@@ -741,7 +747,7 @@ absolute local paths.
 
 - [ ] The workspace resolves with one lockfile (`flutter pub get` at the root).
 - [ ] `pubspec.lock` stays untracked.
-- [ ] `dart run melos run check` is green (661 tests: 450 core, 124 CLI, 87 app).
+- [ ] `dart run melos run check` is green (678 tests: 458 core, 133 CLI, 87 app).
 - [ ] The server path works end to end: the plain app can start a real
   `llama-server` when a binary is present, and `serve`/`status`/`stop` work from
   the compiled CLI.

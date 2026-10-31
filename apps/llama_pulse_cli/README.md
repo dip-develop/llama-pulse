@@ -282,7 +282,9 @@ exclusive; one is required. `--json` and `--stream` cannot be combined.
 `cancelled` and `failed`. `bench` flags: `--runs` (1..50, default 3), `--json`,
 `--max-tokens` (default 32) and the shared overrides. Without `--stub`,
 `bench` requires a readable `.gguf` model: a blank path exits `2` and a missing,
-non-`.gguf` or unreadable file exits `3`.
+non-`.gguf` or unreadable file exits `3`. The sampler is seeded with
+`LLAMA_DEFAULT_SEED` (`0xFFFFFFFF`), which llama.cpp treats as random, so
+`bench` runs differ.
 
 ## `--json`
 
