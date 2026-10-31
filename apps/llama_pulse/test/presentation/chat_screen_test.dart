@@ -115,9 +115,14 @@ void main() {
     expect((await getIt<LoadModelParams>()()).contextSize, 4096);
   });
 
-  testWidgets('reports a missing engine when loading a model', (tester) async {
+  testWidgets('reports the searched paths when no native library is found', (
+    tester,
+  ) async {
     _useView(tester, const Size(1400, 1000));
-    await pumpLlamaPulse(tester);
+    final ScriptedLlamaEngine engine = ScriptedLlamaEngine()
+      ..loadSucceeds = false
+      ..loadFailure = LlamaLibraryLocator().notFoundFailure();
+    await pumpLlamaPulse(tester, engine: engine);
     await _openChat(tester);
 
     await tester.enterText(
@@ -130,7 +135,12 @@ void main() {
     await tester.pump();
 
     expect(find.byKey(const ValueKey('failure-banner')), findsOneWidget);
-    expect(find.textContaining('engineUnavailable'), findsOneWidget);
+    expect(find.textContaining('libraryNotFound'), findsOneWidget);
+    final String searched = (engine.loadFailure.details ?? '')
+        .split('\n')
+        .first;
+    expect(searched, isNotEmpty);
+    expect(find.textContaining(searched), findsOneWidget);
   });
 
   testWidgets('loads, streams tokens, shows metrics and completes', (

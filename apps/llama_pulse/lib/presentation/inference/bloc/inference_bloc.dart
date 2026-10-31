@@ -149,7 +149,16 @@ class InferenceBloc extends Bloc<InferenceEvent, InferenceState> {
         ),
       );
     } on InferenceFailureException catch (exception) {
-      _emit(emit, _failed(exception.failure.code, exception.failure.message));
+      // Keep the whole failure so the banner can show the searched paths that
+      // the locator put in `details`.
+      _emit(
+        emit,
+        state.rebuild(
+          (b) => b
+            ..status = InferenceStatus.failure
+            ..failure.replace(exception.failure),
+        ),
+      );
     } on Object catch (error) {
       _reportUnexpected(emit, error, 'Could not load the model.');
     }

@@ -21,6 +21,7 @@ class FailureBanner extends StatelessWidget {
           return const SizedBox.shrink();
         }
         final ThemeData theme = Theme.of(context);
+        final String? details = failure.details;
         return Padding(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
           child: Container(
@@ -41,7 +42,10 @@ class FailureBanner extends StatelessWidget {
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
-                    '${failure.code.name}: ${failure.message}',
+                    details == null || details.isEmpty
+                        ? '${failure.code.name}: ${failure.message}'
+                        : '${failure.code.name}: ${failure.message}\n'
+                              '$details',
                     style: theme.textTheme.bodyMedium?.copyWith(
                       color: theme.colorScheme.onErrorContainer,
                     ),

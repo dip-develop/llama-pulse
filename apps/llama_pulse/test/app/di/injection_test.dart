@@ -26,6 +26,9 @@ void main() {
   });
 
   tearDown(() async {
+    if (getIt.isRegistered<LlamaEngine>()) {
+      await getIt<LlamaEngine>().dispose();
+    }
     await getIt.reset();
     if (tempDir.existsSync()) {
       await tempDir.delete(recursive: true);
@@ -74,15 +77,18 @@ void main() {
     expect(reloaded, saved);
   });
 
-  test('does not register an engine when none is supplied', () async {
+  test('registers the native worker engine by default', () async {
     await getIt.reset();
     await configureDependencies(
       paths: AppPaths(configDirectory: tempDir.path),
       configStore: InMemoryConfigStore(),
     );
 
-    expect(getIt.isRegistered<LlamaEngine>(), isFalse);
-    expect(() => getIt<LlamaEngine>(), throwsA(isA<StateError>()));
+    final LlamaEngine engine = getIt<LlamaEngine>();
+    expect(engine, isA<WorkerLlamaEngine>());
+    expect((engine as WorkerLlamaEngine).useStubSession, isFalse);
+    // Registration is side-effect free: dispose before any call spawns nothing.
+    await engine.dispose();
 
     final InferenceBloc bloc = getIt<InferenceBloc>();
     expect(bloc, isA<InferenceBloc>());
@@ -97,10 +103,12 @@ void main() {
       useStubEngine: true,
     );
 
-    expect(getIt<LlamaEngine>(), isA<WorkerLlamaEngine>());
+    final LlamaEngine engine = getIt<LlamaEngine>();
+    expect(engine, isA<WorkerLlamaEngine>());
+    expect((engine as WorkerLlamaEngine).useStubSession, isTrue);
     // The worker is spawned lazily, so disposing before any call is safe and
     // leaves no isolate behind for the next test.
-    await getIt<LlamaEngine>().dispose();
+    await engine.dispose();
     await getIt.reset();
   });
 
