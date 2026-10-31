@@ -297,7 +297,13 @@ Core has no annotations and no `get_it`; it only defines gateways.
   `AppLifecycleListener` disposes that controller when the window closes, and
   the bloc seeds the dashboard from `server-state.yaml` when it records an
   active run the controller does not own: Start is disabled and the status card
-  says `Started outside this app` and points at `llamapulse stop`.
+  says `Started outside this app` and points at `llamapulse stop`. While that
+  external run is shown the bloc re-reads the document every 2 s; when the run
+  ends (for example after `llamapulse stop`) it clears the external flag and
+  enables Start again. Reload re-reads both `server.yaml` and the state
+  document. On POSIX `runLlamaPulse` installs SIGTERM and SIGINT watchers that
+  dispose the controller, terminating a running child, then exit `0` or `130`;
+  Windows has no signal watchers.
 - A release build must never silently produce synthetic output or a synthetic
   server. Stub selection is explicit at build time (`--dart-define`) or in the
   caller; nothing flips it at runtime.
@@ -367,18 +373,26 @@ port probing are injected, so the supervisor tests replace them with fakes.
   with `{"status":"loading"}` is `degraded`/`loading`, not healthy.
 - The startup timeout is `ServerConfig.startupTimeoutSeconds` (default 120).
   An exit before readiness or a timeout terminates the child and marks the run
-  `failed`; it never leaves a process behind.
+  `failed`; a child that survives `SIGKILL` is kept in the document with its
+  pid, and `stop` can retry it.
 - Stop is graceful first (`SIGTERM`). After a 5 s grace the supervisor forces
   the child and waits again. `stop()` waits for an in-flight `start()`, so a
-  stop request aborts readiness and never ends up `running`; it is idempotent.
-  A child that survives `SIGKILL` makes `stop()` throw and leaves the state
-  `failed` with `serverPid` set.
+  stop request aborts readiness and never ends up `running`; it is idempotent,
+  and concurrent `stop()` calls share one in-flight future. `dispose()` closes
+  its resources even when `stop()` throws. `stopping` retains `serverPid` so the
+  child stays signalled. A child that survives `SIGKILL` makes `stop()` throw
+  and leaves the state `failed` with `serverPid` set; a later `stop` retries
+  that retained child, but such a process is never reported as stopped.
 - Terminal states clear `supervisorPid`, and pids are released on stop. There
   is no auto-restart and no backoff loop. A child that exits after `running`
-  marks `failed` with `processExited`; only a caller starts again.
+  marks `failed` with `processExited`; when a child retained after a failed stop
+  exits on its own, the supervisor records the exit and clears the pid; only a
+  caller starts again.
 - One supervisor owns at most one child. `start` throws `invalidConfig` while a
-  run is active (`starting`, `running` or `stopping`), and the CLI `serve`
-  additionally refuses when the recorded server still answers `/health`.
+  run is active (`starting`, `running` or `stopping`) and while its own state
+  still records a stale `serverPid` (`a previous server process is still
+  recorded; stop it first`), and the CLI `serve` additionally refuses when the
+  recorded server still answers `/health`.
 - The port preflight is advisory: `SocketPortProbe` binds and closes the port,
   but another process can take it in between. The supervisor also watches the
   child's stderr for bind errors and maps them to `portInUse`.
@@ -388,7 +402,8 @@ port probing are injected, so the supervisor tests replace them with fakes.
 - The log store keeps a 1000-entry in-memory ring and appends
   `timestamp<TAB>sequence<TAB>stream<TAB>line` records to `server.log`,
   rotating at 1 MiB to `server.log.1`. ANSI escapes are stripped and long lines
-  are truncated.
+  are truncated. Sequence numbers continue across a supervisor restart, seeded
+  from the highest sequence already stored in either file.
 - API keys: `server.yaml` holds the key in plaintext by design and the
   supervisor passes it to the child in argv. The key is redacted from child log
   lines and failure details, and is never written to `server-state.yaml` or
@@ -397,9 +412,11 @@ port probing are injected, so the supervisor tests replace them with fakes.
   `/metrics`, `/slots` and `/props` about once a second while running and emits
   `ServerMetrics` on the metrics stream. The launch arguments always include
   `--metrics --slots`. `/metrics` (Prometheus) is required for a sample;
-  `/slots` and `/props` are best-effort. A failed sample or health probe marks
-  the run `degraded` or `unreachable` without changing the phase, and health
-  recovers when the server answers again. Uptime comes from the `Process-Start-Time-Unix` response
+  `/slots` and `/props` are best-effort. Any monitor error, not only a
+  `ServerException`, marks the run `degraded` and logs the failure; a failed
+  health probe marks it `degraded` or `unreachable`. Both leave the phase
+  unchanged, and health recovers when the server answers again. Uptime comes
+  from the `Process-Start-Time-Unix` response
   header, context usage from `/slots`, and there is no total-request counter in
   current llama.cpp. Those HTTP payloads are the only JSON decode exception
   (`jsonDecode` stays under `data/server/`).
@@ -441,11 +458,14 @@ port probing are injected, so the supervisor tests replace them with fakes.
   `1`. Human status is `running`, `stopped`, `stale` or a phase name; uptime is
   reported from `startedAtEpochMs` even when the server is unreachable.
 - `stop` signals the recorded supervisor and falls back to `serverPid` when the
-  signal cannot be delivered; `--force` targets the process that actually
-  accepted the signal. It waits up to 10 s for the state file to release the
-  pids, then forces. It reports and records a stop only when the document is
-  absent or terminal with no pids; otherwise it exits `1` and leaves the
-  document untouched. `stop` exits `0` when nothing is running.
+  signal cannot be delivered, so a dead supervisor never masks a live child. A
+  `failed` document that still records a pid is not treated as stopped: `stop`
+  signals that child and retries it. `--force` signals the child first and then
+  the supervisor. When a graceful signal was accepted it waits up to 10 s for
+  the state file to release the pids, then forces. It reports and records a stop
+  only when the document is absent or terminal with no pids; a retained pid it
+  cannot signal makes it exit `1` and leaves the document untouched. `stop`
+  exits `0` when nothing is running.
 - `logs` prints the newest 1..1000 lines from the log store (default 100).
   `--follow` follows by sequence number, so it survives rotation, then exits
   `130` on interrupt. The on-disk format is
@@ -487,7 +507,7 @@ APIs, no `!` on nullable values, no empty `catch` blocks.
 
 From the root, `dart run melos test`. Melos picks `flutter test` for the app and
 `dart test` for core and CLI. Test the critical seams, not every line. Coverage
-is not a target. The suites hold 577 tests today: 379 core, 119 CLI, 79 app.
+is not a target. The suites hold 596 tests today: 388 core, 121 CLI, 87 app.
 
 Must test today:
 
@@ -663,12 +683,13 @@ milestone. Never commit `.env` files, secrets or absolute local paths.
 
 - [ ] The workspace resolves with one lockfile (`flutter pub get` at the root).
 - [ ] `pubspec.lock` stays untracked.
-- [ ] `dart run melos run check` is green (577 tests: 379 core, 119 CLI, 79 app).
+- [ ] `dart run melos run check` is green (596 tests: 388 core, 121 CLI, 87 app).
 - [ ] The server path works end to end: the plain app can start a real
   `llama-server` when a binary is present, and `serve`/`status`/`stop` work from
   the compiled CLI.
-- [ ] No process leaks: start failures, SIGINT/SIGTERM and dispose all terminate
-  and reap the child; no orphaned `llama-server` remains.
+- [ ] No leaked process is silently reported as stopped: start failures,
+  SIGINT/SIGTERM and dispose all terminate and reap the child, and a process
+  that survives `SIGKILL` stays `failed` with its pid so `stop` can retry it.
 - [ ] `server.yaml` and `server-state.yaml` round-trip through the YAML layer,
   and the state document releases the pids on stop.
 - [ ] The embedded stub path still works from the CLI (`--stub`) and the demo

@@ -83,10 +83,17 @@ Invariants:
   `startupTimeoutSeconds` (default 120).
 - Stop is graceful (`SIGTERM`), then forced after a 5 s grace. `stop()` and
   `dispose()` wait for an in-flight `start()`: a stop request aborts readiness
-  and the run never ends up `running` afterwards. `stop` is idempotent.
+  and the run never ends up `running` afterwards. `stop` is idempotent and
+  concurrent calls share one in-flight future; `dispose()` closes its resources
+  even when `stop()` throws. `stopping` retains `serverPid` so the child stays
+  signalled.
 - A child that survives `SIGKILL` makes `stop()` throw and leaves the state
-  `failed` with `serverPid` set. Terminal states clear `supervisorPid`, and pids
-  are released on stop.
+  `failed` with `serverPid` set. A later `stop()` retries that retained child,
+  and if the child exits on its own the supervisor records the exit and clears
+  the pid. A new `start()` is refused while the supervisor's state still records
+  a stale pid (`a previous server process is still recorded; stop it first`); a
+  process that survives `SIGKILL` is never reported as stopped. Terminal states
+  clear `supervisorPid`, and pids are released on stop.
 - No auto-restart: a child that exits after `running` marks the run `failed`
   with `processExited`.
 - The port preflight is advisory; child stderr bind errors are also mapped to
@@ -95,12 +102,14 @@ Invariants:
   is the cross-process contract for `status`/`stop`; `stop` clears a settled
   document. Health-only changes are broadcast without a write.
 - While the server runs, the monitor samples `/metrics`, `/slots` and `/props`
-  about once a second. A failed sample or health probe marks the run `degraded`
-  or `unreachable` without changing the phase, and health recovers when the
+  about once a second. Any monitor error, not only a `ServerException`, marks
+  the run `degraded`; a failed health probe marks it `degraded` or
+  `unreachable`. Both leave the phase unchanged, and health recovers when the
   server answers again.
 - Logs go to a 1000-entry in-memory ring and to `server.log`
   (`timestamp<TAB>sequence<TAB>stream<TAB>line`), rotated at 1 MiB to
-  `server.log.1`.
+  `server.log.1`. Sequence numbers continue across a supervisor restart, seeded
+  from the highest sequence already stored in either file.
 - `server.yaml` holds the API key in plaintext by design and the supervisor
   passes it to the child in argv. It is redacted from child log lines and
   failure details, and never written to state or logs.

@@ -42,18 +42,27 @@ Naming: app `llama_pulse`, CLI `llamapulse`, package `llama_pulse_core`.
 
 - **Server dashboard** (the primary screen): an editable `server.yaml` form,
   start/stop, supervisor status, the endpoint with Copy and Test connection,
-  live metrics and a log tail. The app disposes the DI-owned
-  `ServerController` when the window closes. If `server-state.yaml` records an
-  active run the app did not start, it seeds the dashboard from that document,
-  disables Start and tells you to run `llamapulse stop` (`Started outside this
-  app`).
+  live metrics and a log tail. If `server-state.yaml` records an active run the
+  app did not start, it seeds the dashboard from that document, disables Start
+  and tells you to run `llamapulse stop` (`Started outside this app`). While it
+  shows such an external run it re-reads the document every 2 s; when the run
+  ends (for example after `llamapulse stop`) the dashboard clears the external
+  flag and enables Start again. Reload re-reads `server.yaml` and the state
+  document. On POSIX the app installs SIGTERM and SIGINT handlers that dispose
+  the controller, so a running child is terminated, then exits `0` or `130`;
+  Windows has no signal watchers. The app also disposes the DI-owned
+  `ServerController` when the window closes.
 - **Configuration in `server.yaml`**: model path, host, port, context size,
   threads, GPU layers, parallel slots, model alias, API key, flash attention,
   mlock/mmap, extra `llama-server` arguments, binary path and startup timeout.
 - **Supervised lifecycle**: validate, locate the binary, spawn, wait for
   `/health`, report `running`, then stop gracefully and force after a 5 s
-  grace. `stop()` and `dispose()` wait for an in-flight `start()`, so no child
-  is left behind and the run never ends up `running` after a stop request.
+  grace. `stop()` and `dispose()` wait for an in-flight `start()`, so the run
+  never ends up `running` after a stop request, and `stop()` retries a child
+  pid that a `failed` document still records. A process that survives `SIGKILL`
+  is not reported as stopped: the document stays `failed` with its pid, a later
+  `stop` can retry it, and the supervisor refuses a new `start` while its state
+  still records that pid.
   There is no auto-restart: a failed or exited server stays failed until you
   start it again.
 - **Health and readiness** from `GET /health`, plus `/props` enrichment. Health
@@ -74,7 +83,8 @@ Naming: app `llama_pulse`, CLI `llamapulse`, package `llama_pulse_core`.
   not show one.
 - **Log tail**: in-memory ring of 1000 lines and `server.log` on disk, rotated
   at 1 MiB to `server.log.1`, with one `timestamp<TAB>sequence<TAB>stream<TAB>line`
-  record per line.
+  record per line. Sequence numbers continue across a supervisor restart,
+  seeded from the highest sequence already stored.
 - **Endpoint actions**: copy the base URL and test the connection, including
   the API key when one is configured.
 - **Chat tab, experimental**: still the existing stub/embedded engine. It is
@@ -86,7 +96,7 @@ Naming: app `llama_pulse`, CLI `llamapulse`, package `llama_pulse_core`.
   that order. Builds below `b4000` warn, and an unknown or unreadable
   `llama-server --version` reports `supported: true` with a warning; nothing
   blocks a start on the version.
-- **577 tests** across the three packages (379 core, 119 CLI, 79 app).
+- **596 tests** across the three packages (388 core, 121 CLI, 87 app).
 
 ## Requirements
 
@@ -249,13 +259,15 @@ when the phase is `running` **and** `/health` returns 200 with
 `stopped`, `stale` and `failed` all exit `1`. Uptime is reported from
 `startedAtEpochMs` even when the server is unreachable.
 
-`stop` signals the recorded supervisor and falls back to `serverPid` when that
-signal cannot be delivered. `--force` sends the forced kill to the process that
-is actually alive. It only reports (and records) a stop once the state document
-shows the pids released; otherwise it exits `1` and leaves the document
-untouched. `logs` prints the newest lines (default 100, range 1..1000), and
-`--follow` follows by sequence number until interrupted, so it survives
-rotation without repeating or dropping a line.
+`stop` signals the recorded supervisor; when that signal cannot be delivered it
+signals `serverPid` instead, so a dead supervisor never masks a live child. A
+`failed` document that still records that pid is not treated as stopped: `stop`
+signals the child and retries it. `--force` signals the child first and then the
+supervisor. The command only reports (and records) a stop once the document is
+absent or terminal with no pids; a retained pid that cannot be signalled makes
+it exit `1` and leaves the document untouched. `logs` prints the newest lines
+(default 100, range 1..1000), and `--follow` follows by sequence number until
+interrupted, so it survives rotation without repeating or dropping a line.
 
 ### `run` and `bench` (embedded, experimental)
 
@@ -365,11 +377,15 @@ server:
 supervisor and server pids, host/port/model/binary, start and update times, the
 last exit code and the last failure. The supervisor writes it after every
 transition, `stop` clears a settled document, and `status` only reads it.
-Terminal states clear `supervisorPid`; pids are released on stop; a process
-that survives `SIGKILL` leaves the document `failed` with `serverPid` set. It
-never contains the API key. `server.log` holds supervisor and child output, one
+Terminal states clear `supervisorPid`; `stopping` keeps `serverPid` so a stop
+can still target the child, and pids are released once a stop settles. A process
+that survives `SIGKILL` leaves the document `failed` with `serverPid` set, so
+`stop` can retry it; if the child later exits on its own, the supervisor records
+the exit and clears the pid. The supervisor refuses a new `start` while its
+state still records a stale pid. It never contains the API key. `server.log`
+holds supervisor and child output, one
 `timestamp<TAB>sequence<TAB>stream<TAB>line` record per line, and rotates to
-`server.log.1` at 1 MiB.
+`server.log.1` at 1 MiB; sequence numbers continue across a supervisor restart.
 
 The embedded chat path keeps its earlier `params.yaml`:
 
@@ -426,13 +442,23 @@ Supervisor invariants:
   `degraded`/`loading`, not healthy. The startup timeout defaults to 120 s.
 - `stop()` and `dispose()` wait for an in-flight `start()`; a stop request
   aborts the wait for readiness and the run never ends up `running` afterwards.
+  Concurrent `stop()` calls share one in-flight future, and `dispose()` closes
+  its resources even when `stop()` throws.
 - Stops are graceful first, forced after a 5 s grace, and exit monitoring is
-  always cleaned up. A failed start terminates the child it spawned. A child
-  that survives `SIGKILL` makes `stop()` throw and leaves the state `failed`
-  with `serverPid` set.
+  always cleaned up. `stopping` retains `serverPid` so the child stays
+  signalled. A failed start terminates the child it spawned. A child that
+  survives `SIGKILL` makes `stop()` throw and leaves the state `failed` with
+  `serverPid` set; `stop()` can retry that retained pid, but a process that
+  survives `SIGKILL` is never reported as stopped.
 - Terminal states clear `supervisorPid`, and pids are released on stop. No
   auto-restart. A child that exits after `running` marks the run `failed` with
-  `processExited`; the caller decides whether to start again.
+  `processExited`; when a child retained after a failed stop exits on its own,
+  the supervisor records the exit and clears the pid. A new `start` is refused
+  while its state still records a stale pid (`a previous server process is
+  still recorded; stop it first`); the caller decides whether to start again.
+- Log sequence numbers continue across a supervisor restart: the store seeds its
+  counter from the highest sequence already in `server.log` and `server.log.1`,
+  so `tail()` and `logs --follow` stay monotonic.
 - The port preflight is advisory: the port can be taken between probe and
   bind, so child stderr bind errors are mapped to `portInUse` as well.
 - The supervisor writes `server-state.yaml` after every transition and `stop`

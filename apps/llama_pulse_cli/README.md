@@ -168,10 +168,12 @@ exits `1`. Every other state exits `1`. Uptime is reported from
 
 Stop the server recorded in `server-state.yaml`. The command signals the
 recorded supervisor first; when that signal cannot be delivered it falls back
-to `serverPid`, so a dead supervisor never masks a live child. It waits up to
-10 s for the state file to release the pids, then sends a forced kill to the
-process that is actually alive. `--force` skips the graceful phase. Stopping
-when nothing is recorded is a success.
+to `serverPid`, so a dead supervisor never masks a live child. A `failed`
+document that still records a pid is not treated as stopped: `stop` signals the
+child and retries it. When a graceful signal was accepted it waits up to 10 s
+for the state file to release the pids, then sends a forced kill to the process
+that is actually alive; `--force` skips the graceful phase and signals the child
+first and then the supervisor. Stopping when nothing is recorded is a success.
 
 ```
 $ llamapulse stop
@@ -182,8 +184,10 @@ $ llamapulse stop --json
 
 `pid` is the pid that accepted the signal, or the last target tried when none
 did. The command reports `stopped: true` and clears the document only when the
-state is absent or terminal with no pids left. A document that still lists them
-is left untouched and the command exits `1` with `stopped: false`.
+state is absent or terminal with no pids left. A retained pid that cannot be
+signalled makes the command exit `1` with `stopped: false` and leaves the
+document untouched, so a later `stop` can retry it. It never reports a
+surviving child as `stopped`.
 
 ### `logs`
 
