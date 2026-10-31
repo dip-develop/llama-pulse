@@ -8,10 +8,16 @@ final class WorkerConfig {
   /// Creates a config whose worker answers on [mainPort].
   ///
   /// [useStubSession] selects the session implementation inside the worker:
-  /// `true` uses the deterministic stub, `false` (the default) leaves the
-  /// worker on the unavailable native placeholder, whose `load` reports
-  /// `engineUnavailable` until the native session lands.
-  const WorkerConfig({required this.mainPort, this.useStubSession = false});
+  /// `true` uses the deterministic stub, `false` (the default) runs the native
+  /// session.
+  ///
+  /// [libraryPath] is the explicit absolute `libllama` path; null makes the
+  /// worker resolve it through the standard search order.
+  const WorkerConfig({
+    required this.mainPort,
+    this.useStubSession = false,
+    this.libraryPath,
+  });
 
   /// Port of the spawning isolate: the worker sends [WorkerReady] and every
   /// worker response to it.
@@ -19,6 +25,9 @@ final class WorkerConfig {
 
   /// Whether the worker should run the deterministic stub session.
   final bool useStubSession;
+
+  /// Explicit absolute `libllama` path, or null to let the worker resolve it.
+  final String? libraryPath;
 }
 
 /// First message a spawned worker sends back to its spawner.

@@ -15,7 +15,6 @@ export 'src/data/config/yaml_server_state_repository.dart';
 export 'src/data/inference/library_locator.dart';
 export 'src/data/inference/llama_version_pin.dart';
 export 'src/data/inference/stub_llama_session.dart';
-export 'src/data/inference/unavailable_llama_session.dart';
 export 'src/data/inference/worker_config.dart';
 export 'src/data/inference/worker_entrypoint.dart';
 export 'src/data/inference/worker_llama_engine.dart';

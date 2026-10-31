@@ -203,15 +203,17 @@ Guarantees the worker loop provides:
 - Load failures throw `InferenceFailureException`; every other engine failure
   surfaces as an `InferenceFailure` value.
 
-The native embedded session is **not** included yet. `WorkerConfig.useStubSession`
-selects the session inside the worker: `true` runs `StubLlamaSession`, which
-produces deterministic text and respects the token cap; the default runs
-`UnavailableLlamaSession`, whose `load` fails with `engineUnavailable` so a
+`WorkerConfig.useStubSession` selects the session inside the worker: `true` runs
+`StubLlamaSession`, which produces deterministic text and respects the token
+cap; the default runs `NativeLlamaSession`, which opens the library named by
+`WorkerConfig.libraryPath`, then `LLAMA_PULSE_LIB`, the bundle, the executable
+directory, the config directory and finally the bare soname. A missing library
+fails `load` with `libraryNotFound` and every searched path in `details`, so a
 normal build can never emit synthetic output silently. The selection is always
 explicit: `--stub` in the CLI, `LLAMAPULSE_STUB_ENGINE` (or an injected engine)
-in the app, never a runtime fallback. The native session will pin an upstream
-llama.cpp tag, implement the same `LlamaSession` interface and gate the loaded
-library on `llama_version()`, without changing `LlamaEngine` or its callers.
+in the app, never a runtime fallback. The native session pins an upstream
+llama.cpp tag, implements the same `LlamaSession` interface and gates the loaded
+library on `llama_version()`.
 
 ## Chat configuration
 

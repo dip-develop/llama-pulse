@@ -272,10 +272,12 @@ interrupted, so it survives rotation without repeating or dropping a line.
 ### `run` and `bench` (embedded, experimental)
 
 Generate one prompt or benchmark repeated prompts against the embedded path.
-The native embedded engine is not implemented, so `--stub` is mandatory today:
-without it the command exits 1 with `engineUnavailable` and never falls back
-silently. In stub mode the model path is echoed into the request but not read,
-so no file-existence check happens.
+The native engine runs by default and `--lib` names the llama.cpp shared
+library; without it the worker searches `LLAMA_PULSE_LIB`, the bundle, the
+executable directory, the config directory and finally the bare soname. A
+missing library exits 1 with `libraryNotFound` and the searched paths, and
+never falls back silently. `--stub` explicitly selects the deterministic stub,
+where the model path is echoed into the request but not read.
 
 ```
 $ llamapulse run --stub --model /models/demo.gguf --prompt "Hello" --max-tokens 8
@@ -283,8 +285,8 @@ Local models run on your machine. No
 $ cat prompt.txt | llamapulse run --stub --model /models/demo.gguf --file - --json
 ```
 
-Flags: `--model`, `--prompt`, `--file` (`-` reads stdin), `--stream`, `--json`,
-`--threads`, `--temperature`, `--top-p`, `--top-k`, `--max-tokens`,
+Flags: `--model`, `--lib`, `--prompt`, `--file` (`-` reads stdin), `--stream`,
+`--json`, `--threads`, `--temperature`, `--top-p`, `--top-k`, `--max-tokens`,
 `--context-size`. `--prompt` and `--file` are mutually exclusive; one is
 required. `--json` and `--stream` cannot be combined.
 
@@ -308,9 +310,10 @@ object with `code`, `message` and `details`. `run --json` prints exactly one
 final object instead of a stream.
 
 `bench` runs the fixed prompt `The quick brown fox jumps over the lazy dog.`
-several times and reports aggregate throughput. `--stub` is mandatory today, as
-for `run`; with no configured model, stub mode uses the `<stub>` placeholder
-path.
+several times and reports aggregate throughput. Without `--stub` the model must
+be a readable `.gguf` file: a blank path is a usage error (exit 2) and a missing
+file exits 3. In stub mode with no configured model it uses the `<stub>`
+placeholder path.
 
 ```
 $ llamapulse bench --stub --runs 3
@@ -340,7 +343,7 @@ configuration files on disk stay YAML either way.
 | Exit code | Meaning |
 |---|---|
 | 0 | Success; `status` only when running and healthy; `stop` also when nothing was running |
-| 1 | Unexpected failure, `status` for any non-running state, `serve` when a server is already recorded, `engineUnavailable` without `--stub` |
+| 1 | Unexpected failure, `status` for any non-running state, `serve` when a server is already recorded, `libraryNotFound` |
 | 2 | Invalid arguments or values that failed validation |
 | 3 | The requested model file was not found or is not a readable `.gguf` file |
 | 130 | Interrupted by SIGINT (`serve`, `logs --follow`, a generation) |

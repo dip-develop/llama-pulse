@@ -24,13 +24,14 @@ final class WorkerLlamaEngine implements LlamaEngine {
   /// none is given.
   ///
   /// [useStubSession] selects the session implementation inside the worker:
-  /// `true` runs the deterministic stub, `false` (the default) runs the
-  /// unavailable native placeholder, whose `load` fails with
-  /// `engineUnavailable`.
+  /// `true` runs the deterministic stub, `false` (the default) runs the native
+  /// session. [libraryPath] is the explicit absolute `libllama` path; null lets
+  /// the worker resolve it.
   WorkerLlamaEngine({
     this.loadTimeout = const Duration(seconds: 30),
     this.requestTimeout = const Duration(minutes: 5),
     this.useStubSession = false,
+    this.libraryPath,
     void Function(WorkerConfig)? entryPoint,
   }) : _entryPoint = entryPoint; // ignore: prefer_initializing_formals
 
@@ -42,6 +43,9 @@ final class WorkerLlamaEngine implements LlamaEngine {
 
   /// Whether the worker should run the deterministic stub session.
   final bool useStubSession;
+
+  /// Explicit absolute `libllama` path, or null to let the worker resolve it.
+  final String? libraryPath;
 
   final void Function(WorkerConfig)? _entryPoint;
   final _controls = <int, _PendingControl>{};
@@ -291,6 +295,7 @@ final class WorkerLlamaEngine implements LlamaEngine {
     final transport = WorkerTransport(
       entryPoint: _entryPoint,
       useStubSession: useStubSession,
+      libraryPath: libraryPath,
     );
     try {
       await transport.start();

@@ -105,11 +105,17 @@ final class CliServices {
   ///
   /// An injected factory always wins. Otherwise this builds a
   /// [WorkerLlamaEngine], forwarding [useStubSession] so the caller decides
-  /// whether the worker runs the deterministic stub or the unavailable native
-  /// placeholder.
-  LlamaEngine createEngine({bool useStubSession = false}) =>
+  /// whether the worker runs the deterministic stub or the native session, and
+  /// [libraryPath] as the explicit `libllama` path.
+  LlamaEngine createEngine({
+    bool useStubSession = false,
+    String? libraryPath,
+  }) =>
       _engineFactory?.call() ??
-      WorkerLlamaEngine(useStubSession: useStubSession);
+      WorkerLlamaEngine(
+        useStubSession: useStubSession,
+        libraryPath: libraryPath,
+      );
 
   /// Loads and saves `params.yaml`; built once from [configStore].
   YamlModelParamsRepository get paramsRepository => _paramsRepository ??=

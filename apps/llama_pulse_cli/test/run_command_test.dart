@@ -45,30 +45,35 @@ void main() {
     ),
   );
 
-  test('without --stub exits 1 and reports engineUnavailable', () async {
-    final runner = makeRunner();
+  test(
+    'without --stub reports libraryNotFound and the searched paths',
+    () async {
+      final runner = makeRunner(
+        engineFactory: () => WorkerLlamaEngine(libraryPath: ''),
+      );
 
-    final code = await runner.run([
-      'run',
-      '--model',
-      '/tmp/demo.gguf',
-      '--prompt',
-      'hi',
-    ]);
+      final code = await runner.run([
+        'run',
+        '--model',
+        '/tmp/demo.gguf',
+        '--prompt',
+        'hi',
+      ]);
 
-    expect(code, ExitCodes.failure);
-    expect(out.toString(), isEmpty);
-    expect(
-      err.toString(),
-      'error: engineUnavailable: the native session is unavailable; '
-      'pass --stub\n',
-    );
-    expect(engine.loadCalls, 0);
-    expect(engine.generateCalls, 0);
-  });
+      expect(code, ExitCodes.failure);
+      expect(out.toString(), isEmpty);
+      expect(err.toString(), contains('error: libraryNotFound:'));
+      expect(err.toString(), contains('libllama.so'));
+      expect(engine.loadCalls, 0);
+      expect(engine.generateCalls, 0);
+    },
+    timeout: const Timeout(Duration(seconds: 30)),
+  );
 
   test('without --stub emits one failed object in --json mode', () async {
-    final runner = makeRunner();
+    final runner = makeRunner(
+      engineFactory: () => WorkerLlamaEngine(libraryPath: ''),
+    );
 
     expect(
       await runner.run([
@@ -84,17 +89,19 @@ void main() {
 
     final event = _lines(out.toString()).single;
     expect(event['type'], 'failed');
-    expect(event['requestId'], 0);
+    expect(event['requestId'], 1);
     expect(event['schemaVersion'], 1);
     expect(event['text'], '');
     final failure = event['failure'] as Map<String, Object?>;
-    expect(failure['code'], 'engineUnavailable');
-    expect(failure['message'], contains('pass --stub'));
-    expect(err.toString(), contains('error: engineUnavailable:'));
-  });
+    expect(failure['code'], 'libraryNotFound');
+    expect(failure['details'], contains('libllama.so'));
+    expect(err.toString(), contains('error: libraryNotFound:'));
+  }, timeout: const Timeout(Duration(seconds: 30)));
 
   test('without --stub emits one failed object in --stream mode', () async {
-    final runner = makeRunner();
+    final runner = makeRunner(
+      engineFactory: () => WorkerLlamaEngine(libraryPath: ''),
+    );
 
     expect(
       await runner.run([
@@ -110,12 +117,32 @@ void main() {
 
     final event = _lines(out.toString()).single;
     expect(event['type'], 'failed');
-    expect(event['requestId'], 0);
+    expect(event['requestId'], 1);
     expect(
       (event['failure'] as Map<String, Object?>)['code'],
-      'engineUnavailable',
+      'libraryNotFound',
     );
-  });
+  }, timeout: const Timeout(Duration(seconds: 30)));
+
+  test('--lib names a missing library in the failure', () async {
+    final runner = makeRunner(useDefaultEngine: true);
+
+    expect(
+      await runner.run([
+        'run',
+        '--lib',
+        '/nonexistent/libllama.so',
+        '--model',
+        '/tmp/demo.gguf',
+        '--prompt',
+        'hi',
+      ]),
+      ExitCodes.failure,
+    );
+
+    expect(err.toString(), contains('error: libraryNotFound:'));
+    expect(err.toString(), contains('/nonexistent/libllama.so'));
+  }, timeout: const Timeout(Duration(seconds: 30)));
 
   test('--stub streams text to stdout and a summary to stderr', () async {
     final runner = makeRunner();
@@ -260,24 +287,6 @@ void main() {
 
     expect(stdin.hasListener, isFalse);
     expect(err.toString(), contains('cannot be combined'));
-  });
-
-  test('--file - is never read for an invocation without --stub', () async {
-    final stdin = StreamController<List<int>>();
-    addTearDown(() {
-      stdin.close();
-    });
-    final runner = makeRunner(stdin: stdin.stream);
-
-    expect(
-      await runner
-          .run(['run', '--model', '/tmp/demo.gguf', '--file', '-'])
-          .timeout(const Duration(seconds: 2)),
-      ExitCodes.failure,
-    );
-
-    expect(stdin.hasListener, isFalse);
-    expect(err.toString(), contains('native session is unavailable'));
   });
 
   test('--file - is never read when the model path is missing', () async {

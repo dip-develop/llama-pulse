@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:isolate';
 
 import 'package:llama_pulse_core/llama_pulse_core.dart';
@@ -75,8 +76,10 @@ Future<List<GenerationEvent>> _collect(Stream<GenerationEvent> stream) =>
     stream.toList().timeout(const Duration(seconds: 10));
 
 void main() {
-  test('the default worker refuses to load with engineUnavailable', () async {
-    final engine = WorkerLlamaEngine();
+  test('without a library the worker reports libraryNotFound', () async {
+    // An empty path is what the worker passes when the locator found nothing;
+    // skipping resolution keeps the test independent of the host.
+    final engine = WorkerLlamaEngine(libraryPath: '');
     addTearDown(engine.dispose);
     await expectLater(
       engine.load(_params()),
@@ -85,17 +88,42 @@ void main() {
             .having(
               (exception) => exception.failure.code,
               'failure.code',
-              InferenceFailureCode.engineUnavailable,
+              InferenceFailureCode.libraryNotFound,
             )
             .having(
-              (exception) => exception.failure.message,
-              'failure.message',
-              'the native llama.cpp session is not implemented yet',
+              (exception) => exception.failure.details,
+              'failure.details',
+              contains('libllama.so'),
             ),
       ),
     );
     // The failure must not poison the engine: disposal still works.
     await engine.dispose();
+  });
+
+  test('a missing libraryPath is libraryNotFound with the path', () async {
+    final temp = Directory.systemTemp.createTempSync('llama_pulse_engine_');
+    addTearDown(() => temp.deleteSync(recursive: true));
+    final missing = '${temp.path}/missing/libllama.so';
+    final engine = WorkerLlamaEngine(libraryPath: missing);
+    addTearDown(engine.dispose);
+
+    await expectLater(
+      engine.load(_params()),
+      throwsA(
+        isA<InferenceFailureException>()
+            .having(
+              (exception) => exception.failure.code,
+              'failure.code',
+              InferenceFailureCode.libraryNotFound,
+            )
+            .having(
+              (exception) => exception.failure.details,
+              'failure.details',
+              contains(missing),
+            ),
+      ),
+    );
   });
 
   test('useStubSession makes the worker load and generate', () async {

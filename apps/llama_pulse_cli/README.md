@@ -6,8 +6,8 @@ OpenAI-compatible endpoint; `status`, `stop` and `logs` work from a second
 terminal because the supervisor records `server-state.yaml`.
 
 The embedded chat path (`run`, `bench` and the `params` it uses) is the older,
-experimental path. `run` and `bench` still require `--stub`; the native embedded
-session is deferred.
+experimental path. `run` and `bench` select the native session by default and
+can run the deterministic stub with `--stub`.
 
 Run it from source with `dart run bin/llamapulse.dart <command>` or build a
 native executable with `dart compile exe bin/llamapulse.dart`. From the
@@ -252,10 +252,13 @@ and still exit `0`.
 
 ### `run` and `bench` (embedded, experimental)
 
-Both generate against the embedded worker path and require `--stub`. The stub
-selects the deterministic `StubLlamaSession`; it is not a fallback. Without it
-they exit `1` with `engineUnavailable: the native session is unavailable; pass
---stub`. In stub mode the model path is echoed but not read.
+Both generate against the embedded worker path. The native session runs by
+default and `--lib` names the llama.cpp shared library; without it the worker
+searches `LLAMA_PULSE_LIB`, the bundle, the executable directory, the config
+directory and finally the bare soname. A missing library exits `1` with
+`libraryNotFound` and the searched paths. `--stub` selects the deterministic
+`StubLlamaSession` explicitly; it is not a fallback. In stub mode the model path
+is echoed but not read.
 
 ```
 $ llamapulse run --stub --model /models/demo.gguf --prompt "Hello" --max-tokens 8
@@ -265,13 +268,15 @@ $ llamapulse bench --stub --runs 3
 runs: 3  generatedTokens: 36  evalMs: 818  tokensPerSecond: 44.01
 ```
 
-`run` flags: `--model`, `--prompt`, `--file` (`-` reads stdin), `--stream`,
-`--json`, `--threads`, `--temperature`, `--top-p`, `--top-k`, `--max-tokens`
-and `--context-size`. `--prompt` and `--file` are mutually exclusive; one is
-required. `--json` and `--stream` cannot be combined. `--stream` writes NDJSON
-with `started`, `token`, `metrics`, `completed`, `cancelled` and `failed`.
-`bench` flags: `--runs` (1..50, default 3), `--json`, `--max-tokens` (default
-32) and the shared overrides.
+`run` flags: `--model`, `--lib`, `--prompt`, `--file` (`-` reads stdin),
+`--stream`, `--json`, `--threads`, `--temperature`, `--top-p`, `--top-k`,
+`--max-tokens` and `--context-size`. `--prompt` and `--file` are mutually
+exclusive; one is required. `--json` and `--stream` cannot be combined.
+`--stream` writes NDJSON with `started`, `token`, `metrics`, `completed`,
+`cancelled` and `failed`. `bench` flags: `--runs` (1..50, default 3), `--json`,
+`--max-tokens` (default 32) and the shared overrides. Without `--stub`,
+`bench` requires a readable `.gguf` model: a blank path exits `2` and a missing
+file exits `3`.
 
 ## `--json`
 
@@ -328,7 +333,7 @@ blocks a start. Builds `b10875` and newer (and unknown builds) get
 | Code | Meaning |
 |---|---|
 | 0 | Success; `status` only when running and healthy; `stop` also when nothing was running |
-| 1 | Unexpected failure, any non-running `status`, `serve` when a server is already recorded, `engineUnavailable` without `--stub` |
+| 1 | Unexpected failure, any non-running `status`, `serve` when a server is already recorded, `libraryNotFound` |
 | 2 | Invalid arguments, invalid values, or a server configuration that failed validation |
 | 3 | The requested model file was not found or is not a readable `.gguf` file |
 | 130 | Interrupted by SIGINT (`serve`, `logs --follow`, a generation) |

@@ -14,10 +14,10 @@ stub/embedded engine.
 Today the supervisor, the dashboard and the server CLI work end to end: a
 configured `llama-server` is started, waited on through `/health`, sampled
 through `/metrics` and `/slots`, and stopped gracefully. The embedded chat path
-still ships no native engine: a plain build reports `engineUnavailable`, and
-the opt-in `melos run app:stub` demo runs the stub behind a banner. `run` and
-`bench` in the CLI are also embedded/experimental and require `--stub`. The
-native embedded session is deferred.
+still ships no engine: a plain build reports `engineUnavailable`, and the
+opt-in `melos run app:stub` demo runs the stub behind a banner. `run` and `bench`
+in the CLI are embedded/experimental and now select the native session by
+default; `--stub` runs the deterministic stub.
 
 MVP:
 
@@ -220,13 +220,14 @@ the YAML round-trip test, the CLI flags and the dashboard form.
 
 A worker isolate exists. Core's `data/inference/` holds the protocol
 (`WorkerRequest`/`WorkerResponse` and their kinds), `WorkerTransport`,
-`WorkerLlamaEngine`, `WorkerLoop`, `StubLlamaSession`, the
-`UnavailableLlamaSession` placeholder and the `@pragma('vm:entry-point')`
-`llamaWorkerMain` entrypoint. There is no `dart:ffi` code yet;
-`--stub` and `LLAMAPULSE_STUB_ENGINE` set `WorkerConfig.useStubSession`
-explicitly. The default session is `UnavailableLlamaSession`, whose `load`
-fails with `engineUnavailable` ("the native llama.cpp session is not implemented
-yet"), so a plain build has no engine.
+`WorkerLlamaEngine`, `WorkerLoop`, `StubLlamaSession`, `NativeLlamaSession`
+(under `native/`), `LlamaLibraryLocator` and the `@pragma('vm:entry-point')`
+`llamaWorkerMain` entrypoint. `--stub` and `LLAMAPULSE_STUB_ENGINE` set
+`WorkerConfig.useStubSession` explicitly, and `WorkerConfig.libraryPath` carries
+an explicit library path from `--lib`. The default session is
+`NativeLlamaSession`; when no library resolves, `load` fails with
+`libraryNotFound` and the searched paths in `details` instead of producing
+synthetic output.
 
 - One long-lived worker isolate per engine, spawned lazily on the first
   `load`/`unload`/`generate`. A failed start is retried on the next call. No
@@ -324,18 +325,22 @@ The primary commands are the server group: `server get`, `server set`,
 `params get`, `params set`, `models list`, `models inspect`, `run` and `bench`
 remain. `run` and `bench` are the embedded/experimental path.
 
-- `run` and `bench` require `--stub` until the native engine lands. `--stub`
-  explicitly selects the deterministic `StubLlamaSession` inside the worker; it
-  is not a fallback. Without it, both exit `1` with
-  `engineUnavailable: the native session is unavailable; pass --stub`. The CLI
-  never silently falls back to the stub.
-- `run` flags: `--model`, `--prompt`, `--file` (`-` reads stdin), `--stream`,
-  `--json`, `--threads`, `--temperature`, `--top-p`, `--top-k`, `--max-tokens`
-  and `--context-size`. `--prompt` and `--file` are mutually exclusive; one is
-  required. `--json` and `--stream` cannot be combined.
+- `run` and `bench` run the native session by default. `--stub` explicitly
+  selects the deterministic `StubLlamaSession` inside the worker; it is not a
+  fallback. `--lib <path>` names the libllama shared library; without it the
+  worker resolves `LLAMA_PULSE_LIB`, the bundle, the executable directory, the
+  config directory and finally the bare soname. A missing library exits `1`
+  with `libraryNotFound` and the searched paths on stderr, or in the `failed`
+  JSON object's `details`. The CLI never silently falls back to the stub.
+- `bench` without `--stub` requires a readable `.gguf` model: a blank path is a
+  usage error (`2`) and a missing file exits `3`.
+- `run` flags: `--model`, `--lib`, `--prompt`, `--file` (`-` reads stdin),
+  `--stream`, `--json`, `--threads`, `--temperature`, `--top-p`, `--top-k`,
+  `--max-tokens` and `--context-size`. `--prompt` and `--file` are mutually
+  exclusive; one is required. `--json` and `--stream` cannot be combined.
 - `bench` flags: `--runs` (1..50, default 3), `--json`, `--max-tokens`
-  (default 32), plus the shared `--model` and sampling overrides. It runs the
-  fixed `benchPrompt` repeatedly and reports aggregate throughput.
+  (default 32), plus the shared `--model`, `--lib` and sampling overrides. It
+  runs the fixed `benchPrompt` repeatedly and reports aggregate throughput.
 - Schema-v1 NDJSON covers `started`, `token`, `metrics`, `completed`,
   `cancelled` and `failed`, each line carrying `schemaVersion` and `type`.
   `metrics` and `failure` are nested objects. `bench --json` emits one
@@ -347,9 +352,9 @@ remain. `run` and `bench` are the embedded/experimental path.
   `params`, `models` and `server` groups are not invocable. Configuration files
   on disk stay YAML.
 - Exit codes: `0` success (including `stop` when nothing was running), `1`
-  unexpected failure (including `engineUnavailable` and any non-running
-  `status`), `2` invalid arguments or validation failure, `3` requested model
-  not found or not a readable `.gguf` file, `130` interrupted by SIGINT.
+  unexpected failure (including `libraryNotFound` and any non-running `status`),
+  `2` invalid arguments or validation failure, `3` requested model not found or
+  not a readable `.gguf` file, `130` interrupted by SIGINT.
 - The `params get`, `params set`, `server get`, `server set` and `logs` leaf
   commands include the active file path in their help, because the platform
   directory varies.
@@ -507,7 +512,7 @@ APIs, no `!` on nullable values, no empty `catch` blocks.
 
 From the root, `dart run melos test`. Melos picks `flutter test` for the app and
 `dart test` for core and CLI. Test the critical seams, not every line. Coverage
-is not a target. The suites hold 596 tests today: 388 core, 121 CLI, 87 app.
+is not a target. The suites hold 661 tests today: 450 core, 124 CLI, 87 app.
 
 Must test today:
 
@@ -683,7 +688,7 @@ milestone. Never commit `.env` files, secrets or absolute local paths.
 
 - [ ] The workspace resolves with one lockfile (`flutter pub get` at the root).
 - [ ] `pubspec.lock` stays untracked.
-- [ ] `dart run melos run check` is green (596 tests: 388 core, 121 CLI, 87 app).
+- [ ] `dart run melos run check` is green (661 tests: 450 core, 124 CLI, 87 app).
 - [ ] The server path works end to end: the plain app can start a real
   `llama-server` when a binary is present, and `serve`/`status`/`stop` work from
   the compiled CLI.

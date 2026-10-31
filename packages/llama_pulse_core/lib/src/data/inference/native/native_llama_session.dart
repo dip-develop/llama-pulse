@@ -15,6 +15,7 @@ import '../../../domain/entities/model_params.dart';
 import '../../../domain/exceptions/inference_failure_exception.dart';
 import '../../../domain/gateways/llama_session.dart';
 import '../../../domain/text/utf8_token_accumulator.dart';
+import '../library_locator.dart';
 import 'llama_bindings.dart';
 import 'llama_library.dart';
 
@@ -94,6 +95,11 @@ final class NativeLlamaSession implements LlamaSession {
 
   @override
   Future<void> load(ModelParams params) async {
+    if (_libraryPath.trim().isEmpty) {
+      // The worker passes an empty path when the locator found nothing; report
+      // every searched path instead of a bare "library path is empty".
+      throw InferenceFailureException(LlamaLibraryLocator().notFoundFailure());
+    }
     final library = await _ensureLibrary();
     final libraryFailure = library.failure;
     if (libraryFailure != null) {
