@@ -6,7 +6,7 @@ contain the checkout:
 
 ```sh
 git clone --depth 1 --branch v0.8.0 https://github.com/ggml-org/llama.cpp
-cmake -S llama.cpp -B llama.cpp/build -G Ninja -DBUILD_SHARED_LIBS=ON -DLLAMA_BUILD_IS_DEV=OFF -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=OFF -DLLAMA_BUILD_TOOLS=OFF -DLLAMA_CURL=OFF
+cmake -S llama.cpp -B llama.cpp/build -G Ninja -DBUILD_SHARED_LIBS=ON -DLLAMA_BUILD_IS_DEV=OFF -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=OFF -DLLAMA_BUILD_TOOLS=OFF
 cmake --build llama.cpp/build -j
 ```
 
@@ -19,7 +19,7 @@ string exactly, so that build is rejected with a
 
 The build writes the shared libraries to `llama.cpp/build/bin`:
 
-- `libllama.so`, `libllama.so.0`, `libllama.so.0.0.0`
+- `libllama.so`, `libllama.so.0`, `libllama.so.0.8.0`
 - `libggml.so*`, `libggml-base.so*`, `libggml-cpu.so*`
 
 `libllama.so` links the sibling `libggml*` libraries. The session pre-opens

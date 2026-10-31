@@ -8,13 +8,19 @@ import 'package:test/test.dart';
 /// Guards the hand-written bindings against the pinned C header.
 ///
 /// `third_party/llama_cpp/v0.8.0/abi_check.c` includes the real `llama.h` and
-/// prints every struct size and field offset. This test compiles it with clang,
-/// runs it, and compares the output with the layout `dart:ffi` gives the structs
-/// in `llama_bindings.dart`.
+/// prints every struct size, field offset and field width. This test compiles
+/// it with clang, runs it, and compares the output with the layout
+/// `dart:ffi` gives the structs in `llama_bindings.dart`.
 ///
 /// `dart:ffi` has no `offsetOf`, so the Dart side is measured: a struct is
 /// filled with 0xFF, one field is set to 0, and the index of the first zero byte
 /// is that field's offset.
+///
+/// Widths are checked against [_expectedFieldWidths], an explicit table built
+/// from the known header because Dart has no per-field reflection of a struct's
+/// field types. A field retyped to a different width is therefore caught, but a
+/// same-width retype (for example `int32_t` to `uint32_t`, or two pointer types)
+/// is not; the size and offset checks are the only guard against that.
 void main() {
   late final Directory repoRoot;
   late final Directory pinDirectory;
@@ -777,9 +783,9 @@ void main() {
         ),
       );
 
-      // Canary: abi_check.c always reports 72 offsets (17 + 38 + 7 + 1 + 9).
-      // A change here means a field was added to or removed from the header
-      // and the Dart struct needs the same change.
+      // Canary: abi_check.c always reports 72 offsets and 72 widths
+      // (17 + 38 + 7 + 1 + 9). A change here means a field was added to or
+      // removed from the header and the Dart struct needs the same change.
       expect(
         header.offsets.length,
         72,
@@ -787,6 +793,34 @@ void main() {
             'abi_check.c reported a different number of fields; '
             'update llama_bindings.dart together with the pin',
       );
+      expect(
+        _expectedFieldWidths,
+        hasLength(72),
+        reason: 'the width table must mirror every field in the header',
+      );
+      expect(
+        header.widths.length,
+        _expectedFieldWidths.length,
+        reason:
+            'abi_check.c reported a different number of field widths; '
+            'update llama_bindings.dart together with the pin',
+      );
+
+      for (final entry in _expectedFieldWidths.entries) {
+        final headerWidth = header.widths[entry.key];
+        expect(
+          headerWidth,
+          isNotNull,
+          reason: 'abi_check.c did not report the width of ${entry.key}',
+        );
+        expect(
+          headerWidth,
+          entry.value,
+          reason:
+              '${entry.key}: header width $headerWidth, '
+              'expected Dart field width ${entry.value}',
+        );
+      }
     });
   });
 }
@@ -798,6 +832,96 @@ const _expectedStructs = [
   'LlamaSamplerChainParams',
   'LlamaPerfContextData',
 ];
+
+/// The width `ffi.sizeOf` gives each Dart field type, keyed by
+/// `<Struct>.<c_field_name>`.
+///
+/// The project targets 64-bit desktop, so pointer and `size_t` fields are 8
+/// bytes. Keep this list in declaration order with the header: the count is a
+/// canary and a missing entry fails the width check.
+const _expectedFieldWidths = <String, int>{
+  // LlamaModelParams <- struct llama_model_params (17 fields)
+  'LlamaModelParams.devices': 8,
+  'LlamaModelParams.tensor_buft_overrides': 8,
+  'LlamaModelParams.n_gpu_layers': 4,
+  'LlamaModelParams.split_mode': 4,
+  'LlamaModelParams.load_mode': 4,
+  'LlamaModelParams.lazy_mode': 4,
+  'LlamaModelParams.main_gpu': 4,
+  'LlamaModelParams.tensor_split': 8,
+  'LlamaModelParams.progress_callback': 8,
+  'LlamaModelParams.progress_callback_user_data': 8,
+  'LlamaModelParams.kv_overrides': 8,
+  'LlamaModelParams.vocab_only': 1,
+  'LlamaModelParams.check_tensors': 1,
+  'LlamaModelParams.use_extra_bufts': 1,
+  'LlamaModelParams.no_host': 1,
+  'LlamaModelParams.no_alloc': 1,
+  'LlamaModelParams.load_mtp': 1,
+
+  // LlamaContextParams <- struct llama_context_params (38 fields)
+  'LlamaContextParams.n_ctx': 4,
+  'LlamaContextParams.n_batch': 4,
+  'LlamaContextParams.n_ubatch': 4,
+  'LlamaContextParams.n_seq_max': 4,
+  'LlamaContextParams.n_rs_seq': 4,
+  'LlamaContextParams.n_outputs_max': 4,
+  'LlamaContextParams.n_outputs_max_per_seq': 4,
+  'LlamaContextParams.n_threads': 4,
+  'LlamaContextParams.n_threads_batch': 4,
+  'LlamaContextParams.ctx_type': 4,
+  'LlamaContextParams.rope_scaling_type': 4,
+  'LlamaContextParams.pooling_type': 4,
+  'LlamaContextParams.attention_type': 4,
+  'LlamaContextParams.flash_attn_type': 4,
+  'LlamaContextParams.rope_freq_base': 4,
+  'LlamaContextParams.rope_freq_scale': 4,
+  'LlamaContextParams.yarn_ext_factor': 4,
+  'LlamaContextParams.yarn_attn_factor': 4,
+  'LlamaContextParams.yarn_beta_fast': 4,
+  'LlamaContextParams.yarn_beta_slow': 4,
+  'LlamaContextParams.yarn_orig_ctx': 4,
+  'LlamaContextParams.defrag_thold': 4,
+  'LlamaContextParams.cb_eval': 8,
+  'LlamaContextParams.cb_eval_user_data': 8,
+  'LlamaContextParams.type_k': 4,
+  'LlamaContextParams.type_v': 4,
+  'LlamaContextParams.moe_cache_size': 8,
+  'LlamaContextParams.abort_callback': 8,
+  'LlamaContextParams.abort_callback_data': 8,
+  'LlamaContextParams.embeddings': 1,
+  'LlamaContextParams.offload_kqv': 1,
+  'LlamaContextParams.no_perf': 1,
+  'LlamaContextParams.op_offload': 1,
+  'LlamaContextParams.swa_full': 1,
+  'LlamaContextParams.kv_unified': 1,
+  'LlamaContextParams.samplers': 8,
+  'LlamaContextParams.n_samplers': 8,
+  'LlamaContextParams.ctx_other': 8,
+
+  // LlamaBatch <- struct llama_batch (7 fields)
+  'LlamaBatch.n_tokens': 4,
+  'LlamaBatch.token': 8,
+  'LlamaBatch.embd': 8,
+  'LlamaBatch.pos': 8,
+  'LlamaBatch.n_seq_id': 8,
+  'LlamaBatch.seq_id': 8,
+  'LlamaBatch.logits': 8,
+
+  // LlamaSamplerChainParams <- struct llama_sampler_chain_params (1 field)
+  'LlamaSamplerChainParams.no_perf': 1,
+
+  // LlamaPerfContextData <- struct llama_perf_context_data (9 fields)
+  'LlamaPerfContextData.t_start_ms': 8,
+  'LlamaPerfContextData.t_load_ms': 8,
+  'LlamaPerfContextData.t_p_eval_ms': 8,
+  'LlamaPerfContextData.t_eval_ms': 8,
+  'LlamaPerfContextData.n_p_eval': 4,
+  'LlamaPerfContextData.n_eval': 4,
+  'LlamaPerfContextData.n_reused': 4,
+  'LlamaPerfContextData.n_reallocs_same': 4,
+  'LlamaPerfContextData.n_reallocs_diff': 4,
+};
 
 void _expectSize(_AbiReport header, String name, int dartSize) {
   final headerSize = header.sizes[name];
@@ -870,16 +994,20 @@ String _snakeCase(String camel) {
 
 /// The output of `abi_check.c`.
 final class _AbiReport {
-  _AbiReport(this.sizes, this.offsets);
+  _AbiReport(this.sizes, this.offsets, this.widths);
 
   final Map<String, int> sizes;
 
   /// Keyed by `<Struct>.<c_field_name>`.
   final Map<String, int> offsets;
 
+  /// Keyed by `<Struct>.<c_field_name>`.
+  final Map<String, int> widths;
+
   static _AbiReport parse(String output) {
     final sizes = <String, int>{};
     final offsets = <String, int>{};
+    final widths = <String, int>{};
 
     for (final line in output.split('\n')) {
       final parts = line.trim().split(' ');
@@ -887,11 +1015,13 @@ final class _AbiReport {
         sizes[parts[1]] = _parseInt(line, parts[2]);
       } else if (parts.length == 4 && parts[0] == 'off') {
         offsets['${parts[1]}.${parts[2]}'] = _parseInt(line, parts[3]);
+      } else if (parts.length == 4 && parts[0] == 'width') {
+        widths['${parts[1]}.${parts[2]}'] = _parseInt(line, parts[3]);
       } else if (line.trim().isNotEmpty) {
         fail('unparseable abi_check line: "$line"');
       }
     }
-    return _AbiReport(sizes, offsets);
+    return _AbiReport(sizes, offsets, widths);
   }
 
   static int _parseInt(String line, String value) {

@@ -302,8 +302,10 @@ Native session rules:
 - **Generation.** Tokenize the prompt, truncate on the left to
   `n_ctx - maxTokens`, prefill in `n_batch` chunks (logits only on the last
   prompt token), then sample top-k → top-p → min-p (0.05) → temperature →
-  distribution with the default seed. Decode each token before sampling the
-  next, stop on EOG, and check cancellation at every step and prefill chunk.
+  distribution seeded with `LLAMA_DEFAULT_SEED` (`0xFFFFFFFF`), which llama.cpp
+  treats as random, so `bench` runs differ. Decode each token before sampling
+  the next, stop on EOG, and check cancellation at every step and prefill
+  chunk.
   Metrics come from `llama_perf_context` plus the loop's token counts.
 - **Platform.** 64-bit desktop only: structs are returned by value.
 - **Selection.** `WorkerConfig.useStubSession` chooses

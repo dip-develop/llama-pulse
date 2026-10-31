@@ -58,14 +58,31 @@ static char g_sampler_sentinel;
 #define FAKE_MAX_TOKENS 8192
 #define FAKE_MAX_PIECES 256
 #define FAKE_MAX_TOKEN_PIECES 128
-#define FAKE_PIECE_BYTES 64
+#define FAKE_PIECE_BYTES 256
 #define FAKE_MAX_DECODES 8192
+#define FAKE_MAX_TOKENIZE_TEXT 4096
+#define FAKE_CALL_LOG 8
 
 // How many tokens llama_tokenize should produce. Negative values make the
 // first probe return that value and the following call fill the buffer.
 static int g_tokenize_result = 0;
 static int g_tokenize_calls = 0;
 static int g_tokenize_probe_pending = 0;
+static char g_tokenize_text[FAKE_MAX_TOKENIZE_TEXT] = "";
+static int g_tokenize_text_len = 0;
+static int g_tokenize_add_special = 0;
+static int g_tokenize_parse_special = 0;
+
+// Contract violations the session must never trigger (bad batch shape, a
+// sample at the wrong index or without logits).
+static int g_contract_violations = 0;
+
+// Whether the most recent decode asked for logits on any token.
+static int g_last_decode_requested_logits = 0;
+
+// The most recent sampler/decode calls, oldest first: 'S' or 'D'.
+static char g_call_log[FAKE_CALL_LOG];
+static int g_call_log_count = 0;
 
 // Token ids the sampler returns, in order.
 static int32_t g_tokens[FAKE_MAX_TOKENS];
@@ -108,6 +125,15 @@ static int g_perf_reset_count = 0;
 // ---------------------------------------------------------------------------
 // Test control surface.
 // ---------------------------------------------------------------------------
+
+static void fake_record_call(char call) {
+    if (g_call_log_count < FAKE_CALL_LOG) {
+        g_call_log[g_call_log_count++] = call;
+        return;
+    }
+    memmove(g_call_log, g_call_log + 1, FAKE_CALL_LOG - 1);
+    g_call_log[FAKE_CALL_LOG - 1] = call;
+}
 
 void fake_llama_set_version(const char *version) {
     if (version == NULL) {
@@ -194,6 +220,14 @@ void fake_llama_set_piece_bytes(int token, const uint8_t *bytes, int n) {
     g_token_pieces[slot].length = n;
 }
 
+// Gives [token] a piece of exactly FAKE_PIECE_BYTES bytes, longer than the
+// session's initial buffer, so the grow-and-retry path is exercised.
+void fake_llama_set_piece_bytes_long(int32_t token) {
+    uint8_t bytes[FAKE_PIECE_BYTES];
+    memset(bytes, 'x', sizeof bytes);
+    fake_llama_set_piece_bytes(token, bytes, (int) sizeof bytes);
+}
+
 void fake_llama_set_decode_result(int code) {
     g_decode_result = code;
 }
@@ -229,6 +263,14 @@ void fake_llama_reset(void) {
     g_tokenize_result = 0;
     g_tokenize_calls = 0;
     g_tokenize_probe_pending = 0;
+    g_tokenize_text[0] = '\0';
+    g_tokenize_text_len = 0;
+    g_tokenize_add_special = 0;
+    g_tokenize_parse_special = 0;
+    g_contract_violations = 0;
+    g_last_decode_requested_logits = 0;
+    memset(g_call_log, 0, sizeof g_call_log);
+    g_call_log_count = 0;
     g_token_count = 0;
     g_sample_index = 0;
     g_sample_calls = 0;
@@ -266,6 +308,19 @@ int fake_llama_ctx_free_count(void) { return g_ctx_free_count; }
 int fake_llama_backend_init_count(void) { return g_backend_init_count; }
 
 int fake_llama_tokenize_calls(void) { return g_tokenize_calls; }
+int fake_llama_tokenize_add_special(void) { return g_tokenize_add_special; }
+int fake_llama_tokenize_parse_special(void) { return g_tokenize_parse_special; }
+int fake_llama_tokenize_text_len(void) { return g_tokenize_text_len; }
+const char *fake_llama_tokenize_text(void) { return g_tokenize_text; }
+int fake_llama_contract_violation_count(void) { return g_contract_violations; }
+const char *fake_llama_last_call_sequence(void) {
+    static char sequence[FAKE_CALL_LOG + 1];
+    const int n = g_call_log_count < FAKE_CALL_LOG ? g_call_log_count
+                                                   : FAKE_CALL_LOG;
+    memcpy(sequence, g_call_log, (size_t) n);
+    sequence[n] = '\0';
+    return sequence;
+}
 int fake_llama_decode_calls(void) { return g_decode_calls; }
 int fake_llama_batch_nodes(void) { return g_batch_chunks; }
 int fake_llama_max_batch_tokens(void) { return g_max_batch_tokens; }
@@ -406,11 +461,19 @@ int32_t llama_tokenize(
         bool add_special,
         bool parse_special) {
     (void) vocab;
-    (void) text;
-    (void) text_len;
-    (void) add_special;
-    (void) parse_special;
     g_tokenize_calls += 1;
+
+    g_tokenize_add_special = add_special ? 1 : 0;
+    g_tokenize_parse_special = parse_special ? 1 : 0;
+    g_tokenize_text_len = text_len > 0 ? text_len : 0;
+    int record_len = g_tokenize_text_len;
+    if (record_len >= FAKE_MAX_TOKENIZE_TEXT) {
+        record_len = FAKE_MAX_TOKENIZE_TEXT - 1;
+    }
+    if (text != NULL && record_len > 0) {
+        memcpy(g_tokenize_text, text, (size_t) record_len);
+    }
+    g_tokenize_text[record_len] = '\0';
 
     int need;
     if (g_tokenize_result < 0) {
@@ -475,6 +538,10 @@ int32_t llama_token_to_piece(
     return source_length;
 }
 
+// Mirrors upstream: the arrays are allocated with malloc, so they stay
+// uninitialized until the caller writes them. seq_id has one extra slot with a
+// NULL sentinel, and n_tokens stays 0 because the caller sets it after a
+// successful init.
 struct llama_batch llama_batch_init(
         int32_t n_tokens,
         int32_t embd,
@@ -486,31 +553,34 @@ struct llama_batch llama_batch_init(
     if (n_seq_max < 1) {
         n_seq_max = 1;
     }
-    const size_t count = (size_t) (n_tokens > 0 ? n_tokens : 1);
     struct llama_batch batch;
     memset(&batch, 0, sizeof batch);
-    batch.n_tokens = n_tokens;
-    batch.token = calloc(count, sizeof(llama_token));
-    batch.pos = calloc(count, sizeof(llama_pos));
-    batch.n_seq_id = calloc(count, sizeof(int32_t));
-    batch.seq_id = calloc(count, sizeof(int32_t *));
-    batch.logits = calloc(count, sizeof(int8_t));
-    for (int32_t i = 0; i < n_tokens; i++) {
-        batch.seq_id[i] = calloc((size_t) n_seq_max, sizeof(int32_t));
+    batch.token = malloc(sizeof(llama_token) * (size_t) n_tokens);
+    batch.pos = malloc(sizeof(llama_pos) * (size_t) n_tokens);
+    batch.n_seq_id = malloc(sizeof(int32_t) * (size_t) n_tokens);
+    batch.seq_id = malloc(sizeof(llama_seq_id *) * ((size_t) n_tokens + 1));
+    if (batch.seq_id != NULL) {
+        for (int32_t i = 0; i < n_tokens; i++) {
+            batch.seq_id[i] = malloc(sizeof(llama_seq_id) * (size_t) n_seq_max);
+        }
+        batch.seq_id[n_tokens] = NULL;
     }
+    batch.logits = malloc(sizeof(int8_t) * (size_t) n_tokens);
+    batch.n_tokens = 0;
     return batch;
 }
 
 void llama_batch_free(struct llama_batch batch) {
     if (batch.seq_id != NULL) {
-        for (int32_t i = 0; i < batch.n_tokens; i++) {
+        for (int32_t i = 0; batch.seq_id[i] != NULL; i++) {
             free(batch.seq_id[i]);
         }
+        free(batch.seq_id);
     }
     free(batch.token);
+    free(batch.embd);
     free(batch.pos);
     free(batch.n_seq_id);
-    free(batch.seq_id);
     free(batch.logits);
     g_batch_free_count += 1;
 }
@@ -519,24 +589,63 @@ int32_t llama_decode(struct llama_context *ctx, struct llama_batch batch) {
     (void) ctx;
     g_decode_calls += 1;
     g_batch_chunks += 1;
+    fake_record_call('D');
+    g_last_decode_requested_logits = 0;
+
+    // Reject the shapes the session must never send. A session bug then fails
+    // loudly here instead of silently producing plausible output.
+    int violation = 0;
+    if (batch.n_tokens <= 0) {
+        violation = 1;
+    }
+    if (!violation) {
+        for (int32_t i = 0; i < batch.n_tokens; i++) {
+            if (batch.pos == NULL) {
+                violation = 1;
+                break;
+            }
+            if (batch.n_seq_id == NULL || batch.n_seq_id[i] != 1) {
+                violation = 1;
+                break;
+            }
+            if (batch.seq_id == NULL || batch.seq_id[i] == NULL ||
+                batch.seq_id[i][0] != 0) {
+                violation = 1;
+                break;
+            }
+            if (batch.logits == NULL ||
+                (batch.logits[i] != 0 && batch.logits[i] != 1)) {
+                violation = 1;
+                break;
+            }
+            if (i > 0 && batch.pos[i] <= batch.pos[i - 1]) {
+                violation = 1;
+                break;
+            }
+        }
+    }
+    if (violation) {
+        g_contract_violations += 1;
+        return -2;
+    }
+
     g_total_batch_tokens += batch.n_tokens;
     if (batch.n_tokens > g_max_batch_tokens) {
         g_max_batch_tokens = batch.n_tokens;
     }
-    if (batch.n_tokens > 0) {
-        if (g_batch_chunks == 1) {
-            g_first_batch_pos = batch.pos[0];
-        }
-        g_last_batch_pos = batch.pos[batch.n_tokens - 1];
-        if (g_decode_calls <= FAKE_MAX_DECODES) {
-            g_decode_last_pos[g_decode_calls - 1] = g_last_batch_pos;
-        }
-        for (int32_t i = 0; i < batch.n_tokens; i++) {
-            if (batch.logits[i] != 0) {
-                g_logits_count += 1;
-                if (i != batch.n_tokens - 1) {
-                    g_logits_mismatch = 1;
-                }
+    if (g_batch_chunks == 1) {
+        g_first_batch_pos = batch.pos[0];
+    }
+    g_last_batch_pos = batch.pos[batch.n_tokens - 1];
+    if (g_decode_calls <= FAKE_MAX_DECODES) {
+        g_decode_last_pos[g_decode_calls - 1] = g_last_batch_pos;
+    }
+    for (int32_t i = 0; i < batch.n_tokens; i++) {
+        if (batch.logits[i] != 0) {
+            g_logits_count += 1;
+            g_last_decode_requested_logits = 1;
+            if (i != batch.n_tokens - 1) {
+                g_logits_mismatch = 1;
             }
         }
     }
@@ -601,8 +710,12 @@ llama_token llama_sampler_sample(
         int32_t idx) {
     (void) smpl;
     (void) ctx;
-    (void) idx;
+    fake_record_call('S');
     g_sample_calls += 1;
+    if (idx != -1 || !g_last_decode_requested_logits) {
+        g_contract_violations += 1;
+        return -1;
+    }
     if (g_sample_index < 0 || g_sample_index >= g_token_count) {
         return 2;
     }

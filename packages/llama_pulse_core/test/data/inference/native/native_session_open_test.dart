@@ -53,11 +53,16 @@ void main() {
     expect(first.version, '0.8.0');
     expect(first.path, libraryPath);
     expect(first.bindings.llamaVersion, isNotNull);
-    expect(fake.backendInitCount, 1);
+    final firstInitCount = fake.backendInitCount;
+    expect(firstInitCount, greaterThanOrEqualTo(1));
 
     final second = await LlamaLibrary.open(libraryPath);
     expect(second.isUsable, isTrue);
-    expect(fake.backendInitCount, 1, reason: 'backend init is process-global');
+    expect(
+      fake.backendInitCount,
+      firstInitCount,
+      reason: 'backend init is process-global',
+    );
   });
 
   group('version mismatch', () {

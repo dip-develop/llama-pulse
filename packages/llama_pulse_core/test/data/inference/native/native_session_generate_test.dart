@@ -171,6 +171,65 @@ void main() {
     expect(fake.lastBatchPos, 601);
   });
 
+  test('begin tokenizes with add_special and parse_special enabled', () async {
+    if (skipReason != null) {
+      markTestSkipped(skipReason!);
+      return;
+    }
+    final session = await loadedSession();
+    fake.setTokenizeResult(1);
+
+    session.begin(request(prompt: 'hello'));
+
+    expect(fake.tokenizeAddSpecial, isTrue);
+    expect(fake.tokenizeParseSpecial, isTrue);
+    expect(fake.tokenizeText, 'hello');
+    expect(fake.tokenizeTextLen, 5);
+  });
+
+  test(
+    'a piece longer than 64 bytes survives the grow-and-retry path',
+    () async {
+      if (skipReason != null) {
+        markTestSkipped(skipReason!);
+        return;
+      }
+      final session = await loadedSession();
+      fake.setTokenizeResult(1);
+      fake.setTokens([10]);
+      fake.setPieceBytesLong(10);
+
+      session.begin(request());
+      final steps = await drain(session);
+
+      expect(steps.first.text, 'x' * 256);
+      expect(steps.first.text.length, 256);
+      expect(steps.concatenatedText, 'x' * 256);
+      expect(steps.last.done, isTrue);
+    },
+  );
+
+  test('sampling and decoding alternate after the prefill', () async {
+    if (skipReason != null) {
+      markTestSkipped(skipReason!);
+      return;
+    }
+    final session = await loadedSession();
+    fake.setTokenizeResult(1);
+    fake.setTokens([10, 11]);
+    fake.setPieces(['a', 'b']);
+
+    session.begin(request());
+    await session.next();
+    await session.next();
+
+    expect(
+      fake.lastCallSequence,
+      endsWith('SDSD'),
+      reason: 'each sample is followed by the decode of the sampled token',
+    );
+  });
+
   test('a UTF-8 code point split across tokens is emitted once', () async {
     if (skipReason != null) {
       markTestSkipped(skipReason!);

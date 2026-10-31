@@ -162,7 +162,7 @@ matching library with:
 git clone --depth 1 --branch v0.8.0 https://github.com/ggml-org/llama.cpp
 cmake -S llama.cpp -B llama.cpp/build -G Ninja -DBUILD_SHARED_LIBS=ON \
   -DLLAMA_BUILD_IS_DEV=OFF -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=OFF \
-  -DLLAMA_BUILD_TOOLS=OFF -DLLAMA_CURL=OFF
+  -DLLAMA_BUILD_TOOLS=OFF
 cmake --build llama.cpp/build -j
 export LLAMA_PULSE_LIB=$PWD/llama.cpp/build/bin/libllama.so
 ```
@@ -170,11 +170,12 @@ export LLAMA_PULSE_LIB=$PWD/llama.cpp/build/bin/libllama.so
 Generation tokenizes the prompt, truncates it from the left to
 `n_ctx - maxTokens`, prefills it in `n_batch` chunks (logits only on the last
 prompt token), and samples through a top-k → top-p → min-p (0.05) →
-temperature → distribution chain with the default seed. Each token is decoded
-before the next one is sampled, EOG tokens end the response, and
-`Utf8TokenAccumulator` reassembles code points split across tokens. Cancellation
-is cooperative and checked at every step and prefill chunk. Metrics come from
-`llama_perf_context` plus the loop's token counts.
+temperature → distribution chain seeded with `LLAMA_DEFAULT_SEED`
+(`0xFFFFFFFF`), which llama.cpp treats as random, so `bench` runs differ.
+Each token is decoded before the next one is sampled, EOG tokens end the
+response, and `Utf8TokenAccumulator` reassembles code points split across
+tokens. Cancellation is cooperative and checked at every step and prefill
+chunk. Metrics come from `llama_perf_context` plus the loop's token counts.
 
 The bindings in
 `packages/llama_pulse_core/lib/src/data/inference/native/llama_bindings.dart`
@@ -393,7 +394,8 @@ object with `code`, `message` and `details`. `run --json` prints exactly one
 final object instead of a stream.
 
 `bench` runs the fixed prompt `The quick brown fox jumps over the lazy dog.`
-several times and reports aggregate throughput. Without `--stub` the model must
+several times and reports aggregate throughput. The default seed is random, so
+the numbers differ between runs. Without `--stub` the model must
 be a readable `.gguf` file: a blank path is a usage error (exit 2) and a missing
 or non-`.gguf` file exits 3. In stub mode with no configured model it uses the
 `<stub>` placeholder path.

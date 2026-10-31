@@ -133,6 +133,11 @@ final class FakeLlama {
         void Function(int, ffi.Pointer<ffi.Uint8>, int)
       >('fake_llama_set_piece_bytes');
 
+  late final void Function(int) _setPieceBytesLong = _library
+      .lookupFunction<ffi.Void Function(ffi.Int32), void Function(int)>(
+        'fake_llama_set_piece_bytes_long',
+      );
+
   late final void Function(int) _setDecodeResult = _library
       .lookupFunction<ffi.Void Function(ffi.Int32), void Function(int)>(
         'fake_llama_set_decode_result',
@@ -182,6 +187,34 @@ final class FakeLlama {
   late final int Function() _tokenizeCalls = _intGetter(
     'fake_llama_tokenize_calls',
   );
+
+  late final int Function() _tokenizeAddSpecial = _intGetter(
+    'fake_llama_tokenize_add_special',
+  );
+
+  late final int Function() _tokenizeParseSpecial = _intGetter(
+    'fake_llama_tokenize_parse_special',
+  );
+
+  late final int Function() _tokenizeTextLen = _intGetter(
+    'fake_llama_tokenize_text_len',
+  );
+
+  late final ffi.Pointer<Utf8> Function() _tokenizeText = _library
+      .lookupFunction<
+        ffi.Pointer<Utf8> Function(),
+        ffi.Pointer<Utf8> Function()
+      >('fake_llama_tokenize_text');
+
+  late final int Function() _contractViolationCount = _intGetter(
+    'fake_llama_contract_violation_count',
+  );
+
+  late final ffi.Pointer<Utf8> Function() _lastCallSequence = _library
+      .lookupFunction<
+        ffi.Pointer<Utf8> Function(),
+        ffi.Pointer<Utf8> Function()
+      >('fake_llama_last_call_sequence');
 
   late final int Function() _decodeCalls = _intGetter(
     'fake_llama_decode_calls',
@@ -316,6 +349,9 @@ final class FakeLlama {
     }
   }
 
+  /// Gives [token] a 256-byte piece, longer than the session's 64-byte buffer.
+  void setPieceBytesLong(int token) => _setPieceBytesLong(token);
+
   /// Sets the value `llama_decode` returns.
   void setDecodeResult(int code) => _setDecodeResult(code);
 
@@ -361,6 +397,25 @@ final class FakeLlama {
   int get backendInitCount => _backendInitCount();
 
   int get tokenizeCalls => _tokenizeCalls();
+
+  bool get tokenizeAddSpecial => _tokenizeAddSpecial() != 0;
+
+  bool get tokenizeParseSpecial => _tokenizeParseSpecial() != 0;
+
+  String get tokenizeText {
+    final pointer = _tokenizeText();
+    return pointer == ffi.nullptr ? '' : pointer.toDartString();
+  }
+
+  int get tokenizeTextLen => _tokenizeTextLen();
+
+  int get contractViolationCount => _contractViolationCount();
+
+  /// The most recent sampler (`S`) and decode (`D`) calls, oldest first.
+  String get lastCallSequence {
+    final pointer = _lastCallSequence();
+    return pointer == ffi.nullptr ? '' : pointer.toDartString();
+  }
 
   int get decodeCalls => _decodeCalls();
 

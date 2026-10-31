@@ -50,6 +50,9 @@ final class NativeLlamaSession implements LlamaSession {
   static const int _int32Min = -0x80000000;
 
   String _libraryPath;
+
+  /// The opened library, including a cached failure; a failed open is not
+  /// retried until the process restarts (intentional).
   LlamaLibrary? _library;
 
   ffi.Pointer<LlamaModel>? _model;
@@ -61,9 +64,6 @@ final class NativeLlamaSession implements LlamaSession {
 
   /// Prompt tokens to decode, kept as a Dart list for fast batch filling.
   Int32List _pending = Int32List(0);
-
-  /// Native copy of [_pending]; llama.cpp borrows this pointer during prefill.
-  ffi.Pointer<ffi.Int32>? _tokenBuffer;
 
   int _position = 0;
   int _generated = 0;
@@ -267,11 +267,7 @@ final class NativeLlamaSession implements LlamaSession {
 
     _buildSampler(bindings, request.params);
 
-    final nativeTokens = calloc<ffi.Int32>(math.max(1, tokens.length));
-    nativeTokens.asTypedList(tokens.length).setAll(0, tokens);
-
     _pending = tokens;
-    _tokenBuffer = nativeTokens;
     _position = 0;
     _generated = 0;
     _maxTokens = math.max(0, math.min(requestedMax, nCtx - tokens.length));
@@ -304,6 +300,7 @@ final class NativeLlamaSession implements LlamaSession {
     }
     final bindings = library.bindings;
     if (nBatch == null || nBatch <= 0) {
+      _stopGeneration();
       throw InferenceFailureException(
         _failure(
           InferenceFailureCode.nativeError,
@@ -671,12 +668,10 @@ final class NativeLlamaSession implements LlamaSession {
   void _finishGeneration() {
     _active = false;
     _finished = true;
-    _freeTokenBuffer();
     _stopwatch.stop();
   }
 
   void _stopGeneration() {
-    _freeTokenBuffer();
     _freeSampler();
     _pending = Int32List(0);
     _active = false;
@@ -685,7 +680,6 @@ final class NativeLlamaSession implements LlamaSession {
   }
 
   void _clearGeneration({bool freeSampler = false}) {
-    _freeTokenBuffer();
     if (freeSampler) {
       _freeSampler();
     }
@@ -701,14 +695,6 @@ final class NativeLlamaSession implements LlamaSession {
     _accumulator = Utf8TokenAccumulator();
   }
 
-  void _freeTokenBuffer() {
-    final buffer = _tokenBuffer;
-    if (buffer != null) {
-      calloc.free(buffer);
-    }
-    _tokenBuffer = null;
-  }
-
   void _freeSampler() {
     final library = _library;
     final sampler = _sampler;
@@ -718,9 +704,8 @@ final class NativeLlamaSession implements LlamaSession {
     _sampler = null;
   }
 
-  /// Frees sampler, token buffer, context (and with it the KV memory) and
-  /// model, in that order. Safe to call repeatedly: every pointer is nulled
-  /// first.
+  /// Frees sampler, context (and with it the KV memory) and model, in that
+  /// order. Safe to call repeatedly: every pointer is nulled first.
   void _release() {
     final library = _library;
     _clearGeneration(freeSampler: true);

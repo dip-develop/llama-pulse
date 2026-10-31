@@ -79,7 +79,15 @@ final class LlamaLibrary {
       );
     }
 
-    _preloadSiblings(path);
+    // Best effort: a sibling that cannot be listed or opened must not stop the
+    // main library from being bound, because `open` never throws.
+    try {
+      _preloadSiblings(path);
+    } on FileSystemException {
+      // The main library may be self-contained or find its dependencies itself.
+    } on UnsupportedError {
+      // Some platforms/filesystems do not support directory listing here.
+    }
 
     final ffi.DynamicLibrary library;
     try {
