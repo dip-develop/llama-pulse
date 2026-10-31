@@ -61,6 +61,36 @@ void main() {
       expect(names, ['params.yaml']);
     });
 
+    test(
+      'concurrent writes leave a valid document and no temp files',
+      () async {
+        final directory = await createTempDirectory();
+        final store = YamlFileConfigStore(directory: directory.path);
+
+        await Future.wait<void>([
+          store.write('params', <String, Object?>{
+            'schemaVersion': 1,
+            'writer': 'a',
+          }),
+          store.write('params', <String, Object?>{
+            'schemaVersion': 1,
+            'writer': 'b',
+          }),
+        ]);
+
+        final document = await store.read('params');
+        expect(document?['schemaVersion'], 1);
+        expect(document?['writer'], anyOf('a', 'b'));
+
+        final names = await directory
+            .list()
+            .map((entity) => p.basename(entity.path))
+            .toList();
+        expect(names.where((name) => name.contains('.tmp')), isEmpty);
+        expect(names, ['params.yaml']);
+      },
+    );
+
     test('delete removes the document', () async {
       final directory = await createTempDirectory();
       final store = YamlFileConfigStore(directory: directory.path);
@@ -96,6 +126,17 @@ void main() {
         store.write('params/evil', <String, Object?>{}),
         throwsArgumentError,
       );
+    });
+
+    test('accepts a hyphenated document name', () async {
+      final directory = await createTempDirectory();
+      final store = YamlFileConfigStore(directory: directory.path);
+
+      await store.write('server-state', <String, Object?>{'schemaVersion': 1});
+
+      final file = File(p.join(directory.path, 'server-state.yaml'));
+      expect(await file.exists(), isTrue);
+      expect(await store.read('server-state'), {'schemaVersion': 1});
     });
 
     test('throws FormatException for unparsable YAML', () async {

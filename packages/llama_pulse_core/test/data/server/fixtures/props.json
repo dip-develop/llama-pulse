@@ -1,0 +1,18 @@
+// hand-written fixture, not captured
+{
+  "model_path": "/home/llama/models/llama-3.2-3b-instruct-q4_k_m.gguf",
+  "model_alias": "llama-pulse",
+  "model_ftype": "Q4_K - Medium",
+  "model_n_params": "3212749824",
+  "build_info": "b11960-d0f8b5b3f",
+  "total_slots": 2,
+  "endpoint_metrics": true,
+  "endpoint_slots": true,
+  "default_generation_settings": {
+    "n_ctx": 4096,
+    "n_predict": -1,
+    "temperature": 0.8,
+    "seed": 4294967295
+  },
+  "chat_template": "{{- range .Messages }}{{ .role }}: {{ .content }}\n{{- end }}"
+}

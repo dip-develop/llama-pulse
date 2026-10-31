@@ -102,5 +102,17 @@ void main() {
       expect(paths.paramsYamlFile, p.join('/config/dir', 'params.yaml'));
       expect(paths.modelsDirectory, p.join('/config/dir', 'models'));
     });
+
+    test('joins the server files and the binary directory', () {
+      const paths = AppPaths(configDirectory: '/config/dir');
+
+      expect(paths.serverYamlFile, p.join('/config/dir', 'server.yaml'));
+      expect(
+        paths.serverStateYamlFile,
+        p.join('/config/dir', 'server-state.yaml'),
+      );
+      expect(paths.serverLogFile, p.join('/config/dir', 'server.log'));
+      expect(paths.binDirectory, p.join('/config/dir', 'bin'));
+    });
   });
 }

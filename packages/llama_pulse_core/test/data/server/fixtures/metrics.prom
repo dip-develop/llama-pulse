@@ -1,0 +1,37 @@
+# hand-written fixture, not captured
+# HELP llamacpp:prompt_tokens_total Number of prompt tokens processed.
+# TYPE llamacpp:prompt_tokens_total counter
+llamacpp:prompt_tokens_total 42
+# HELP llamacpp:prompt_tokens_cached_total Number of prompt tokens served from cache.
+# TYPE llamacpp:prompt_tokens_cached_total counter
+llamacpp:prompt_tokens_cached_total 12
+# HELP llamacpp:prompt_seconds_total Seconds spent evaluating prompts.
+# TYPE llamacpp:prompt_seconds_total counter
+llamacpp:prompt_seconds_total 1.2
+# HELP llamacpp:tokens_predicted_total Number of tokens generated.
+# TYPE llamacpp:tokens_predicted_total counter
+llamacpp:tokens_predicted_total 128
+# HELP llamacpp:tokens_predicted_seconds_total Seconds spent generating tokens.
+# TYPE llamacpp:tokens_predicted_seconds_total counter
+llamacpp:tokens_predicted_seconds_total 3.5
+# HELP llamacpp:n_decode_total Number of decode iterations.
+# TYPE llamacpp:n_decode_total counter
+llamacpp:n_decode_total 16
+# HELP llamacpp:n_tokens_max Largest token count in one decode step.
+# TYPE llamacpp:n_tokens_max gauge
+llamacpp:n_tokens_max 2048
+# HELP llamacpp:prompt_tokens_seconds Prompt tokens per second.
+# TYPE llamacpp:prompt_tokens_seconds gauge
+llamacpp:prompt_tokens_seconds 35.0
+# HELP llamacpp:predicted_tokens_seconds Generated tokens per second.
+# TYPE llamacpp:predicted_tokens_seconds gauge
+llamacpp:predicted_tokens_seconds 36.57
+# HELP llamacpp:requests_processing Requests being processed.
+# TYPE llamacpp:requests_processing gauge
+llamacpp:requests_processing 1
+# HELP llamacpp:requests_deferred Requests waiting for a slot.
+# TYPE llamacpp:requests_deferred gauge
+llamacpp:requests_deferred 0
+# HELP llamacpp:n_busy_slots_per_decode Busy slots per decode step.
+# TYPE llamacpp:n_busy_slots_per_decode gauge
+llamacpp:n_busy_slots_per_decode 1

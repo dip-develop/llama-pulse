@@ -1,0 +1,41 @@
+// hand-written fixture, not captured
+[
+  {
+    "id": 0,
+    "id_task": 1234,
+    "n_ctx": 4096,
+    "speculative": false,
+    "is_processing": true,
+    "n_past": 300,
+    "n_prompt_tokens": 300,
+    "n_prompt_tokens_cache": 0,
+    "n_decoded": 50,
+    "next_token": {
+      "has_next_token": true,
+      "n_ctx": 4096,
+      "n_past": 350,
+      "n_decoded": 50,
+      "n_remain": -1,
+      "n_eos": 0
+    }
+  },
+  {
+    "id": 1,
+    "id_task": -1,
+    "n_ctx": 4096,
+    "speculative": false,
+    "is_processing": false,
+    "n_past": 0,
+    "n_prompt_tokens": 0,
+    "n_prompt_tokens_cache": 0,
+    "n_decoded": 0,
+    "next_token": {
+      "has_next_token": false,
+      "n_ctx": 4096,
+      "n_past": 0,
+      "n_decoded": 0,
+      "n_remain": -1,
+      "n_eos": 0
+    }
+  }
+]

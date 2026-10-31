@@ -3,11 +3,17 @@ import 'package:args/command_runner.dart';
 
 import 'cli_services.dart';
 import 'commands/bench_command.dart';
+import 'commands/logs_command.dart';
 import 'commands/models_inspect_command.dart';
 import 'commands/models_list_command.dart';
 import 'commands/params_get_command.dart';
 import 'commands/params_set_command.dart';
 import 'commands/run_command.dart';
+import 'commands/serve_command.dart';
+import 'commands/server_get_command.dart';
+import 'commands/server_set_command.dart';
+import 'commands/status_command.dart';
+import 'commands/stop_command.dart';
 import 'commands/version_command.dart';
 import 'exit_codes.dart';
 
@@ -22,8 +28,13 @@ final class LlamaPulseCommandRunner extends CommandRunner<int> {
     addCommand(VersionCommand(services));
     addCommand(_ParamsCommand(services));
     addCommand(_ModelsCommand(services));
+    addCommand(_ServerCommand(services));
     addCommand(RunCommand(services));
     addCommand(BenchCommand(services));
+    addCommand(ServeCommand(services));
+    addCommand(StatusCommand(services));
+    addCommand(StopCommand(services));
+    addCommand(LogsCommand(services));
   }
 
   /// Dependencies handed to every command.
@@ -95,4 +106,18 @@ final class _ModelsCommand extends Command<int> {
 
   @override
   String get description => 'List and inspect local model files.';
+}
+
+/// The `server` command group.
+final class _ServerCommand extends Command<int> {
+  _ServerCommand(CliServices services) {
+    addSubcommand(ServerGetCommand(services));
+    addSubcommand(ServerSetCommand(services));
+  }
+
+  @override
+  String get name => 'server';
+
+  @override
+  String get description => 'Read and update the server configuration.';
 }

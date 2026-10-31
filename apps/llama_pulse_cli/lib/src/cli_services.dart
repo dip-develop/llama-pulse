@@ -21,9 +21,15 @@ final class CliServices {
     this.stdin,
     Stream<io.ProcessSignal>? interrupts,
     LlamaEngine Function()? engineFactory,
+    this.serverControllerFactory,
+    bool? useStubServer,
+    this.processSignaller = const DartProcessSignaller(),
+    this.stopTimeout = const Duration(seconds: 10),
+    this.stopPollInterval = const Duration(milliseconds: 200),
     bool watchInterrupts = false,
   }) : _interrupts = interrupts, // ignore: prefer_initializing_formals
        _engineFactory = engineFactory, // ignore: prefer_initializing_formals
+       _useStubServer = useStubServer, // ignore: prefer_initializing_formals
        // ignore: prefer_initializing_formals
        _watchInterrupts = watchInterrupts;
 
@@ -57,13 +63,34 @@ final class CliServices {
 
   final Stream<io.ProcessSignal>? _interrupts;
   final LlamaEngine Function()? _engineFactory;
+  final bool? _useStubServer;
   final bool _watchInterrupts;
+
+  /// Overrides controller creation when set; an explicit factory always wins
+  /// over [useStubServer] and production wiring.
+  ServerController Function()? serverControllerFactory;
+
+  /// Signals the recorded supervisor or server process during `stop`.
+  final ProcessSignaller processSignaller;
+
+  /// How long `stop` waits for a signalled process before forcing it.
+  final Duration stopTimeout;
+
+  /// Delay between liveness checks during `stop`.
+  final Duration stopPollInterval;
 
   Stream<io.ProcessSignal>? _watchedInterrupts;
   YamlModelParamsRepository? _paramsRepository;
+  YamlServerConfigRepository? _serverConfigRepository;
+  YamlServerStateRepository? _serverStateRepository;
+  ServerLogStore? _serverLogStore;
   ModelFileScanner? _scanner;
 
-  /// SIGINT source, created on first read when production watching is enabled.
+  /// SIGINT and SIGTERM source, created on first read when production
+  /// watching is enabled.
+  ///
+  /// Both signals are merged into one stream so a command can react to either.
+  /// The production wiring never watches signals on Windows.
   Stream<io.ProcessSignal>? get interrupts {
     if (_interrupts != null) {
       return _interrupts;
@@ -71,7 +98,7 @@ final class CliServices {
     if (!_watchInterrupts) {
       return null;
     }
-    return _watchedInterrupts ??= io.ProcessSignal.sigint.watch();
+    return _watchedInterrupts ??= _watchInterruptSignals();
   }
 
   /// Creates the inference engine.
@@ -90,4 +117,73 @@ final class CliServices {
 
   /// Finds model files on disk.
   ModelFileScanner get scanner => _scanner ??= const ModelFileScanner();
+
+  /// Loads and saves `server.yaml`; built once from [configStore].
+  YamlServerConfigRepository get serverConfigRepository =>
+      _serverConfigRepository ??= YamlServerConfigRepository(
+        store: configStore,
+        serializers: serializers,
+      );
+
+  /// Reads and writes `server-state.yaml`; built once from [configStore].
+  YamlServerStateRepository get serverStateRepository =>
+      _serverStateRepository ??= YamlServerStateRepository(
+        store: configStore,
+        serializers: serializers,
+      );
+
+  /// The append-only log at [AppPaths.serverLogFile].
+  ServerLogStore get serverLogStore =>
+      _serverLogStore ??= ServerLogStore(filePath: paths.serverLogFile);
+
+  /// Whether the demo stub controller replaces the production supervisor.
+  ///
+  /// Read from `LLAMAPULSE_STUB_SERVER=true` unless the constructor set it.
+  /// Production never falls back to the stub on its own.
+  bool get useStubServer =>
+      _useStubServer ??
+      io.Platform.environment['LLAMAPULSE_STUB_SERVER'] == 'true';
+
+  /// Creates the server controller for one command.
+  ///
+  /// An explicit [serverControllerFactory] wins; otherwise [useStubServer]
+  /// selects [StubServerController], and the production supervisor is the
+  /// default.
+  ServerController createServerController() {
+    final factory = serverControllerFactory;
+    if (factory != null) {
+      return factory();
+    }
+    if (useStubServer) {
+      return StubServerController(stateRepository: serverStateRepository);
+    }
+    return LlamaServerSupervisor.production(
+      paths: paths,
+      configStore: configStore,
+    );
+  }
+
+  Stream<io.ProcessSignal> _watchInterruptSignals() {
+    final controller = StreamController<io.ProcessSignal>();
+    final subscriptions = <StreamSubscription<io.ProcessSignal>>[];
+    void listen(io.ProcessSignal signal) {
+      subscriptions.add(
+        signal.watch().listen(controller.add, onError: controller.addError),
+      );
+    }
+
+    controller.onListen = () {
+      listen(io.ProcessSignal.sigint);
+      if (!io.Platform.isWindows) {
+        listen(io.ProcessSignal.sigterm);
+      }
+    };
+    controller.onCancel = () async {
+      for (final subscription in subscriptions) {
+        await subscription.cancel();
+      }
+      subscriptions.clear();
+    };
+    return controller.stream;
+  }
 }

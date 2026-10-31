@@ -11,7 +11,25 @@ void main() {
   testWidgets('renders the workspace with stored defaults', (tester) async {
     await pumpLlamaPulse(tester);
 
-    expect(find.text('LlamaPulse'), findsOneWidget);
+    expect(find.text('LlamaPulse — Server'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('chat-experimental-banner')),
+      findsNothing,
+    );
+
+    await _openChat(tester);
+
+    expect(find.text('LlamaPulse — Chat'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('chat-experimental-banner')),
+      findsOneWidget,
+    );
+    expect(
+      find.text(
+        'Experimental — embedded chat. The server is the primary path.',
+      ),
+      findsOneWidget,
+    );
     expect(find.text('Idle'), findsOneWidget);
     expect(_fieldText(tester, 'model-path'), isEmpty);
     expect(_fieldText(tester, 'context-size'), '2048');
@@ -33,6 +51,7 @@ void main() {
     tester,
   ) async {
     await pumpLlamaPulse(tester, demoEngine: true);
+    await _openChat(tester);
 
     expect(find.byKey(const ValueKey('demo-engine-banner')), findsOneWidget);
     expect(find.text('Demo engine — output is synthetic.'), findsOneWidget);
@@ -41,6 +60,7 @@ void main() {
   testWidgets('places the cards side by side on wide windows', (tester) async {
     _useView(tester, const Size(1400, 900));
     await pumpLlamaPulse(tester);
+    await _openChat(tester);
 
     expect(_top(tester, 'parameters-card'), _top(tester, 'output-card'));
   });
@@ -48,6 +68,7 @@ void main() {
   testWidgets('stacks the cards on narrow windows', (tester) async {
     _useView(tester, const Size(700, 1200));
     await pumpLlamaPulse(tester);
+    await _openChat(tester);
 
     expect(
       _top(tester, 'output-card'),
@@ -61,6 +82,7 @@ void main() {
       path: '/models/picked.gguf',
     );
     await pumpLlamaPulse(tester, picker: picker);
+    await _openChat(tester);
 
     await tester.tap(find.byKey(const ValueKey('browse-model-path')));
     await tester.pump();
@@ -74,6 +96,7 @@ void main() {
   ) async {
     _useView(tester, const Size(1400, 1000));
     await pumpLlamaPulse(tester);
+    await _openChat(tester);
 
     await tester.enterText(find.byKey(const ValueKey('context-size')), '4096');
     await tester.pump();
@@ -95,6 +118,7 @@ void main() {
   testWidgets('reports a missing engine when loading a model', (tester) async {
     _useView(tester, const Size(1400, 1000));
     await pumpLlamaPulse(tester);
+    await _openChat(tester);
 
     await tester.enterText(
       find.byKey(const ValueKey('model-path')),
@@ -115,6 +139,7 @@ void main() {
     _useView(tester, const Size(1400, 1000));
     final ScriptedLlamaEngine engine = ScriptedLlamaEngine();
     await pumpLlamaPulse(tester, engine: engine);
+    await _openChat(tester);
 
     await _loadAndGenerate(tester, engine);
 
@@ -146,6 +171,7 @@ void main() {
     _useView(tester, const Size(1400, 1000));
     final ScriptedLlamaEngine engine = ScriptedLlamaEngine();
     await pumpLlamaPulse(tester, engine: engine);
+    await _openChat(tester);
     await _loadAndGenerate(tester, engine);
 
     engine.emitToken('Partial');
@@ -170,6 +196,7 @@ void main() {
     _useView(tester, const Size(1400, 1000));
     final ScriptedLlamaEngine engine = ScriptedLlamaEngine();
     await pumpLlamaPulse(tester, engine: engine);
+    await _openChat(tester);
     await _loadAndGenerate(tester, engine);
 
     engine.emitToken('Partial');
@@ -191,6 +218,12 @@ void main() {
     expect(find.textContaining('nativeError'), findsOneWidget);
     expect(_outputText(tester), 'Partial');
   });
+}
+
+Future<void> _openChat(WidgetTester tester) async {
+  await tester.tap(find.byKey(const ValueKey('chat-tab')));
+  await tester.pump();
+  await tester.pump();
 }
 
 Future<void> _loadAndGenerate(
