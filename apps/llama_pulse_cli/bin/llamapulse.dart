@@ -16,5 +16,7 @@ Future<void> main(List<String> arguments) async {
   } catch (error) {
     services.err.writeln('error: $error');
     exitCode = ExitCodes.failure;
+  } finally {
+    await services.dispose();
   }
 }

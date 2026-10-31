@@ -224,6 +224,75 @@ void main() {
     expect(engine.loadCalls, 0);
   });
 
+  test('a missing model with --json emits one failed object', () async {
+    final runner = makeRunner();
+
+    expect(
+      await runner.run(['bench', '--json', '--model', '/tmp/missing.gguf']),
+      ExitCodes.notFound,
+    );
+
+    final event = _lines(out.toString()).single;
+    expect(event['type'], 'failed');
+    expect(event['requestId'], 1);
+    expect(event['schemaVersion'], 1);
+    expect(event['text'], '');
+    expect((event['failure'] as Map<String, Object?>)['code'], 'modelNotFound');
+    expect(err.toString(), contains('error: not found: /tmp/missing.gguf'));
+    expect(engine.loadCalls, 0);
+  });
+
+  test('--runs 3 works with a broadcast interrupt stream', () async {
+    final signals = StreamController<ProcessSignal>.broadcast();
+    addTearDown(signals.close);
+    final runner = makeRunner(interrupts: signals.stream);
+
+    expect(
+      await runner.run([
+        'bench',
+        '--stub',
+        '--json',
+        '--runs',
+        '3',
+        '--model',
+        '/tmp/demo.gguf',
+      ]),
+      ExitCodes.ok,
+    );
+
+    final result = _lines(out.toString()).single;
+    expect((result['perRun'] as List<Object?>).length, 3);
+    expect(engine.generateCalls, 3);
+    expect(err.toString(), isNot(contains('already been listened')));
+  });
+
+  test(
+    '--runs 3 subscribes to a single-subscription source only once',
+    () async {
+      final signals = StreamController<ProcessSignal>();
+      addTearDown(signals.close);
+      final runner = makeRunner(interrupts: signals.stream);
+
+      expect(
+        await runner.run([
+          'bench',
+          '--stub',
+          '--json',
+          '--runs',
+          '3',
+          '--model',
+          '/tmp/demo.gguf',
+        ]),
+        ExitCodes.ok,
+      );
+
+      final result = _lines(out.toString()).single;
+      expect((result['perRun'] as List<Object?>).length, 3);
+      expect(engine.generateCalls, 3);
+      expect(err.toString(), isNot(contains('already been listened')));
+    },
+  );
+
   test('a failed run keeps the partial text in --json output', () async {
     engine = ScriptedLlamaEngine(
       tokens: const ['Hello'],

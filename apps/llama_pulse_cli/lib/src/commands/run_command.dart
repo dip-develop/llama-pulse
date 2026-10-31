@@ -86,6 +86,20 @@ final class RunCommand extends LlamaPulseCommand {
       return ExitCodes.usage;
     }
 
+    // The stub echoes the path without opening it, so only the native session
+    // needs a readable `.gguf` file. Checking here keeps a typo from surfacing
+    // later as libraryNotFound.
+    final stub = args.flag('stub');
+    if (!stub && await services.scanner.inspect(modelPath) == null) {
+      services.err.writeln('error: not found: $modelPath');
+      if (mode == RunOutputMode.stream || mode == RunOutputMode.json) {
+        services.out.writeln(
+          jsonEncode(encodeFailed(1, '', missingModelFailure(modelPath))),
+        );
+      }
+      return ExitCodes.notFound;
+    }
+
     final params = parsed.overrides
         .applyTo(stored)
         .copyWith(modelPath: modelPath);
@@ -105,7 +119,7 @@ final class RunCommand extends LlamaPulseCommand {
     }
 
     final engine = services.createEngine(
-      useStubSession: args.flag('stub'),
+      useStubSession: stub,
       libraryPath: parsed.libraryPath,
     );
     try {

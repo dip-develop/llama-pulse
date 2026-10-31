@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:llama_pulse_core/llama_pulse_core.dart';
 
@@ -93,6 +95,13 @@ final class BenchCommand extends LlamaPulseCommand {
       }
       if (await services.scanner.inspect(configuredPath) == null) {
         services.err.writeln('error: not found: $configuredPath');
+        if (json) {
+          services.out.writeln(
+            jsonEncode(
+              encodeFailed(1, '', missingModelFailure(configuredPath)),
+            ),
+          );
+        }
         return ExitCodes.notFound;
       }
     }
@@ -110,6 +119,16 @@ final class BenchCommand extends LlamaPulseCommand {
       }
       return ExitCodes.usage;
     }
+
+    // Subscribe to the signal source once for the whole command: the injected
+    // source may be single-subscription, while every runSession call listens.
+    // A per-command broadcast controller forwards each signal to the run that
+    // is currently generating.
+    final runSignals = StreamController<ProcessSignal>.broadcast();
+    final interruptSubscription = services.interrupts?.listen(
+      runSignals.add,
+      onError: runSignals.addError,
+    );
 
     final engine = services.createEngine(
       useStubSession: stub,
@@ -141,7 +160,7 @@ final class BenchCommand extends LlamaPulseCommand {
           out: services.out,
           err: services.err,
           mode: RunOutputMode.quiet,
-          interrupts: services.interrupts,
+          interrupts: runSignals.stream,
         );
         if (result.status == SessionStatus.cancelled) {
           if (json) {
@@ -221,6 +240,8 @@ final class BenchCommand extends LlamaPulseCommand {
       }
       return ExitCodes.ok;
     } finally {
+      await interruptSubscription?.cancel();
+      await runSignals.close();
       if (loaded) {
         try {
           await engine.unload();
