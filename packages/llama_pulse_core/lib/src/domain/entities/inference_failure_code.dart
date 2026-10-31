@@ -24,6 +24,13 @@ class InferenceFailureCode extends EnumClass {
   /// The native layer reported an unexpected error.
   static const InferenceFailureCode nativeError = _$nativeError;
 
+  /// No llama.cpp shared library could be located.
+  static const InferenceFailureCode libraryNotFound = _$libraryNotFound;
+
+  /// The located llama.cpp library is not the pinned version.
+  static const InferenceFailureCode libraryVersionMismatch =
+      _$libraryVersionMismatch;
+
   /// The failure could not be classified.
   static const InferenceFailureCode unknown = _$unknown;
 
