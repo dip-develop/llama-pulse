@@ -254,7 +254,11 @@ final class NativeLlamaSession implements LlamaSession {
       );
     }
 
-    final tokenized = _tokenize(bindings, vocab, prompt);
+    final tokenized = _tokenize(
+      bindings,
+      vocab,
+      _chatPrompt(bindings, model, request),
+    );
 
     // Keep enough room for the requested output, never spilling past the
     // context. Left truncation keeps the newest part of a long prompt.
@@ -432,6 +436,92 @@ final class NativeLlamaSession implements LlamaSession {
     }
     final opened = await LlamaLibrary.open(_libraryPath);
     return _library = opened;
+  }
+
+  /// Returns the prompt to tokenize, wrapped in the selected chat template.
+  ///
+  /// A missing or unknown template falls back to the raw prompt silently: a
+  /// model without chat metadata must still be usable.
+  String _chatPrompt(
+    LlamaBindings bindings,
+    ffi.Pointer<LlamaModel> model,
+    GenerationRequest request,
+  ) {
+    final params = request.params;
+    final prompt = request.prompt;
+    if (params.useChatTemplate == false || params.chatTemplate == 'none') {
+      return prompt;
+    }
+
+    ffi.Pointer<Utf8>? namePointer;
+    ffi.Pointer<Utf8>? rolePointer;
+    ffi.Pointer<Utf8>? contentPointer;
+    ffi.Pointer<LlamaChatMessage>? message;
+    ffi.Pointer<ffi.Char>? buffer;
+    try {
+      final name = params.chatTemplate;
+      if (name != null) {
+        namePointer = name.toNativeUtf8();
+      }
+      final template = bindings.llamaModelChatTemplate(
+        model,
+        namePointer?.cast<ffi.Char>() ?? ffi.nullptr,
+      );
+      if (template == ffi.nullptr) {
+        return prompt;
+      }
+
+      rolePointer = 'user'.toNativeUtf8();
+      contentPointer = prompt.toNativeUtf8();
+      message = calloc<LlamaChatMessage>()
+        ..ref.role = rolePointer.cast<ffi.Char>()
+        ..ref.content = contentPointer.cast<ffi.Char>();
+
+      final probe = bindings.llamaChatApplyTemplate(
+        template,
+        message,
+        1,
+        true,
+        ffi.nullptr,
+        0,
+      );
+      final required = probe < 0 ? -probe : probe;
+      if (required <= 0) {
+        return prompt;
+      }
+
+      buffer = calloc<ffi.Char>(required);
+      final written = bindings.llamaChatApplyTemplate(
+        template,
+        message,
+        1,
+        true,
+        buffer,
+        required,
+      );
+      if (written <= 0) {
+        return prompt;
+      }
+      return buffer.cast<Utf8>().toDartString(length: written);
+    } catch (_) {
+      return prompt;
+    } finally {
+      if (namePointer != null) {
+        malloc.free(namePointer);
+      }
+      if (rolePointer != null) {
+        malloc.free(rolePointer);
+      }
+      if (contentPointer != null) {
+        malloc.free(contentPointer);
+      }
+      if (message != null) {
+        calloc.free(message);
+      }
+      if (buffer != null) {
+        calloc.free(buffer);
+      }
+    }
   }
 
   /// Tokenizes [prompt] with the probe/allocate/retry dance llama.cpp needs.

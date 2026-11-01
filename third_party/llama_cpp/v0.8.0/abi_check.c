@@ -194,5 +194,12 @@ int main(void) {
     PRINT_OFF(struct llama_perf_context_data, LlamaPerfContextData, n_reallocs_diff);
     PRINT_WIDTH(struct llama_perf_context_data, LlamaPerfContextData, n_reallocs_diff);
 
+    // struct llama_chat_message -> LlamaChatMessage
+    PRINT_SIZE(struct llama_chat_message, LlamaChatMessage);
+    PRINT_OFF(struct llama_chat_message, LlamaChatMessage, role);
+    PRINT_WIDTH(struct llama_chat_message, LlamaChatMessage, role);
+    PRINT_OFF(struct llama_chat_message, LlamaChatMessage, content);
+    PRINT_WIDTH(struct llama_chat_message, LlamaChatMessage, content);
+
     return 0;
 }

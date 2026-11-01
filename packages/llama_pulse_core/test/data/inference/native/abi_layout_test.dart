@@ -783,19 +783,44 @@ void main() {
         ),
       );
 
-      // Canary: abi_check.c always reports 72 offsets and 72 widths
-      // (17 + 38 + 7 + 1 + 9). A change here means a field was added to or
+      // ---------------------------------------------------------------------
+      // LlamaChatMessage <- struct llama_chat_message
+      // ---------------------------------------------------------------------
+      const chatMessage = 'LlamaChatMessage';
+      final chatMessageSize = ffi.sizeOf<LlamaChatMessage>();
+      _expectSize(header, chatMessage, chatMessageSize);
+      _expectOffset(
+        header,
+        chatMessage,
+        'role',
+        _probeOffset(
+          chatMessageSize,
+          (raw) => raw.cast<LlamaChatMessage>().ref.role = ffi.nullptr,
+        ),
+      );
+      _expectOffset(
+        header,
+        chatMessage,
+        'content',
+        _probeOffset(
+          chatMessageSize,
+          (raw) => raw.cast<LlamaChatMessage>().ref.content = ffi.nullptr,
+        ),
+      );
+
+      // Canary: abi_check.c always reports 74 offsets and 74 widths
+      // (17 + 38 + 7 + 1 + 9 + 2). A change here means a field was added to or
       // removed from the header and the Dart struct needs the same change.
       expect(
         header.offsets.length,
-        72,
+        74,
         reason:
             'abi_check.c reported a different number of fields; '
             'update llama_bindings.dart together with the pin',
       );
       expect(
         _expectedFieldWidths,
-        hasLength(72),
+        hasLength(74),
         reason: 'the width table must mirror every field in the header',
       );
       expect(
@@ -831,6 +856,7 @@ const _expectedStructs = [
   'LlamaBatch',
   'LlamaSamplerChainParams',
   'LlamaPerfContextData',
+  'LlamaChatMessage',
 ];
 
 /// The width `ffi.sizeOf` gives each Dart field type, keyed by
@@ -921,6 +947,10 @@ const _expectedFieldWidths = <String, int>{
   'LlamaPerfContextData.n_reused': 4,
   'LlamaPerfContextData.n_reallocs_same': 4,
   'LlamaPerfContextData.n_reallocs_diff': 4,
+
+  // LlamaChatMessage <- struct llama_chat_message (2 fields)
+  'LlamaChatMessage.role': 8,
+  'LlamaChatMessage.content': 8,
 };
 
 void _expectSize(_AbiReport header, String name, int dartSize) {

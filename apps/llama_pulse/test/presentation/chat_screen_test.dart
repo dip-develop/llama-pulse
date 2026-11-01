@@ -39,6 +39,15 @@ void main() {
     expect(_fieldText(tester, 'top-p'), '0.95');
     expect(_fieldText(tester, 'top-k'), '40');
     expect(_fieldText(tester, 'max-tokens'), '256');
+    expect(_fieldText(tester, 'chat-template'), isEmpty);
+    expect(
+      tester
+          .widget<SwitchListTile>(
+            find.byKey(const ValueKey('use-chat-template')),
+          )
+          .value,
+      isTrue,
+    );
     expect(find.text('No output yet.'), findsOneWidget);
     expect(
       find.text('Metrics appear here after a generation.'),
@@ -113,6 +122,31 @@ void main() {
     await tester.pump();
 
     expect((await getIt<LoadModelParams>()()).contextSize, 4096);
+  });
+
+  testWidgets('saves the chat-template settings', (tester) async {
+    _useView(tester, const Size(1400, 1000));
+    await pumpLlamaPulse(tester);
+    await _openChat(tester);
+
+    await tester.enterText(
+      find.byKey(const ValueKey('chat-template')),
+      'chatml',
+    );
+    await tester.pump();
+    await tester.ensureVisible(find.byKey(const ValueKey('use-chat-template')));
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('use-chat-template')));
+    await tester.pump();
+    await tester.ensureVisible(find.byKey(const ValueKey('save-params')));
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('save-params')));
+    await tester.pump();
+    await tester.pump();
+
+    final ModelParams saved = await getIt<LoadModelParams>()();
+    expect(saved.chatTemplate, 'chatml');
+    expect(saved.useChatTemplate, isFalse);
   });
 
   testWidgets('reports the searched paths when no native library is found', (

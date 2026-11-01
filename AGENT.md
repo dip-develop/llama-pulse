@@ -313,6 +313,15 @@ Native session rules:
   the next, stop on EOG, and check cancellation at every step and prefill
   chunk.
   Metrics come from `llama_perf_context` plus the loop's token counts.
+- **Chat templates.** `params.chatTemplate` null uses the model's built-in
+  template, the literal `none` disables templating, and any other value names
+  a built-in template passed to `llama_model_chat_template`;
+  `useChatTemplate: false` forces the raw prompt. `begin` renders one `user`
+  message through `llama_chat_apply_template` (probe length, allocate,
+  retry) before tokenization and silently falls back to the raw prompt when no
+  template resolves or the call fails, so a model without chat metadata still
+  runs. The CLI exposes both as `--chat-template` and
+  `--[no-]use-chat-template`; the chat form has the matching field and switch.
 - **Platform.** 64-bit desktop only: structs are returned by value.
 - **Selection.** `WorkerConfig.useStubSession` chooses
   `StubLlamaSession` (explicit `--stub` or `LLAMAPULSE_STUB_ENGINE`);
@@ -390,7 +399,8 @@ remain. `run` and `bench` are the embedded/experimental path.
   usage error (`2`) and a missing, non-`.gguf` or unreadable file exits `3`.
 - `run` flags: `--model`, `--lib`, `--prompt`, `--file` (`-` reads stdin),
   `--stream`, `--json`, `--threads`, `--temperature`, `--top-p`, `--top-k`,
-  `--max-tokens` and `--context-size`. `--prompt` and `--file` are mutually
+  `--max-tokens`, `--context-size`, `--chat-template` and
+  `--[no-]use-chat-template`. `--prompt` and `--file` are mutually
   exclusive; one is required. `--json` and `--stream` cannot be combined.
 - `bench` flags: `--runs` (1..50, default 3), `--json`, `--max-tokens`
   (default 32), plus the shared `--model`, `--lib` and sampling overrides. It
@@ -566,8 +576,8 @@ APIs, no `!` on nullable values, no empty `catch` blocks.
 
 From the root, `dart run melos test`. Melos picks `flutter test` for the app and
 `dart test` for core and CLI. Test the critical seams, not every line. Coverage
-is not a target. The suites hold 678 tests today: 458 core (plus one
-env-gated skip), 133 CLI, 87 app.
+is not a target. The suites hold 698 tests today: 474 core (plus one
+env-gated skip), 136 CLI, 88 app.
 
 Must test today:
 
@@ -585,15 +595,18 @@ Must test today:
   `test/support/native/fake_llama.c` is compiled with clang by
   `FakeLlamaBuilder`, so the binding lookups and behaviour run end to end.
   Cover the ABI layout (`abi_layout_test.dart` compiles `abi_check.c` and
-  compares every struct size, field offset and the 72-entry field-width table),
+  compares every struct size, field offset and the 74-entry field-width table),
   the exact `0.8.0` version gate
   (`libraryVersionMismatch` for anything else), the locator order and
   `libraryNotFound` details, library open and model load, generation
   (prefill, truncation, sampler chain, EOG, UTF-8 split tokens), metrics and
-  cooperative cancel. The shim enforces the batch and sampler contract, so the
-  tests catch a wrong `n_seq_id`/`seq_id`, non-monotonic positions, logits on
-  non-final tokens, `idx != -1` and sampling without logits. These tests skip
-  when clang is not installed.
+  cooperative cancel. Chat templates are covered from the session down:
+  default, named `chatml`, `none`, the `useChatTemplate: false` override, an
+  unknown-name fallback and the grow-and-retry buffer path. The shim enforces
+  the batch and sampler contract, so the tests catch a wrong
+  `n_seq_id`/`seq_id`, non-monotonic positions, logits on non-final tokens,
+  `idx != -1` and sampling without logits. These tests skip when clang is not
+  installed.
 - The worker layer: `WorkerLoop` responses, `WorkerTransport` through a real
   isolate (handshake timeout and reuse after an aborted start, crash and exit,
   `close()` racing a spawn), and `WorkerLlamaEngine` (lazy spawn, per-request
@@ -758,7 +771,7 @@ prints both exports. Never commit `.env` files, secrets or absolute local paths.
 
 - [ ] The workspace resolves with one lockfile (`flutter pub get` at the root).
 - [ ] `pubspec.lock` stays untracked.
-- [ ] `dart run melos run check` is green (678 tests: 458 core, 133 CLI, 87 app).
+- [ ] `dart run melos run check` is green (698 tests: 474 core, 136 CLI, 88 app).
 - [ ] The server path works end to end: the plain app can start a real
   `llama-server` when a binary is present, and `serve`/`status`/`stop` work from
   the compiled CLI.

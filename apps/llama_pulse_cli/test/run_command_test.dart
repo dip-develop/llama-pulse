@@ -429,6 +429,30 @@ void main() {
     expect(engine.loadedParams?.modelPath, '/tmp/missing.gguf');
   });
 
+  test('the chat-template flags reach the loaded params', () async {
+    final runner = makeRunner();
+
+    expect(
+      await runner.run([
+        'run',
+        '--stub',
+        '--model',
+        '/tmp/demo.gguf',
+        '--prompt',
+        'hi',
+        '--chat-template',
+        'chatml',
+        '--no-use-chat-template',
+      ]),
+      ExitCodes.ok,
+    );
+
+    expect(engine.loadedParams?.chatTemplate, 'chatml');
+    expect(engine.loadedParams?.useChatTemplate, isFalse);
+    expect(engine.generateRequests.single.params.chatTemplate, 'chatml');
+    expect(engine.generateRequests.single.params.useChatTemplate, isFalse);
+  });
+
   test('--file - reads the prompt from the injected stdin', () async {
     final runner = makeRunner(
       stdin: Stream<List<int>>.value(utf8.encode('from stdin')),

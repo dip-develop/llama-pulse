@@ -32,6 +32,18 @@ abstract class ModelParams implements Built<ModelParams, ModelParamsBuilder> {
   /// Upper bound on generated tokens.
   int get maxTokens;
 
+  /// Chat template selection for the native session.
+  ///
+  /// Null uses the model's built-in template. The literal `none` disables
+  /// templating, and any other value names a built-in template passed to
+  /// `llama_model_chat_template`.
+  String? get chatTemplate;
+
+  /// Whether the native session wraps the prompt in a chat template.
+  ///
+  /// Null means true; false forces the raw prompt.
+  bool? get useChatTemplate;
+
   factory ModelParams([void Function(ModelParamsBuilder)? updates]) =
       _$ModelParams;
 
@@ -45,7 +57,9 @@ abstract class ModelParams implements Built<ModelParams, ModelParamsBuilder> {
       ..temperature = 0.8
       ..topP = 0.95
       ..topK = 40
-      ..maxTokens = 256,
+      ..maxTokens = 256
+      ..chatTemplate = null
+      ..useChatTemplate = null,
   );
 
   ModelParams._();
@@ -53,6 +67,9 @@ abstract class ModelParams implements Built<ModelParams, ModelParamsBuilder> {
   static Serializer<ModelParams> get serializer => _$modelParamsSerializer;
 
   /// Returns a copy with the given fields replaced.
+  ///
+  /// Omitting [chatTemplate] or [useChatTemplate] keeps the current value; pass
+  /// an explicit null to clear it back to the model default.
   ModelParams copyWith({
     String? modelPath,
     int? contextSize,
@@ -62,6 +79,8 @@ abstract class ModelParams implements Built<ModelParams, ModelParamsBuilder> {
     double? topP,
     int? topK,
     int? maxTokens,
+    Object? chatTemplate = _unset,
+    Object? useChatTemplate = _unset,
   }) => rebuild(
     (b) => b
       ..modelPath = modelPath ?? this.modelPath
@@ -71,6 +90,14 @@ abstract class ModelParams implements Built<ModelParams, ModelParamsBuilder> {
       ..temperature = temperature ?? this.temperature
       ..topP = topP ?? this.topP
       ..topK = topK ?? this.topK
-      ..maxTokens = maxTokens ?? this.maxTokens,
+      ..maxTokens = maxTokens ?? this.maxTokens
+      ..chatTemplate = identical(chatTemplate, _unset)
+          ? this.chatTemplate
+          : chatTemplate as String?
+      ..useChatTemplate = identical(useChatTemplate, _unset)
+          ? this.useChatTemplate
+          : useChatTemplate as bool?,
   );
+
+  static const Object _unset = Object();
 }

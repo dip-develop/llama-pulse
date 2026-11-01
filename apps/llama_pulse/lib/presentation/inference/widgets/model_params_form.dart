@@ -36,6 +36,8 @@ class ModelParamsForm extends StatefulWidget {
 class _ModelParamsFormState extends State<ModelParamsForm> {
   late final TextEditingController _modelPathController;
   late final FocusNode _modelPathFocus;
+  late final TextEditingController _chatTemplateController;
+  late final FocusNode _chatTemplateFocus;
   late final Map<String, TextEditingController> _controllers;
   late final Map<String, FocusNode> _focusNodes;
 
@@ -45,6 +47,10 @@ class _ModelParamsFormState extends State<ModelParamsForm> {
     final ModelParams params = widget.params;
     _modelPathController = TextEditingController(text: params.modelPath);
     _modelPathFocus = FocusNode();
+    _chatTemplateController = TextEditingController(
+      text: params.chatTemplate ?? '',
+    );
+    _chatTemplateFocus = FocusNode();
     _controllers = {
       'context-size': TextEditingController(text: '${params.contextSize}'),
       'gpu-layers': TextEditingController(text: '${params.gpuLayers}'),
@@ -69,6 +75,12 @@ class _ModelParamsFormState extends State<ModelParamsForm> {
       _modelPathFocus,
       previous.modelPath,
       next.modelPath,
+    );
+    _sync(
+      _chatTemplateController,
+      _chatTemplateFocus,
+      previous.chatTemplate ?? '',
+      next.chatTemplate ?? '',
     );
     _sync(
       _controllers['context-size']!,
@@ -130,6 +142,8 @@ class _ModelParamsFormState extends State<ModelParamsForm> {
   void dispose() {
     _modelPathController.dispose();
     _modelPathFocus.dispose();
+    _chatTemplateController.dispose();
+    _chatTemplateFocus.dispose();
     for (final TextEditingController controller in _controllers.values) {
       controller.dispose();
     }
@@ -320,6 +334,36 @@ class _ModelParamsFormState extends State<ModelParamsForm> {
                 }
                 _dispatch(widget.params.copyWith(maxTokens: value));
               },
+            ),
+            const SizedBox(height: 12),
+            TextFormField(
+              key: const ValueKey('chat-template'),
+              controller: _chatTemplateController,
+              focusNode: _chatTemplateFocus,
+              decoration: const InputDecoration(
+                labelText: 'Chat template',
+                hintText: 'Model default, a built-in name, or "none"',
+                isDense: true,
+              ),
+              onChanged: (String text) {
+                final String trimmed = text.trim();
+                _dispatch(
+                  widget.params.copyWith(
+                    chatTemplate: trimmed.isEmpty ? null : trimmed,
+                  ),
+                );
+              },
+            ),
+            SwitchListTile(
+              key: const ValueKey('use-chat-template'),
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Apply chat template'),
+              subtitle: const Text(
+                'Off sends the raw prompt even when a template is set.',
+              ),
+              value: widget.params.useChatTemplate ?? true,
+              onChanged: (bool value) =>
+                  _dispatch(widget.params.copyWith(useChatTemplate: value)),
             ),
             const SizedBox(height: 20),
             Wrap(

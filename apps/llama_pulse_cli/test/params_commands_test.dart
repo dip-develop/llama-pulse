@@ -84,6 +84,39 @@ void main() {
     expect(err.toString(), isEmpty);
   });
 
+  test('params set stores the chat-template settings', () async {
+    expect(
+      await runner.run([
+        'params',
+        'set',
+        '--chat-template',
+        'chatml',
+        '--no-use-chat-template',
+      ]),
+      ExitCodes.ok,
+    );
+
+    final params = await storedParams();
+    expect(params['chatTemplate'], 'chatml');
+    expect(params['useChatTemplate'], isFalse);
+    expect(out.toString(), contains('chatTemplate: chatml'));
+    expect(out.toString(), contains('useChatTemplate: false'));
+    expect(err.toString(), isEmpty);
+  });
+
+  test('params set rejects a control character in the chat template', () async {
+    expect(
+      await runner.run(['params', 'set', '--chat-template', 'chat\nml']),
+      ExitCodes.usage,
+    );
+
+    expect(
+      err.toString(),
+      contains('chatTemplate must not contain control characters'),
+    );
+    expect(await storedDocument(), isNull);
+  });
+
   test('params set rejects an out-of-range value without writing', () async {
     expect(
       await runner.run(['params', 'set', '--threads', '0']),

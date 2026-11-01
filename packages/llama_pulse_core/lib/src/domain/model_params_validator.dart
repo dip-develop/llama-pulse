@@ -64,8 +64,21 @@ final class ModelParamsValidator {
       ModelParamLimits.minMaxTokens,
       ModelParamLimits.maxMaxTokens,
     );
+    _checkChatTemplate(violations, params.chatTemplate);
 
     return violations;
+  }
+
+  void _checkChatTemplate(List<String> violations, String? value) {
+    if (value == null || value == 'none') {
+      return;
+    }
+    if (value.isEmpty || value.length > 64) {
+      violations.add('chatTemplate must be 1..64 characters');
+    }
+    if (value.codeUnits.any((unit) => unit < 0x20 || unit == 0x7f)) {
+      violations.add('chatTemplate must not contain control characters');
+    }
   }
 
   void _checkInt(

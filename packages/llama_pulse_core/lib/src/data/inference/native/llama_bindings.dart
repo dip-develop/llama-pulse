@@ -293,6 +293,17 @@ final class LlamaSamplerChainParams extends ffi.Struct {
   external bool noPerf;
 }
 
+/// Mirrors `struct llama_chat_message` (`llama.h`, v0.8.0).
+///
+/// One entry of the chat passed to `llama_chat_apply_template`.
+final class LlamaChatMessage extends ffi.Struct {
+  /// `const char * role`.
+  external ffi.Pointer<ffi.Char> role;
+
+  /// `const char * content`.
+  external ffi.Pointer<ffi.Char> content;
+}
+
 /// Mirrors `struct llama_perf_context_data` (`llama.h`, v0.8.0).
 final class LlamaPerfContextData extends ffi.Struct {
   /// `double t_start_ms`.
@@ -631,6 +642,41 @@ typedef LlamaModelGetVocab = ffi.Pointer<LlamaVocab> Function(
   ffi.Pointer<LlamaModel>,
 );
 
+/// `const char * llama_model_chat_template(const struct llama_model *,
+/// const char *name)`.
+typedef LlamaModelChatTemplateC = ffi.Pointer<ffi.Char> Function(
+  ffi.Pointer<LlamaModel>,
+  ffi.Pointer<ffi.Char>,
+);
+
+/// Dart signature of `llama_model_chat_template`.
+typedef LlamaModelChatTemplate = ffi.Pointer<ffi.Char> Function(
+  ffi.Pointer<LlamaModel>,
+  ffi.Pointer<ffi.Char>,
+);
+
+/// `int32_t llama_chat_apply_template(const char * tmpl,
+/// const struct llama_chat_message * chat, size_t n_msg, bool add_ass,
+/// char * buf, int32_t length)`.
+typedef LlamaChatApplyTemplateC = ffi.Int32 Function(
+  ffi.Pointer<ffi.Char>,
+  ffi.Pointer<LlamaChatMessage>,
+  ffi.Size,
+  ffi.Bool,
+  ffi.Pointer<ffi.Char>,
+  ffi.Int32,
+);
+
+/// Dart signature of `llama_chat_apply_template`.
+typedef LlamaChatApplyTemplate = int Function(
+  ffi.Pointer<ffi.Char>,
+  ffi.Pointer<LlamaChatMessage>,
+  int,
+  bool,
+  ffi.Pointer<ffi.Char>,
+  int,
+);
+
 /// `int32_t llama_vocab_n_tokens(const struct llama_vocab *)`.
 typedef LlamaVocabNTokensC = ffi.Int32 Function(ffi.Pointer<LlamaVocab>);
 
@@ -882,6 +928,10 @@ final class LlamaBindings {
   _llamaModelLoadFromFile;
   ffi.Pointer<ffi.NativeFunction<LlamaModelFreeC>>? _llamaModelFree;
   ffi.Pointer<ffi.NativeFunction<LlamaModelGetVocabC>>? _llamaModelGetVocab;
+  ffi.Pointer<ffi.NativeFunction<LlamaModelChatTemplateC>>?
+  _llamaModelChatTemplate;
+  ffi.Pointer<ffi.NativeFunction<LlamaChatApplyTemplateC>>?
+  _llamaChatApplyTemplate;
   ffi.Pointer<ffi.NativeFunction<LlamaVocabNTokensC>>? _llamaVocabNTokens;
   ffi.Pointer<ffi.NativeFunction<LlamaVocabIsEogC>>? _llamaVocabIsEog;
   ffi.Pointer<ffi.NativeFunction<LlamaVocabEosC>>? _llamaVocabEos;
@@ -940,6 +990,14 @@ final class LlamaBindings {
     _llamaModelGetVocab = library
         .lookup<ffi.NativeFunction<LlamaModelGetVocabC>>(
           'llama_model_get_vocab',
+        );
+    _llamaModelChatTemplate = library
+        .lookup<ffi.NativeFunction<LlamaModelChatTemplateC>>(
+          'llama_model_chat_template',
+        );
+    _llamaChatApplyTemplate = library
+        .lookup<ffi.NativeFunction<LlamaChatApplyTemplateC>>(
+          'llama_chat_apply_template',
         );
     _llamaVocabNTokens = library.lookup<ffi.NativeFunction<LlamaVocabNTokensC>>(
       'llama_vocab_n_tokens',
@@ -1067,6 +1125,19 @@ final class LlamaBindings {
     _llamaModelGetVocab,
     'llama_model_get_vocab',
   ).asFunction<LlamaModelGetVocab>();
+
+  /// `const char * llama_model_chat_template(const struct llama_model *,
+  /// const char *name)`.
+  LlamaModelChatTemplate get llamaModelChatTemplate => _require(
+    _llamaModelChatTemplate,
+    'llama_model_chat_template',
+  ).asFunction<LlamaModelChatTemplate>();
+
+  /// `int32_t llama_chat_apply_template(...)`.
+  LlamaChatApplyTemplate get llamaChatApplyTemplate => _require(
+    _llamaChatApplyTemplate,
+    'llama_chat_apply_template',
+  ).asFunction<LlamaChatApplyTemplate>();
 
   /// `int32_t llama_vocab_n_tokens(const struct llama_vocab *)`.
   LlamaVocabNTokens get llamaVocabNTokens => _require(
