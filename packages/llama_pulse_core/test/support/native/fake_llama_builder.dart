@@ -82,6 +82,53 @@ final class FakeLlamaBuilder {
     'windows' => 'fake_llama.dll',
     _ => 'libfake_llama.so',
   };
+
+  /// Copies the shim into [directory] as `libllama_test.*` and compiles a fake
+  /// `libggml` plugin loader beside it.
+  ///
+  /// Returns the main library path. The pair is what a managed runtime looks
+  /// like: `libllama` and `libggml` in one directory.
+  static Future<String> buildBundle(Directory directory) async {
+    await directory.create(recursive: true);
+    final shim = await build();
+    final mainName = switch (Platform.operatingSystem) {
+      'macos' => 'libllama_test.dylib',
+      'windows' => 'llama_test.dll',
+      _ => 'libllama_test.so',
+    };
+    final main = await File(shim).copy(p.join(directory.path, mainName));
+
+    final repoRoot = _findRepoRoot();
+    final source = p.join(
+      repoRoot.path,
+      'packages',
+      'llama_pulse_core',
+      'test',
+      'support',
+      'native',
+      'fake_ggml.c',
+    );
+    final ggmlName = switch (Platform.operatingSystem) {
+      'macos' => 'libggml_fake.dylib',
+      'windows' => 'ggml_fake.dll',
+      _ => 'libggml_fake.so',
+    };
+    final result = await Process.run('clang', [
+      '-shared',
+      '-fPIC',
+      '-std=c11',
+      source,
+      '-o',
+      p.join(directory.path, ggmlName),
+    ]);
+    if (result.exitCode != 0) {
+      throw StateError(
+        'clang could not build fake_ggml.c '
+        '(exit ${result.exitCode}):\n${result.stderr}',
+      );
+    }
+    return main.path;
+  }
 }
 
 /// Typed access to the shim's recorder and test controls.
