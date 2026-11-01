@@ -17,6 +17,17 @@ final class ParamsSetCommand extends LlamaPulseCommand {
       ..addOption('top-p', help: 'Nucleus sampling probability mass.')
       ..addOption('top-k', help: 'Top-k sampling cutoff.')
       ..addOption('max-tokens', help: 'Upper bound on generated tokens.')
+      ..addOption(
+        'chat-template',
+        help: 'Built-in chat template name; "none" sends the raw prompt.',
+      )
+      ..addFlag(
+        'use-chat-template',
+        defaultsTo: true,
+        help:
+            'Wrap the prompt in a chat template (--no-use-chat-template '
+            'sends the raw prompt).',
+      )
       ..addFlag(
         'reset',
         negatable: false,
@@ -84,6 +95,10 @@ final class ParamsSetCommand extends LlamaPulseCommand {
     final topP = readDouble('top-p');
     final topK = readInt('top-k');
     final maxTokens = readInt('max-tokens');
+    final chatTemplate = args.option('chat-template');
+    final useChatTemplate = args.wasParsed('use-chat-template')
+        ? args.flag('use-chat-template')
+        : null;
 
     if (invalid.isNotEmpty) {
       for (final message in invalid) {
@@ -105,6 +120,8 @@ final class ParamsSetCommand extends LlamaPulseCommand {
         topP: topP,
         topK: topK,
         maxTokens: maxTokens,
+        chatTemplate: chatTemplate ?? params.chatTemplate,
+        useChatTemplate: useChatTemplate ?? params.useChatTemplate,
       );
     }
 
@@ -126,6 +143,9 @@ final class ParamsSetCommand extends LlamaPulseCommand {
   }
 
   bool get _hasParameterOptions {
+    if (parsedArgs.wasParsed('use-chat-template')) {
+      return true;
+    }
     for (final name in _parameterOptions) {
       if (parsedArgs.option(name) != null) {
         return true;
@@ -143,5 +163,6 @@ final class ParamsSetCommand extends LlamaPulseCommand {
     'top-p',
     'top-k',
     'max-tokens',
+    'chat-template',
   ];
 }

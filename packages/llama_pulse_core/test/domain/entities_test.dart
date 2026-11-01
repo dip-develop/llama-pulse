@@ -36,6 +36,8 @@ void main() {
       expect(params.topP, 0.95);
       expect(params.topK, 40);
       expect(params.maxTokens, 256);
+      expect(params.chatTemplate, isNull);
+      expect(params.useChatTemplate, isNull);
       expect(ModelParams.schemaVersion, 1);
     });
 
@@ -45,6 +47,21 @@ void main() {
       expect(params.contextSize, 2048);
       expect(params.temperature, 0.8);
       expect(params.maxTokens, 256);
+      expect(params.chatTemplate, isNull);
+      expect(params.useChatTemplate, isNull);
+    });
+
+    test('copyWith sets and clears the chat-template fields', () {
+      final named = ModelParams.defaults().copyWith(
+        chatTemplate: 'chatml',
+        useChatTemplate: false,
+      );
+      expect(named.chatTemplate, 'chatml');
+      expect(named.useChatTemplate, isFalse);
+
+      final cleared = named.copyWith(chatTemplate: null, useChatTemplate: null);
+      expect(cleared.chatTemplate, isNull);
+      expect(cleared.useChatTemplate, isNull);
     });
 
     test('round-trips through the serializers', () {
@@ -52,8 +69,21 @@ void main() {
         modelPath: 'models/tiny.gguf',
         temperature: 0.0,
         topP: 0.5,
+        chatTemplate: 'chatml',
+        useChatTemplate: true,
       );
       expect(roundTrip(ModelParams.serializer, params), params);
+    });
+
+    test('serializes null chat-template fields as absent keys', () {
+      final serialized = serializers.serializeWith(
+        ModelParams.serializer,
+        ModelParams.defaults(),
+      );
+      expect(serialized, isA<Map<String, Object?>>());
+      final document = serialized as Map<String, Object?>;
+      expect(document.containsKey('chatTemplate'), isFalse);
+      expect(document.containsKey('useChatTemplate'), isFalse);
     });
   });
 

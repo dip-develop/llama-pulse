@@ -12,6 +12,8 @@ final class InferenceOverrides {
     this.topK,
     this.maxTokens,
     this.contextSize,
+    this.chatTemplate,
+    this.useChatTemplate,
   });
 
   /// Replacement model path, or null to keep the stored one.
@@ -35,6 +37,12 @@ final class InferenceOverrides {
   /// Replacement context window.
   final int? contextSize;
 
+  /// Replacement chat template; `none` sends the raw prompt.
+  final String? chatTemplate;
+
+  /// Replacement templating switch; null keeps the stored value.
+  final bool? useChatTemplate;
+
   /// Returns [params] with every non-null override applied.
   ModelParams applyTo(ModelParams params) => params.copyWith(
     modelPath: modelPath,
@@ -44,6 +52,8 @@ final class InferenceOverrides {
     topK: topK,
     maxTokens: maxTokens,
     contextSize: contextSize,
+    chatTemplate: chatTemplate ?? params.chatTemplate,
+    useChatTemplate: useChatTemplate ?? params.useChatTemplate,
   );
 }
 
@@ -78,7 +88,18 @@ void addInferenceOptions(ArgParser parser, {String? maxTokensDefault}) {
     ..addOption('temperature', help: 'Sampling temperature.')
     ..addOption('top-p', help: 'Nucleus sampling probability mass.')
     ..addOption('top-k', help: 'Top-k sampling cutoff.')
-    ..addOption('context-size', help: 'Context window, in tokens.');
+    ..addOption('context-size', help: 'Context window, in tokens.')
+    ..addOption(
+      'chat-template',
+      help: 'Built-in chat template name; "none" sends the raw prompt.',
+    )
+    ..addFlag(
+      'use-chat-template',
+      defaultsTo: true,
+      help:
+          'Wrap the prompt in a chat template (--no-use-chat-template sends '
+          'the raw prompt).',
+    );
   if (maxTokensDefault == null) {
     parser.addOption('max-tokens', help: 'Upper bound on generated tokens.');
   } else {
@@ -127,6 +148,10 @@ ParsedInferenceOptions parseInferenceOptions(ArgResults args) {
       topK: readInt('top-k'),
       maxTokens: readInt('max-tokens'),
       contextSize: readInt('context-size'),
+      chatTemplate: args.option('chat-template'),
+      useChatTemplate: args.wasParsed('use-chat-template')
+          ? args.flag('use-chat-template')
+          : null,
     ),
     errors: errors,
     libraryPath: args.option('lib'),

@@ -58,6 +58,36 @@ void main() {
     expect(await repository.load(), _params());
   });
 
+  test(
+    'load leaves the chat-template keys null in an older document',
+    () async {
+      final golden = await File('test/fixtures/params_golden.yaml')
+          .readAsString();
+      await paramsFile.writeAsString(golden);
+
+      final loaded = await repository.load();
+
+      expect(loaded.chatTemplate, isNull);
+      expect(loaded.useChatTemplate, isNull);
+      expect(
+        loaded,
+        _params(),
+        reason: 'no fallback to a non-default document',
+      );
+    },
+  );
+
+  test('round-trips the chat-template fields', () async {
+    final params = _params().copyWith(
+      chatTemplate: 'chatml',
+      useChatTemplate: false,
+    );
+
+    await repository.save(params);
+
+    expect(await repository.load(), params);
+  });
+
   test('load falls back to defaults for a missing document', () async {
     expect(await repository.load(), ModelParams.defaults());
   });

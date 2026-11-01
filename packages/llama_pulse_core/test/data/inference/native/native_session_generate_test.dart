@@ -67,10 +67,11 @@ void main() {
     String prompt = 'hello',
     int maxTokens = 8,
     int requestId = 1,
+    ModelParams? modelParams,
   }) => GenerationRequest.create(
     requestId: requestId,
     prompt: prompt,
-    params: params(maxTokens: maxTokens),
+    params: modelParams ?? params(maxTokens: maxTokens),
   );
 
   Future<List<GenerationStep>> drain(NativeLlamaSession session) async {
@@ -179,7 +180,12 @@ void main() {
     final session = await loadedSession();
     fake.setTokenizeResult(1);
 
-    session.begin(request(prompt: 'hello'));
+    session.begin(
+      request(
+        prompt: 'hello',
+        modelParams: params().copyWith(useChatTemplate: false),
+      ),
+    );
 
     expect(fake.tokenizeAddSpecial, isTrue);
     expect(fake.tokenizeParseSpecial, isTrue);

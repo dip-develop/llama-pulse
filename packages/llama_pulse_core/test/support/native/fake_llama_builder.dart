@@ -154,6 +154,11 @@ final class FakeLlama {
         void Function(double, double, int, int)
       >('fake_llama_set_perf');
 
+  late final void Function(int) _setTemplatePad = _library
+      .lookupFunction<ffi.Void Function(ffi.Int32), void Function(int)>(
+        'fake_llama_set_template_pad',
+      );
+
   late final int Function() _gpuLayers = _intGetter('fake_llama_gpu_layers');
 
   late final int Function() _ctxSize = _intGetter('fake_llama_ctx_size');
@@ -205,6 +210,16 @@ final class FakeLlama {
         ffi.Pointer<Utf8> Function(),
         ffi.Pointer<Utf8> Function()
       >('fake_llama_tokenize_text');
+
+  late final ffi.Pointer<Utf8> Function() _lastTemplateOutput = _library
+      .lookupFunction<
+        ffi.Pointer<Utf8> Function(),
+        ffi.Pointer<Utf8> Function()
+      >('fake_llama_last_template_output');
+
+  late final int Function() _lastTemplateOutputLen = _intGetter(
+    'fake_llama_last_template_output_len',
+  );
 
   late final int Function() _contractViolationCount = _intGetter(
     'fake_llama_contract_violation_count',
@@ -366,6 +381,10 @@ final class FakeLlama {
     required int generatedTokens,
   }) => _setPerf(promptEvalMs, evalMs, promptTokens, generatedTokens);
 
+  /// Appends [bytes] `x` characters to every rendered chat message, so the
+  /// template output grows past the session's initial buffer.
+  void setTemplatePad(int bytes) => _setTemplatePad(bytes);
+
   /// Clears every recorded value and failure switch.
   void reset() => _reset();
 
@@ -408,6 +427,14 @@ final class FakeLlama {
   }
 
   int get tokenizeTextLen => _tokenizeTextLen();
+
+  /// The exact prompt `llama_chat_apply_template` produced last.
+  String get lastTemplateOutput {
+    final pointer = _lastTemplateOutput();
+    return pointer == ffi.nullptr ? '' : pointer.toDartString();
+  }
+
+  int get lastTemplateOutputLen => _lastTemplateOutputLen();
 
   int get contractViolationCount => _contractViolationCount();
 

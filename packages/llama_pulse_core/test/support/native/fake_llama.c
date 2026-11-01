@@ -61,6 +61,7 @@ static char g_sampler_sentinel;
 #define FAKE_PIECE_BYTES 256
 #define FAKE_MAX_DECODES 8192
 #define FAKE_MAX_TOKENIZE_TEXT 4096
+#define FAKE_MAX_TEMPLATE_TEXT 8192
 #define FAKE_CALL_LOG 8
 
 // How many tokens llama_tokenize should produce. Negative values make the
@@ -72,6 +73,15 @@ static char g_tokenize_text[FAKE_MAX_TOKENIZE_TEXT] = "";
 static int g_tokenize_text_len = 0;
 static int g_tokenize_add_special = 0;
 static int g_tokenize_parse_special = 0;
+
+// Chat templates: the resolved template text and the last applied output.
+static const char *k_chatml_template =
+    "<|im_start|>user\n{{prompt}}<|im_end|>\n<|im_start|>assistant\n";
+static char g_last_template_output[FAKE_MAX_TEMPLATE_TEXT] = "";
+static int g_last_template_output_len = 0;
+// Extra 'x' bytes appended to every message content, so a test can force the
+// session's grow-and-retry path for the prompt buffer.
+static int g_template_pad = 0;
 
 // Contract violations the session must never trigger (bad batch shape, a
 // sample at the wrong index or without logits).
@@ -244,6 +254,18 @@ void fake_llama_set_perf(double p_eval_ms, double eval_ms, int n_p_eval,
     g_perf.n_eval = n_eval;
 }
 
+// Appends `g_template_pad` 'x' bytes to the next applied template, forcing an
+// output larger than the session's initial probe buffer.
+void fake_llama_set_template_pad(int n) { g_template_pad = n < 0 ? 0 : n; }
+
+const char *fake_llama_last_template_output(void) {
+    return g_last_template_output;
+}
+
+int fake_llama_last_template_output_len(void) {
+    return g_last_template_output_len;
+}
+
 void fake_llama_reset(void) {
     g_version_overridden = 0;
     g_backend_init_count = 0;
@@ -267,6 +289,9 @@ void fake_llama_reset(void) {
     g_tokenize_text_len = 0;
     g_tokenize_add_special = 0;
     g_tokenize_parse_special = 0;
+    g_last_template_output[0] = '\0';
+    g_last_template_output_len = 0;
+    g_template_pad = 0;
     g_contract_violations = 0;
     g_last_decode_requested_logits = 0;
     memset(g_call_log, 0, sizeof g_call_log);
@@ -405,6 +430,16 @@ const struct llama_vocab *llama_model_get_vocab(const struct llama_model *model)
     return (const struct llama_vocab *) &g_vocab_sentinel;
 }
 
+const char *llama_model_chat_template(const struct llama_model *model,
+                                      const char *name) {
+    (void) model;
+    if (name == NULL || strcmp(name, "chatml") == 0) {
+        return k_chatml_template;
+    }
+    // "none", "unknown" and every other name resolve to no template.
+    return NULL;
+}
+
 int32_t llama_vocab_n_tokens(const struct llama_vocab *vocab) {
     (void) vocab;
     return 32000;
@@ -536,6 +571,55 @@ int32_t llama_token_to_piece(
     }
     memcpy(buf, source, (size_t) source_length);
     return source_length;
+}
+
+static void fake_append(char *buf, size_t *used, const char *text) {
+    if (text == NULL) {
+        return;
+    }
+    while (*text != '\0' && *used + 1 < FAKE_MAX_TEMPLATE_TEXT) {
+        buf[(*used)++] = *text++;
+    }
+}
+
+// A ChatML-style template renderer: every message becomes
+// `<|im_start|>role\ncontent<|im_end|>\n`, and `add_ass` appends the assistant
+// header, matching what the session expects from llama.cpp.
+int32_t llama_chat_apply_template(
+        const char *tmpl,
+        const struct llama_chat_message *chat,
+        size_t n_msg,
+        bool add_ass,
+        char *buf,
+        int32_t length) {
+    if (tmpl == NULL) {
+        return -1;
+    }
+    char result[FAKE_MAX_TEMPLATE_TEXT];
+    size_t used = 0;
+    result[0] = '\0';
+    for (size_t i = 0; chat != NULL && i < n_msg; i++) {
+        fake_append(result, &used, "<|im_start|>");
+        fake_append(result, &used, chat[i].role);
+        fake_append(result, &used, "\n");
+        fake_append(result, &used, chat[i].content);
+        for (int p = 0; p < g_template_pad && used + 1 < FAKE_MAX_TEMPLATE_TEXT;
+             p++) {
+            result[used++] = 'x';
+        }
+        fake_append(result, &used, "<|im_end|>\n");
+    }
+    if (add_ass) {
+        fake_append(result, &used, "<|im_start|>assistant\n");
+    }
+    result[used] = '\0';
+    memcpy(g_last_template_output, result, used + 1);
+    g_last_template_output_len = (int32_t) used;
+    if (buf == NULL || length < (int32_t) used) {
+        return -(int32_t) used;
+    }
+    memcpy(buf, result, used);
+    return (int32_t) used;
 }
 
 // Mirrors upstream: the arrays are allocated with malloc, so they stay
