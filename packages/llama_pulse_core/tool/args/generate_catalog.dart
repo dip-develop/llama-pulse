@@ -4,8 +4,8 @@
 /// block, applies the reviewed overrides, and writes:
 ///
 /// * `catalog/llama_args.v0.8.0.yaml` — the reviewed catalog document;
-/// * `lib/src/data/catalog/parameter_catalog.generated.dart` — the const Dart
-///   catalog.
+/// * `lib/src/domain/parameters/parameter_catalog.generated.dart` — the const
+///   Dart catalog.
 ///
 /// Run with `--check` to compare instead of write; drift exits with code 1.
 library;
@@ -28,7 +28,7 @@ const _catalogRelative =
 const _overridesRelative =
     'packages/llama_pulse_core/catalog/llama_args.v0.8.0.overrides.yaml';
 const _dartRelative =
-    'packages/llama_pulse_core/lib/src/data/catalog/'
+    'packages/llama_pulse_core/lib/src/domain/parameters/'
     'parameter_catalog.generated.dart';
 
 void main(List<String> arguments) {

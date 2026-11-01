@@ -89,7 +89,9 @@ final class LlamaServerSupervisor implements ServerController {
         serializers: serializers,
       ),
       logStore: logStore,
-      validator: const ServerConfigValidator(),
+      validator: ServerConfigValidator(
+        pathExists: (path) => File(path).existsSync(),
+      ),
       monitor: ServerMonitor(httpClient: httpClient),
     );
   }

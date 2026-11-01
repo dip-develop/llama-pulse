@@ -5,7 +5,6 @@ library;
 export 'package:built_value/serializer.dart' show Serializers;
 
 export 'src/data/catalog/catalog_digest.dart';
-export 'src/data/catalog/parameter_catalog.dart';
 export 'src/data/catalog/upstream_arg_parser.dart';
 export 'src/data/config/app_paths.dart';
 export 'src/data/config/config_names.dart';
@@ -84,6 +83,10 @@ export 'src/domain/gateways/server_process.dart';
 export 'src/domain/gateways/server_state_repository.dart';
 export 'src/domain/limits.dart';
 export 'src/domain/model_params_validator.dart';
+export 'src/domain/parameters/parameter_catalog.dart';
+export 'src/domain/parameters/parameter_validator.dart';
+export 'src/domain/parameters/parameter_value_codec.dart';
+export 'src/domain/parameters/parameter_values.dart';
 export 'src/domain/server_config_validator.dart';
 export 'src/domain/text/utf8_token_accumulator.dart';
 export 'src/domain/usecases/inspect_model.dart';

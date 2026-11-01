@@ -1,3 +1,4 @@
+import 'package:built_collection/built_collection.dart';
 import 'package:built_value/built_value.dart';
 import 'package:built_value/serializer.dart';
 
@@ -44,6 +45,11 @@ abstract class ModelParams implements Built<ModelParams, ModelParamsBuilder> {
   /// Null means true; false forces the raw prompt.
   bool? get useChatTemplate;
 
+  /// Catalog parameter values keyed by catalog id.
+  ///
+  /// Typed fields win over this map; see `ParameterValues.valueForModel`.
+  BuiltMap<String, String> get params;
+
   factory ModelParams([void Function(ModelParamsBuilder)? updates]) =
       _$ModelParams;
 
@@ -59,7 +65,8 @@ abstract class ModelParams implements Built<ModelParams, ModelParamsBuilder> {
       ..topK = 40
       ..maxTokens = 256
       ..chatTemplate = null
-      ..useChatTemplate = null,
+      ..useChatTemplate = null
+      ..params = MapBuilder<String, String>(),
   );
 
   ModelParams._();
@@ -81,6 +88,7 @@ abstract class ModelParams implements Built<ModelParams, ModelParamsBuilder> {
     int? maxTokens,
     Object? chatTemplate = _unset,
     Object? useChatTemplate = _unset,
+    BuiltMap<String, String>? params,
   }) => rebuild(
     (b) => b
       ..modelPath = modelPath ?? this.modelPath
@@ -96,7 +104,8 @@ abstract class ModelParams implements Built<ModelParams, ModelParamsBuilder> {
           : chatTemplate as String?
       ..useChatTemplate = identical(useChatTemplate, _unset)
           ? this.useChatTemplate
-          : useChatTemplate as bool?,
+          : useChatTemplate as bool?
+      ..params.replace(params ?? this.params),
   );
 
   static const Object _unset = Object();

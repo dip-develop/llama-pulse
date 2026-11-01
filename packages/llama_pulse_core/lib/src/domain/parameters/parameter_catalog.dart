@@ -1,4 +1,4 @@
-import '../../domain/entities/parameter_spec.dart';
+import '../entities/parameter_spec.dart';
 
 part 'parameter_catalog.generated.dart';
 

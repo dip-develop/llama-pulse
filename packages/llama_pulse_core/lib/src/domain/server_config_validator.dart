@@ -1,16 +1,35 @@
+import 'entities/parameter_spec.dart';
 import 'entities/server_config.dart';
+import 'parameters/parameter_catalog.dart';
+import 'parameters/parameter_validator.dart';
 
 /// Validates [ServerConfig] before it is stored or used to start a server.
 final class ServerConfigValidator {
-  const ServerConfigValidator();
+  /// Creates a validator.
+  ///
+  /// [pathExists] is used only by [validateForStart] for parameters that
+  /// require an existing path; the domain layer does not touch the filesystem
+  /// itself.
+  const ServerConfigValidator({this.pathExists});
+
+  /// Optional filesystem predicate for `requiresExistingPath` parameters.
+  final bool Function(String path)? pathExists;
 
   /// Flags `llama-server` already receives from a managed config field.
   ///
   /// Repeating one in [ServerConfig.extraArgs] would make the effective launch
   /// ambiguous, so such items are rejected. The flag part of a token (the text
   /// before the first `=`) is compared, so `--model=x` and `-m=x` are caught
-  /// as well as the bare flags.
-  static const Set<String> managedFlags = {
+  /// as well as the bare flags. Every catalog flag is included, because a
+  /// parameter value is passed through the same argument vector.
+  static final Set<String> managedFlags = {
+    ..._typedManagedFlags,
+    for (final spec in ParameterCatalog.v080.parameters) ...spec.flags,
+    for (final spec in ParameterCatalog.v080.parameters) ?spec.negatedFlag,
+    '--',
+  };
+
+  static const Set<String> _typedManagedFlags = {
     '-m',
     '--model',
     '--host',
@@ -37,7 +56,6 @@ final class ServerConfigValidator {
     '--no-mlock',
     '--mmap',
     '--no-mmap',
-    '--',
   };
 
   /// Returns one message per violated field, in field declaration order.
@@ -45,7 +63,25 @@ final class ServerConfigValidator {
   /// An empty list means the value is valid. An empty
   /// [ServerConfig.modelPath] is accepted as "not configured"; use
   /// [validateForStart] when the configuration is about to launch a server.
-  List<String> validate(ServerConfig config) {
+  List<String> validate(ServerConfig config) =>
+      _validate(config, forStart: false);
+
+  /// Returns [validate] plus the requirements that only matter when starting.
+  ///
+  /// A server cannot launch without a `.gguf` model, so a blank path is
+  /// `modelPath must be set` and anything else is rejected unless it ends in
+  /// `.gguf` (case-insensitive). Parameter paths are checked on disk only here.
+  List<String> validateForStart(ServerConfig config) {
+    final violations = _validate(config, forStart: true);
+    if (config.modelPath.isEmpty) {
+      violations.add('modelPath must be set');
+    } else if (!config.modelPath.toLowerCase().endsWith('.gguf')) {
+      violations.add('modelPath must point to a .gguf file');
+    }
+    return violations;
+  }
+
+  List<String> _validate(ServerConfig config, {required bool forStart}) {
     final violations = <String>[];
 
     if (config.modelPath.isNotEmpty && config.modelPath.trim().isEmpty) {
@@ -98,14 +134,26 @@ final class ServerConfigValidator {
     if (extraArgs.any(_hasControlChar)) {
       violations.add('extraArgs must not contain control characters');
     }
+    final paramFlags = {
+      for (final id in config.params.keys)
+        ...?ParameterCatalog.v080.byId(id)?.flags,
+    };
     for (final arg in extraArgs) {
       final equals = arg.indexOf('=');
       final flag = equals < 0 ? arg : arg.substring(0, equals);
-      if (managedFlags.contains(flag)) {
+      if (managedFlags.contains(flag) || paramFlags.contains(flag)) {
         violations.add('$flag is managed by the server configuration');
         break;
       }
     }
+
+    violations.addAll(
+      ParameterValidator(pathExists: pathExists).validateValues(
+        config.params,
+        surface: ParamSurface.server,
+        forStart: forStart,
+      ),
+    );
 
     if (_hasControlChar(config.binaryPath)) {
       violations.add('binaryPath must not contain control characters');
@@ -119,21 +167,6 @@ final class ServerConfigValidator {
       600,
     );
 
-    return violations;
-  }
-
-  /// Returns [validate] plus the requirements that only matter when starting.
-  ///
-  /// A server cannot launch without a `.gguf` model, so a blank path is
-  /// `modelPath must be set` and anything else is rejected unless it ends in
-  /// `.gguf` (case-insensitive).
-  List<String> validateForStart(ServerConfig config) {
-    final violations = validate(config).toList();
-    if (config.modelPath.isEmpty) {
-      violations.add('modelPath must be set');
-    } else if (!config.modelPath.toLowerCase().endsWith('.gguf')) {
-      violations.add('modelPath must point to a .gguf file');
-    }
     return violations;
   }
 

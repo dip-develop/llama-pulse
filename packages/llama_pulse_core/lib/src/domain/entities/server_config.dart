@@ -51,6 +51,13 @@ abstract class ServerConfig
   /// Raw extra `llama-server` arguments appended after the managed ones.
   BuiltList<String> get extraArgs;
 
+  /// Catalog parameter values keyed by catalog id.
+  ///
+  /// Only ids without a typed owner are stored here; a managed id is rejected
+  /// by the validator. Values are canonical strings, see
+  /// `ParameterValueCodec`.
+  BuiltMap<String, String> get params;
+
   /// Path to the `llama-server` executable; empty means auto-detect.
   String get binaryPath;
 
@@ -89,6 +96,7 @@ abstract class ServerConfig
       ..flashAttention = ServerFlashAttention.auto
       ..mlock = false
       ..mmap = true
+      ..params = MapBuilder<String, String>()
       ..binaryPath = ''
       ..startupTimeoutSeconds = 120,
   );
@@ -123,6 +131,7 @@ abstract class ServerConfig
     bool? mlock,
     bool? mmap,
     BuiltList<String>? extraArgs,
+    BuiltMap<String, String>? params,
     String? binaryPath,
     int? startupTimeoutSeconds,
   }) => rebuild(
@@ -140,6 +149,7 @@ abstract class ServerConfig
       ..mlock = mlock ?? this.mlock
       ..mmap = mmap ?? this.mmap
       ..extraArgs.replace(extraArgs ?? this.extraArgs)
+      ..params.replace(params ?? this.params)
       ..binaryPath = binaryPath ?? this.binaryPath
       ..startupTimeoutSeconds =
           startupTimeoutSeconds ?? this.startupTimeoutSeconds,

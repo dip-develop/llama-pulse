@@ -1,5 +1,7 @@
 import 'entities/model_params.dart';
+import 'entities/parameter_spec.dart';
 import 'limits.dart';
+import 'parameters/parameter_validator.dart';
 
 /// Validates [ModelParams] field by field against [ModelParamLimits].
 final class ModelParamsValidator {
@@ -65,6 +67,14 @@ final class ModelParamsValidator {
       ModelParamLimits.maxMaxTokens,
     );
     _checkChatTemplate(violations, params.chatTemplate);
+
+    violations.addAll(
+      const ParameterValidator().validateValues(
+        params.params,
+        surface: ParamSurface.embedded,
+        forStart: false,
+      ),
+    );
 
     return violations;
   }

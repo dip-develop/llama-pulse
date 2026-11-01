@@ -73,6 +73,14 @@ class _$ServerConfigSerializer implements StructuredSerializer<ServerConfig> {
           const FullType(String),
         ]),
       ),
+      'params',
+      serializers.serialize(
+        object.params,
+        specifiedType: const FullType(BuiltMap, const [
+          const FullType(String),
+          const FullType(String),
+        ]),
+      ),
       'binaryPath',
       serializers.serialize(
         object.binaryPath,
@@ -209,6 +217,17 @@ class _$ServerConfigSerializer implements StructuredSerializer<ServerConfig> {
                 as BuiltList<Object?>,
           );
           break;
+        case 'params':
+          result.params.replace(
+            serializers.deserialize(
+              value,
+              specifiedType: const FullType(BuiltMap, const [
+                const FullType(String),
+                const FullType(String),
+              ]),
+            )!,
+          );
+          break;
         case 'binaryPath':
           result.binaryPath =
               serializers.deserialize(
@@ -260,6 +279,8 @@ class _$ServerConfig extends ServerConfig {
   @override
   final BuiltList<String> extraArgs;
   @override
+  final BuiltMap<String, String> params;
+  @override
   final String binaryPath;
   @override
   final int startupTimeoutSeconds;
@@ -281,6 +302,7 @@ class _$ServerConfig extends ServerConfig {
     required this.mlock,
     required this.mmap,
     required this.extraArgs,
+    required this.params,
     required this.binaryPath,
     required this.startupTimeoutSeconds,
   }) : super._();
@@ -308,6 +330,7 @@ class _$ServerConfig extends ServerConfig {
         mlock == other.mlock &&
         mmap == other.mmap &&
         extraArgs == other.extraArgs &&
+        params == other.params &&
         binaryPath == other.binaryPath &&
         startupTimeoutSeconds == other.startupTimeoutSeconds;
   }
@@ -328,6 +351,7 @@ class _$ServerConfig extends ServerConfig {
     _$hash = $jc(_$hash, mlock.hashCode);
     _$hash = $jc(_$hash, mmap.hashCode);
     _$hash = $jc(_$hash, extraArgs.hashCode);
+    _$hash = $jc(_$hash, params.hashCode);
     _$hash = $jc(_$hash, binaryPath.hashCode);
     _$hash = $jc(_$hash, startupTimeoutSeconds.hashCode);
     _$hash = $jf(_$hash);
@@ -350,6 +374,7 @@ class _$ServerConfig extends ServerConfig {
           ..add('mlock', mlock)
           ..add('mmap', mmap)
           ..add('extraArgs', extraArgs)
+          ..add('params', params)
           ..add('binaryPath', binaryPath)
           ..add('startupTimeoutSeconds', startupTimeoutSeconds))
         .toString();
@@ -416,6 +441,11 @@ class ServerConfigBuilder
   set extraArgs(ListBuilder<String>? extraArgs) =>
       _$this._extraArgs = extraArgs;
 
+  MapBuilder<String, String>? _params;
+  MapBuilder<String, String> get params =>
+      _$this._params ??= MapBuilder<String, String>();
+  set params(MapBuilder<String, String>? params) => _$this._params = params;
+
   String? _binaryPath;
   String? get binaryPath => _$this._binaryPath;
   set binaryPath(String? binaryPath) => _$this._binaryPath = binaryPath;
@@ -443,6 +473,7 @@ class ServerConfigBuilder
       _mlock = $v.mlock;
       _mmap = $v.mmap;
       _extraArgs = $v.extraArgs.toBuilder();
+      _params = $v.params.toBuilder();
       _binaryPath = $v.binaryPath;
       _startupTimeoutSeconds = $v.startupTimeoutSeconds;
       _$v = null;
@@ -530,6 +561,7 @@ class ServerConfigBuilder
               'mmap',
             ),
             extraArgs: extraArgs.build(),
+            params: params.build(),
             binaryPath: BuiltValueNullFieldError.checkNotNull(
               binaryPath,
               r'ServerConfig',
@@ -546,6 +578,8 @@ class ServerConfigBuilder
       try {
         _$failedField = 'extraArgs';
         extraArgs.build();
+        _$failedField = 'params';
+        params.build();
       } catch (e) {
         throw BuiltValueNestedFieldError(
           r'ServerConfig',

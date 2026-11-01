@@ -30,7 +30,7 @@ ServerConfig _config() => ServerConfig.defaults().copyWith(
   flashAttention: ServerFlashAttention.on,
   mlock: true,
   mmap: false,
-  extraArgs: BuiltList<String>(['--verbose', '--no-warmup']),
+  extraArgs: BuiltList<String>(['--future-flag', '--other-flag']),
   binaryPath: '/opt/llama.cpp/llama-server',
   startupTimeoutSeconds: 60,
 );
@@ -86,9 +86,9 @@ void main() {
   test('round-trips extra arguments with spaces and hashes', () async {
     final config = ServerConfig.defaults().copyWith(
       extraArgs: BuiltList<String>([
-        '--lora',
+        '--future-flag',
         '/models/my adapter #1.gguf',
-        '--lora-scaled=1.0',
+        '--future-scaled=1.0',
       ]),
     );
 
@@ -206,5 +206,89 @@ void main() {
         ['port must be in 1..65535', 'threads must be in 1..256'].join('\n'),
       );
     }
+  });
+
+  test('omits params from the document when the map is empty', () {
+    final document = repository.toDocument(ServerConfig.defaults());
+    final server = document['server']! as Map<String, Object?>;
+
+    expect(server.containsKey('params'), isFalse);
+    expect(YamlEncoder.encode(document), isNot(contains('params:')));
+  });
+
+  test('writes params only when the map is non-empty', () {
+    final config = _config().copyWith(
+      params: BuiltMap<String, String>({'temp': '0.5'}),
+    );
+
+    final encoded = YamlEncoder.encode(repository.toDocument(config));
+
+    expect(encoded, contains('\n  params:\n'));
+    expect(encoded, contains("\n    temp: '0.5'\n"));
+  });
+
+  test('round-trips catalog values', () async {
+    final config = _config().copyWith(
+      params: BuiltMap<String, String>({
+        'temp': '0.5',
+        'chat-template': '{{prompt}}',
+      }),
+    );
+
+    await repository.save(config);
+
+    expect(await repository.load(), config);
+  });
+
+  test('normalizes params insertion order before writing', () {
+    final first = _config().copyWith(
+      params: BuiltMap<String, String>({
+        'chat-template': '{{prompt}}',
+        'temp': '0.5',
+      }),
+    );
+    final second = _config().copyWith(
+      params: BuiltMap<String, String>({
+        'temp': '0.5',
+        'chat-template': '{{prompt}}',
+      }),
+    );
+
+    expect(
+      YamlEncoder.encode(repository.toDocument(first)),
+      YamlEncoder.encode(repository.toDocument(second)),
+    );
+  });
+
+  test(
+    'an old document without params loads and re-saves byte for byte',
+    () async {
+      final encoded = YamlEncoder.encode(repository.toDocument(_config()));
+      expect(encoded, isNot(contains('params:')));
+      await serverFile.writeAsString(encoded);
+
+      final loaded = await repository.load();
+      await repository.save(loaded);
+
+      expect(await serverFile.readAsString(), encoded);
+    },
+  );
+
+  test('rejects a managed typed field in params', () async {
+    final config = ServerConfig.defaults().copyWith(
+      contextSize: 8192,
+      params: BuiltMap<String, String>({'ctx-size': '9999'}),
+    );
+
+    await expectLater(
+      repository.save(config),
+      throwsA(
+        isA<ServerException>().having(
+          (error) => error.failure.details,
+          'details',
+          "'ctx-size' is managed by ServerConfig",
+        ),
+      ),
+    );
   });
 }

@@ -12,7 +12,7 @@ catalog is not typed by hand: it is generated from the vendored
 | `catalog/llama_args.v0.8.0.overrides.yaml` | Reviewed overrides; the only file to edit. |
 | `catalog/llama_args.v0.8.0.yaml` | Generated catalog document; do not edit. |
 | `lib/src/data/catalog/upstream_arg_parser.dart` | Parser for `add_opt(common_arg(...))` blocks. |
-| `lib/src/data/catalog/parameter_catalog.dart` | Const runtime API; `parameter_catalog.generated.dart` is its part. |
+| `lib/src/domain/parameters/parameter_catalog.dart` | Const runtime API; `parameter_catalog.generated.dart` is its part. |
 | `lib/src/data/catalog/catalog_digest.dart` | Canonical body and SHA-256 digest helper. |
 | `lib/src/domain/entities/parameter_spec.dart` | `ParameterSpec`, `ParameterGroupSpec` and their enums. |
 | `tool/args/generate_catalog.dart` | Generator (`--check` for CI). |
