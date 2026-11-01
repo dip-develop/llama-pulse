@@ -12,6 +12,12 @@ abstract final class ExitCodes {
   /// The requested model file does not exist or is not a `.gguf` file.
   static const int notFound = 3;
 
+  /// A downloaded runtime failed verification or extraction.
+  static const int integrity = 4;
+
+  /// The runtime download failed at the network or HTTP layer.
+  static const int network = 5;
+
   /// The user interrupted the running command (128 + SIGINT).
   static const int interrupted = 130;
 }

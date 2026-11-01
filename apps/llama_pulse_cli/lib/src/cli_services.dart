@@ -27,11 +27,17 @@ final class CliServices {
     this.stopTimeout = const Duration(seconds: 10),
     this.stopPollInterval = const Duration(milliseconds: 200),
     bool watchInterrupts = false,
+    RuntimeStore? runtimeStore,
+    this.runtimeProbe,
+    this.runtimeFetcherFactory,
+    this.runtimeRelease = RuntimeRelease.v080,
+    this.runtimeProcessExecutor = const DartProcessExecutor(),
   }) : _interrupts = interrupts, // ignore: prefer_initializing_formals
        _engineFactory = engineFactory, // ignore: prefer_initializing_formals
        _useStubServer = useStubServer, // ignore: prefer_initializing_formals
        // ignore: prefer_initializing_formals
-       _watchInterrupts = watchInterrupts;
+       _watchInterrupts = watchInterrupts,
+       _runtimeStoreOverride = runtimeStore;
 
   /// Creates services rooted at the platform configuration directory.
   factory CliServices.production() {
@@ -78,6 +84,23 @@ final class CliServices {
 
   /// Delay between liveness checks during `stop`.
   final Duration stopPollInterval;
+
+  /// Overrides the runtime store; production uses `<config>/runtime/`.
+  final RuntimeStore? _runtimeStoreOverride;
+
+  /// Overrides hardware detection; production runs the real vendor tools.
+  final RuntimeProbe? runtimeProbe;
+
+  /// Creates the HTTP fetcher one install uses.
+  ///
+  /// Tests inject a fake so no command ever reaches the network.
+  final RuntimeFetcher Function()? runtimeFetcherFactory;
+
+  /// The pinned release `runtime` commands install.
+  final RuntimeRelease runtimeRelease;
+
+  /// Runs `llama-server --version` after an install to record the build.
+  final ProcessExecutor runtimeProcessExecutor;
 
   final List<StreamSubscription<io.ProcessSignal>> _interruptSubscriptions = [];
   StreamController<io.ProcessSignal>? _interruptController;
@@ -144,6 +167,32 @@ final class CliServices {
   /// The append-only log at [AppPaths.serverLogFile].
   ServerLogStore get serverLogStore =>
       _serverLogStore ??= ServerLogStore(filePath: paths.serverLogFile);
+
+  RuntimeStore? _runtimeStore;
+
+  /// The installed runtimes under `<config>/runtime/`.
+  RuntimeStore get runtimes =>
+      _runtimeStoreOverride ??
+      (_runtimeStore ??= YamlRuntimeStore(paths: paths));
+
+  /// Detects the host GPU backends.
+  RuntimeProbe get runtimeDetection => runtimeProbe ?? const DartRuntimeProbe();
+
+  /// Reads hardware, installed runtimes and the gate verdict.
+  RuntimeStatusReader createRuntimeStatusReader() => RuntimeStatusReader(
+    store: runtimes,
+    probe: runtimeDetection,
+    release: runtimeRelease,
+  );
+
+  /// Installs one runtime, downloading and verifying through [runtimeFetcherFactory].
+  RuntimeInstaller createRuntimeInstaller() => RuntimeInstaller(
+    store: runtimes,
+    fetcher: runtimeFetcherFactory?.call() ?? HttpRuntimeFetcher(),
+    paths: paths,
+    release: runtimeRelease,
+    executor: runtimeProcessExecutor,
+  );
 
   /// Whether the demo stub controller replaces the production supervisor.
   ///

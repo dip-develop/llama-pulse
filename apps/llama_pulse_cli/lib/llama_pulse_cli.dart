@@ -7,6 +7,7 @@ export 'src/exit_codes.dart';
 export 'src/output.dart';
 export 'src/params/params_options.dart';
 export 'src/params/params_output.dart';
+export 'src/runtime/runtime_output.dart';
 export 'src/server/server_options.dart';
 export 'src/server/server_output.dart';
 export 'src/server/server_status_reader.dart';
