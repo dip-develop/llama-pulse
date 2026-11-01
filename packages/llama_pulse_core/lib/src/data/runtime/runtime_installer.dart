@@ -5,6 +5,7 @@ import 'package:path/path.dart' as p;
 
 import '../../domain/entities/runtime_manifest.dart';
 import '../../domain/gateways/process_executor.dart';
+import '../../domain/gateways/runtime_install_service.dart';
 import '../../domain/gateways/runtime_store.dart';
 import '../../domain/runtime/runtime_asset.dart';
 import '../../domain/runtime/runtime_failure.dart';
@@ -21,7 +22,7 @@ import 'runtime_downloader.dart';
 /// place that knows the staging directory layout and the manifest fields an
 /// install needs. A failed or cancelled install removes its staging tree and
 /// never touches an existing runtime.
-final class RuntimeInstaller {
+final class RuntimeInstaller implements RuntimeInstallService {
   /// Creates an installer.
   ///
   /// [executor] arms the optional `llama-server --version` probe; leave it
@@ -63,7 +64,7 @@ final class RuntimeInstaller {
   final RuntimeRelease _release;
   final int Function() _clock;
 
-  /// The release this installer knows how to fetch.
+  @override
   RuntimeRelease get release => _release;
 
   /// Installs [asset] into `<runtime>/<tag>/<backend>` and returns the payload.
@@ -75,6 +76,7 @@ final class RuntimeInstaller {
   /// Throws [RuntimeException] for download, verification and extraction
   /// failures and [StateError] when the runtime is already installed and
   /// [force] is false.
+  @override
   Future<RuntimeInstallResult> install({
     required RuntimeAsset asset,
     required void Function(RuntimeProgress) onProgress,

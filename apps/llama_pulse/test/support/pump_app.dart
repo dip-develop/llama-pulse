@@ -12,6 +12,7 @@ import 'package:llama_pulse_core/llama_pulse_core.dart';
 import 'fake_clipboard_service.dart';
 import 'fake_file_picker.dart';
 import 'fake_model_path_picker.dart';
+import 'fake_runtime.dart';
 import 'fake_server_binary_picker.dart';
 import 'fake_server_controller.dart';
 
@@ -33,6 +34,10 @@ Future<void> pumpLlamaPulse(
   FilePicker? filePicker,
   ClipboardService? clipboard,
   ServerState? recordedState,
+  RuntimeProbe? runtimeProbe,
+  RuntimeStore? runtimeStore,
+  RuntimeInstallService? runtimeInstallService,
+  RuntimeRelease? runtimeRelease,
   bool demoServer = false,
   bool demoEngine = false,
 }) async {
@@ -53,6 +58,10 @@ Future<void> pumpLlamaPulse(
 
   final ServerController controller =
       serverController ?? FakeServerController();
+  final RuntimeRelease release = runtimeRelease ?? testRuntimeRelease();
+  final FakeRuntimeStore store = runtimeStore is FakeRuntimeStore
+      ? runtimeStore
+      : FakeRuntimeStore();
 
   await getIt.reset();
   await configureDependencies(
@@ -60,6 +69,12 @@ Future<void> pumpLlamaPulse(
     configStore: InMemoryConfigStore(),
     engine: engine,
     serverController: controller,
+    runtimeProbe: runtimeProbe ?? FakeRuntimeProbe(),
+    runtimeStore: runtimeStore ?? store,
+    runtimeRelease: release,
+    runtimeInstallService:
+        runtimeInstallService ??
+        FakeRuntimeInstallService(release: release, store: store),
   );
   if (recordedState != null) {
     await getIt<ServerStateRepository>().save(recordedState);

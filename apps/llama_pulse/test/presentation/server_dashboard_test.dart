@@ -139,7 +139,7 @@ void main() {
   });
 
   testWidgets('toggles the API key visibility', (tester) async {
-    _useView(tester, const Size(1000, 1600));
+    _useView(tester, const Size(1200, 1600));
     await pumpLlamaPulse(tester, serverController: FakeServerController());
 
     await _enter(tester, 'server-api-key', 'secret-token');

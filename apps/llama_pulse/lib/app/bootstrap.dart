@@ -138,6 +138,13 @@ void _exitProcess(int code) => exit(code);
 /// down: disposing is idempotent, and a failure to dispose is logged rather
 /// than blocking the exit.
 Future<void> disposeAppDependencies() async {
+  if (getIt.isRegistered<RuntimeFetcher>()) {
+    try {
+      getIt<RuntimeFetcher>().close();
+    } on Object catch (error, stack) {
+      debugPrint('Could not close the runtime fetcher: $error\n$stack');
+    }
+  }
   if (!getIt.isRegistered<ServerController>()) {
     return;
   }

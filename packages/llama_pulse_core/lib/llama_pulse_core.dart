@@ -90,6 +90,7 @@ export 'src/domain/gateways/model_scanner.dart';
 export 'src/domain/gateways/port_probe.dart';
 export 'src/domain/gateways/process_executor.dart';
 export 'src/domain/gateways/process_signaller.dart';
+export 'src/domain/gateways/runtime_install_service.dart';
 export 'src/domain/gateways/runtime_store.dart';
 export 'src/domain/gateways/server_binary_locator.dart';
 export 'src/domain/gateways/server_config_repository.dart';
