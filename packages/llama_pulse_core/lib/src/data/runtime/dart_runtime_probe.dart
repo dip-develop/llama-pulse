@@ -12,7 +12,7 @@ import '../server/dart_process_executor.dart';
 /// Every vendor command is best-effort: a missing tool, a timeout or garbage
 /// output degrades that backend to `supported: false` and records the failure
 /// in its reason. The probe never throws.
-final class DartRuntimeProbe {
+final class DartRuntimeProbe implements RuntimeProbe {
   /// Creates a probe that runs commands through [executor].
   ///
   /// The executor can also be overridden per [probe] call, which keeps tests
@@ -21,6 +21,11 @@ final class DartRuntimeProbe {
 
   /// The executor used when [probe] does not receive one.
   final ProcessExecutor executor;
+
+  /// Detects the host hardware; every injectable knob of [probeWith] keeps its
+  /// production default.
+  @override
+  Future<RuntimeDetection> probe() => probeWith();
 
   /// `libvulkan` locations checked on Linux, in order.
   static const List<String> linuxVulkanLibraries = <String>[
@@ -46,7 +51,7 @@ final class DartRuntimeProbe {
   ///
   /// [operatingSystem], [arch] and [fileExists] are injectable so tests never
   /// touch the real host. When omitted they read `Platform` and `dart:io`.
-  Future<RuntimeDetection> probe({
+  Future<RuntimeDetection> probeWith({
     ProcessExecutor? executor,
     String? operatingSystem,
     String? arch,

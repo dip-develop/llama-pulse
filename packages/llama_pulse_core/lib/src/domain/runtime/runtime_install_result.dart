@@ -76,4 +76,25 @@ final class RuntimeInstallResult {
 
   /// The primary archive.
   RuntimeAsset get asset => assets.first;
+
+  /// Returns this result with [payloadDir] replaced.
+  ///
+  /// The installer calls it after the store committed the staging tree, so a
+  /// caller sees the installed directory rather than the temporary one.
+  RuntimeInstallResult withPayloadDirectory(Directory directory) =>
+      RuntimeInstallResult(
+        tag: tag,
+        backend: backend,
+        platform: platform,
+        assetName: assetName,
+        sha256: sha256,
+        sizeBytes: sizeBytes,
+        payloadDir: directory,
+        files: files,
+        assets: assets,
+        buildId: buildId,
+        commit: commit,
+        serverVersion: serverVersion,
+        buildNumber: buildNumber,
+      );
 }

@@ -54,7 +54,7 @@ void main() {
     Map<String, ProcessOutput> responses = const {},
     Set<String> files = const {},
     String arch = 'x64',
-  }) => probe.probe(
+  }) => probe.probeWith(
     executor: _FakeExecutor(responses),
     operatingSystem: 'linux',
     arch: arch,
@@ -196,7 +196,7 @@ void main() {
     });
 
     test('an executor that throws still returns a detection', () async {
-      final detection = await probe.probe(
+      final detection = await probe.probeWith(
         executor: _ThrowingExecutor(),
         operatingSystem: 'linux',
         arch: 'x64',
@@ -291,7 +291,7 @@ void main() {
 
   group('Windows', () {
     test('a 580 driver offers CUDA 13 only', () async {
-      final detection = await probe.probe(
+      final detection = await probe.probeWith(
         executor: _FakeExecutor(<String, ProcessOutput>{
           'nvidia-smi': _ok('NVIDIA GeForce RTX 4080, 580.12\n'),
         }),
@@ -308,7 +308,7 @@ void main() {
     });
 
     test('vulkan-1.dll alone recommends Vulkan', () async {
-      final detection = await probe.probe(
+      final detection = await probe.probeWith(
         executor: _FakeExecutor(),
         operatingSystem: 'windows',
         arch: 'x64',
@@ -327,7 +327,7 @@ void main() {
   group('macOS', () {
     test('arm64 always recommends Metal and never probes vendors', () async {
       final executor = _FakeExecutor();
-      final detection = await probe.probe(
+      final detection = await probe.probeWith(
         executor: executor,
         operatingSystem: 'macos',
         arch: 'arm64',
@@ -351,7 +351,7 @@ void main() {
     });
 
     test('x64 aliases the macOS platform but offers CPU only', () async {
-      final detection = await probe.probe(
+      final detection = await probe.probeWith(
         executor: _FakeExecutor(),
         operatingSystem: 'macos',
         arch: 'x64',
@@ -375,7 +375,7 @@ void main() {
   group('unsupported hosts', () {
     test('an unknown OS reports no platform and no backends', () async {
       final executor = _FakeExecutor();
-      final detection = await probe.probe(
+      final detection = await probe.probeWith(
         executor: executor,
         operatingSystem: 'freebsd',
         arch: 'x64',

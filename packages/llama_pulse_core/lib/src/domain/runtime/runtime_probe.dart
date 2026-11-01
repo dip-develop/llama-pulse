@@ -69,6 +69,15 @@ final class RuntimeHardware {
       platform == RuntimePlatform.macosArm64 && arch == 'arm64';
 }
 
+/// Detects the host hardware and the pinned backends it can run.
+abstract interface class RuntimeProbe {
+  /// Probes the host.
+  ///
+  /// Never throws: a host the pinned release does not target reports no
+  /// platform, no verdicts and no recommendation.
+  Future<RuntimeDetection> probe();
+}
+
 /// The result of probing one host: hardware, per-backend verdicts and the
 /// default backend to offer.
 final class RuntimeDetection {
