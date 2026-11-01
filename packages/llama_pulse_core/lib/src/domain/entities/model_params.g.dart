@@ -61,7 +61,23 @@ class _$ModelParamsSerializer implements StructuredSerializer<ModelParams> {
         ]),
       ),
     ];
-
+    Object? value;
+    value = object.chatTemplate;
+    if (value != null) {
+      result
+        ..add('chatTemplate')
+        ..add(
+          serializers.serialize(value, specifiedType: const FullType(String)),
+        );
+    }
+    value = object.useChatTemplate;
+    if (value != null) {
+      result
+        ..add('useChatTemplate')
+        ..add(
+          serializers.serialize(value, specifiedType: const FullType(bool)),
+        );
+    }
     return result;
   }
 
@@ -143,6 +159,18 @@ class _$ModelParamsSerializer implements StructuredSerializer<ModelParams> {
                   )!
                   as int;
           break;
+        case 'chatTemplate':
+          result.chatTemplate = serializers.deserialize(
+            value,
+            specifiedType: const FullType(String),
+          ) as String?;
+          break;
+        case 'useChatTemplate':
+          result.useChatTemplate = serializers.deserialize(
+            value,
+            specifiedType: const FullType(bool),
+          ) as bool?;
+          break;
         case 'params':
           result.params.replace(
             serializers.deserialize(
@@ -179,6 +207,10 @@ class _$ModelParams extends ModelParams {
   @override
   final int maxTokens;
   @override
+  final String? chatTemplate;
+  @override
+  final bool? useChatTemplate;
+  @override
   final BuiltMap<String, String> params;
 
   factory _$ModelParams([void Function(ModelParamsBuilder)? updates]) =>
@@ -193,6 +225,8 @@ class _$ModelParams extends ModelParams {
     required this.topP,
     required this.topK,
     required this.maxTokens,
+    this.chatTemplate,
+    this.useChatTemplate,
     required this.params,
   }) : super._();
   @override
@@ -214,6 +248,8 @@ class _$ModelParams extends ModelParams {
         topP == other.topP &&
         topK == other.topK &&
         maxTokens == other.maxTokens &&
+        chatTemplate == other.chatTemplate &&
+        useChatTemplate == other.useChatTemplate &&
         params == other.params;
   }
 
@@ -228,6 +264,8 @@ class _$ModelParams extends ModelParams {
     _$hash = $jc(_$hash, topP.hashCode);
     _$hash = $jc(_$hash, topK.hashCode);
     _$hash = $jc(_$hash, maxTokens.hashCode);
+    _$hash = $jc(_$hash, chatTemplate.hashCode);
+    _$hash = $jc(_$hash, useChatTemplate.hashCode);
     _$hash = $jc(_$hash, params.hashCode);
     _$hash = $jf(_$hash);
     return _$hash;
@@ -244,6 +282,8 @@ class _$ModelParams extends ModelParams {
           ..add('topP', topP)
           ..add('topK', topK)
           ..add('maxTokens', maxTokens)
+          ..add('chatTemplate', chatTemplate)
+          ..add('useChatTemplate', useChatTemplate)
           ..add('params', params))
         .toString();
   }
@@ -284,6 +324,15 @@ class ModelParamsBuilder implements Builder<ModelParams, ModelParamsBuilder> {
   int? get maxTokens => _$this._maxTokens;
   set maxTokens(int? maxTokens) => _$this._maxTokens = maxTokens;
 
+  String? _chatTemplate;
+  String? get chatTemplate => _$this._chatTemplate;
+  set chatTemplate(String? chatTemplate) => _$this._chatTemplate = chatTemplate;
+
+  bool? _useChatTemplate;
+  bool? get useChatTemplate => _$this._useChatTemplate;
+  set useChatTemplate(bool? useChatTemplate) =>
+      _$this._useChatTemplate = useChatTemplate;
+
   MapBuilder<String, String>? _params;
   MapBuilder<String, String> get params =>
       _$this._params ??= MapBuilder<String, String>();
@@ -302,6 +351,8 @@ class ModelParamsBuilder implements Builder<ModelParams, ModelParamsBuilder> {
       _topP = $v.topP;
       _topK = $v.topK;
       _maxTokens = $v.maxTokens;
+      _chatTemplate = $v.chatTemplate;
+      _useChatTemplate = $v.useChatTemplate;
       _params = $v.params.toBuilder();
       _$v = null;
     }
@@ -367,6 +418,8 @@ class ModelParamsBuilder implements Builder<ModelParams, ModelParamsBuilder> {
               r'ModelParams',
               'maxTokens',
             ),
+            chatTemplate: chatTemplate,
+            useChatTemplate: useChatTemplate,
             params: params.build(),
           );
     } catch (_) {
