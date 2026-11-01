@@ -5,23 +5,23 @@ named here, not copied from memory. The rules live in `AGENT.md`; this file is
 a snapshot and goes stale, so check `git branch -a`, `gh pr list` and
 `gh issue list` before trusting it. Its GitHub mirror is the pinned issue #16.
 
-- Baseline: `origin/main` = `3d007c00e88ef3c52063faf9460d9a8a1fe6d091`
-  ("Merge pull request #12 from dip-develop/feature/chat-template", 2026-11-01).
-  Re-checked 2026-11-01: `origin/main` is unchanged, and this checkpoint branch
-  (`chore/project-status-2`) is one docs commit on top of `f07d5a1`.
-- Suite on `main`, re-measured 2026-11-01 in this worktree after
-  `flutter pub get`: `melos test` exit `0`, **698 tests passed** — 474 core
-  (plus 1 env-gated skip, `native_integration_test`), 136 CLI, 88 app. These are
-  `main` numbers: `feature/runtime-downloader` has an extra core suite on top
-  (~7.2k added lines) and its counts are higher.
+- Baseline: `origin/main` = `d32f5c0a63c0b65cb8125ed57a25b124068a8287`
+  ("Merge pull request #19 from dip-develop/chore/project-status-2",
+  2026-11-01).
+- Suite on `main`, measured 2026-11-01 in a clean worktree after
+  `flutter pub get` and `melos run gen`: `melos test` exit `0`, **962 tests** —
+  625 core (plus 1 env-gated skip, `native_integration_test`), 204 CLI,
+  133 app.
+- Suite on `feature/runtime-downloader` (`af3eea2`), same conditions:
+  **1064 tests** — 727 core (plus the same skip), 204 CLI, 133 app.
 
 ## Shipped
 
 - **Pub + Melos workspace.** One root `pubspec.yaml` is both the pub workspace
   root and the Melos 8 configuration (no `melos.yaml`); members are
   `packages/llama_pulse_core`, `apps/llama_pulse`, `apps/llama_pulse_cli`. One
-  root `pubspec.lock`, untracked. `melos run check` = gen, analyze, test,
-  format check, CLI build.
+  root `pubspec.lock`, untracked. `melos run check` = gen, catalog check,
+  analyze, test, format check, CLI build.
 - **Shared core.** Pure-Dart Clean Architecture: domain entities, gateways and
   use cases, `built_value` immutability, hand-written YAML codec, architecture
   test that keeps `package:flutter` out of core and `dart:ffi` inside
@@ -45,12 +45,12 @@ a snapshot and goes stale, so check `git branch -a`, `gh pr list` and
   prefill/truncation/sampler chain/cooperative cancel/metrics, chat templates
   (built-in, named, `none`, `--[no-]use-chat-template`), all inside one
   long-lived worker isolate.
-- **Parameter catalog** — complete on `feature/llamacpp-params`, in review as
-  PR #14, **not on `main` yet**. Generated from vendored `common/arg.cpp`:
-  362 parameters in 12 groups (210 configurable, 14 managed, 132 unsupported,
-  6 removed); CLI `params catalog|describe|export` and `--param`; grouped,
-  searchable GUI panels; `docs/parameters.md`; `gen:catalog` /
-  `gen:catalog:check` Melos scripts.
+- **Parameter catalog (PR #14, merged as `2fb2da2`).** Generated from the
+  vendored `common/arg.cpp`: 362 parameters in 12 groups (210 configurable,
+  14 managed, 132 unsupported, 6 removed). `docs/parameters.md` records the
+  provenance and the override policy; `gen:catalog` and `gen:catalog:check`
+  exist on `main` and `check` runs the drift check. CLI `params
+  catalog|describe|export` and `--param`; grouped, searchable GUI panels.
 - **Real-model verification.** 2026-11-01, upstream `v0.8.0` CPU build (ggml
   `0.28.0`, 64-bit Linux, 6 cores) with a 12B-A2.5B Q8_0 MoE model (12.04 GiB,
   context 512, two threads): integration test passed in ~5.5 s including a
@@ -60,48 +60,30 @@ a snapshot and goes stale, so check `git branch -a`, `gh pr list` and
   configures with `-DBUILD_SHARED_LIBS=ON -DLLAMA_BUILD_IS_DEV=OFF
   -DLLAMA_BUILD_APP=OFF -DGGML_NATIVE=ON`, builds and prints the
   `LLAMA_PULSE_LIB` / `LD_LIBRARY_PATH` exports. `BUILD.md` records the recipe.
-
-## Open PRs (2026-11-01)
-
-All three target `main` and are the operator's to merge.
-
-- **#14** `feat(params): expose the full llama.cpp parameter catalog`
-  (`feature/llamacpp-params`, `62703d2`).
-- **#17** `docs: add AGENTS.md and a project status checkpoint`
-  (`chore/project-status`, `f07d5a1`) — the branch this checkpoint updates.
-- **#18** `fix(ci): create the CLI build directory before compiling`
-  (`chore/build-cli-dir`, `9d1583b`) — `dart compile exe` does not create its
-  output directory, so `melos run build:cli` (and therefore `melos run check`)
-  fails on a fresh checkout where `apps/llama_pulse_cli/build/` does not exist.
-  One-line `mkdir -p` in the Melos script.
+- **Status checkpoints (PRs #17 and #19).** `AGENTS.md` is the auto-loaded
+  pointer; this file is the checkpoint; pinned issue #16 mirrors it.
+- **CLI build directory (PR #18, `9d1583b`).** `melos run build:cli` now runs
+  `mkdir -p` first, because `dart compile exe` does not create its output
+  directory — without it `melos run check` fails on a fresh checkout where
+  `apps/llama_pulse_cli/build/` is gitignored and absent.
 
 ## In flight
 
-- **PR #14 — `feat(params): expose the full llama.cpp parameter catalog`.**
-  OPEN, `MERGEABLE`, base `main`, head `origin/feature/llamacpp-params`
-  (`62703d2`), 10 commits. Tracking issue #13 (steps 2–10 still unticked in the
-  issue text even though the branch implements most of them). Touches ~100
-  files: catalog generation and overrides, `ParameterCatalog.v080`,
-  `server.yaml`/`params.yaml` catalog values, both argument builders, CLI
-  `params catalog|describe|export` and `--param`, GUI panels,
-  `docs/parameters.md`, an `AGENT.md` rewrite and the `gen:catalog` scripts.
-  Wait for the operator to merge before branching anything that needs the
-  catalog.
-- **`feature/runtime-downloader` — local branch only, not pushed, no PR.**
-  Tracking issue #15 (`feat(runtime): download and manage pinned llama.cpp
-  runtimes`). Three commits on top of `origin/main` (`3d007c0`), 38 files,
-  ~7.2k added lines, confined to `packages/llama_pulse_core` plus
+- **`feature/runtime-downloader` — pushed, no PR.** Tracking issue #15. Three
+  commits on `origin/main` (`d32f5c0`), head `af3eea2`, 38 files, ~7.2k added
+  lines, confined to `packages/llama_pulse_core` plus
   `third_party/llama_cpp/v0.8.0/RUNTIME_ASSETS.md`; `apps/` is untouched.
-  - `11ba022` — backend matrix and pinned assets: `RuntimeBackend`,
+  1064 tests green; `melos run check` green.
+  - `f2cfa84` — backend matrix and pinned assets: `RuntimeBackend`,
     `RuntimePlatform`, `RuntimeAsset`, `RuntimeRelease`, `RUNTIME_ASSETS.md`,
     tests (398 lines). Digests are the `b11960` nightly assets, which is the
     build the upstream `v0.8.0` tag names in `nightly-tag.txt`.
-  - `523f38e` — hardware probe and installed-runtime store: `RuntimeProbe` /
+  - `14fa010` — hardware probe and installed-runtime store: `RuntimeProbe` /
     `DartRuntimeProbe` (arch, CPU count, memory, NVIDIA/ROCm/Metal detection),
     `RuntimeStore` / `YamlRuntimeStore`, `RuntimeManifest`, `RuntimeInstallRef`,
     `RuntimeRecommendation`, enum serializers, a runtime directory in
     `app_paths`.
-  - `d57efec` — download, verify, extract: `RuntimeFetcher` /
+  - `af3eea2` — download, verify, extract: `RuntimeFetcher` /
     `HttpRuntimeFetcher` over `dart:io` `HttpClient` (redirects, no transparent
     gzip so checksums cover the wire bytes, ETag + `If-Range` resume, pause and
     cancellation), `RuntimeDownloader` (streaming SHA-256 against the pinned
@@ -115,6 +97,13 @@ All three target `main` and are the operator's to merge.
     attested `0.8.0-dev`; CLI `runtime list|install|remove`; the GUI Runtime
     tab; user docs. The issue #15 checklist is untouched, so it still shows
     step 1 as open.
+
+## Open PRs and issues (2026-11-01)
+
+- **Open PRs: none.** The catalog (#14), the initial status docs (#17), the CLI
+  build-dir fix (#18) and the status refresh (#19) are merged on `main`.
+- **Open issues:** #15 (runtime downloader — the next work) and #16 (this
+  checkpoint, pinned). #13 (parameter catalog) is already closed.
 
 ## Decisions already made — do not relitigate
 
@@ -143,7 +132,7 @@ All three target `main` and are the operator's to merge.
    are done on `feature/runtime-downloader`; left: resolver integration plus
    `ggml_backend_load_all_from_path`, then the attested-`0.8.0-dev` gate
    relaxation, then CLI `runtime` (list/install/remove), then the GUI Runtime
-   tab, then docs.
+   tab, then docs, then open the PR.
 2. **CI**: GitHub Actions — catalog/gen drift, `dart analyze`, tests on three
    platforms, a Linux desktop build, and the CLI AOT build.
 3. **Packaging and bundling**: ship the app with a managed runtime directory,
@@ -159,6 +148,9 @@ All three target `main` and are the operator's to merge.
 
 ## Open landmines
 
+- **Known flake.** `llama_server_supervisor_test` — "stop during a launch
+  before the spawn leaves no process" — failed once under parallel load and
+  passed on rerun. Watch it once CI exists; do not paper over a real race.
 - `/opt/llama.cpp-rocm` is an Unsloth fork reporting `0.7.0-dev`; the gate
   rejects it. That is the gate working, not a bug.
 - Official prebuilt archives report `0.8.0-dev`, so the exact `0.8.0` gate
@@ -176,13 +168,13 @@ All three target `main` and are the operator's to merge.
 
 ```sh
 git fetch origin
-git branch -a                  # in-flight work: feature/runtime-downloader (local only)
-gh pr list                     # open: #14 params, #17 status docs, #18 CLI build dir
-gh issue list                  # pinned checkpoint #16, #13 params, #15 runtime
+git branch -a                  # in-flight: feature/runtime-downloader, pushed at af3eea2
+gh pr list                     # open: none at this checkpoint
+gh issue list                  # pinned #16 (status), #15 (runtime), #13 (catalog, done)
 ```
 
 Then read `AGENT.md`, this file and pinned issue #16, and run
-`dart run melos run check` on a fresh branch cut from `origin/main`. The open
-parameter-catalog issue is #13, the runtime downloader issue is #15, and the
-checkpoint mirror is #16. `docs/parameters.md` exists only after PR #14 merges.
-The next concrete step is resolver integration on `feature/runtime-downloader`.
+`dart run melos run check` on a fresh branch cut from `origin/main`. The runtime
+downloader is #15 and the checkpoint mirror is #16. The next concrete step is
+resolver integration on `feature/runtime-downloader`, which is already rebased
+onto the current `origin/main` tip (`d32f5c0`).
