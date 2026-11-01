@@ -59,7 +59,10 @@ melos:
       run: cd "$MELOS_ROOT_PATH/apps/llama_pulse" && flutter build linux --release
     build:cli:
       description: Compile the CLI to a native executable.
-      run: cd "$MELOS_ROOT_PATH/apps/llama_pulse_cli" && dart compile exe bin/llamapulse.dart -o build/llamapulse
+      # `dart compile exe` does not create the output directory, and `build/`
+      # is gitignored, so it is missing on a fresh checkout. `mkdir -p` works
+      # in POSIX shells and in Git Bash on Windows.
+      run: cd "$MELOS_ROOT_PATH/apps/llama_pulse_cli" && mkdir -p build && dart compile exe bin/llamapulse.dart -o build/llamapulse
     check:
       description: Local gate - gen, analyze, test, format check, CLI build.
       run: |
