@@ -65,3 +65,21 @@ Read [`docs/status.md`](docs/status.md) and the pinned checkpoint issue
 [#16](https://github.com/dip-develop/llama-pulse/issues/16) before starting.
 They carry the branch names, PR numbers and the ordered plan; `git branch -a`,
 `gh pr list` and `gh issue list` show the live state.
+
+## Resume here
+
+A new session needs four things before it changes anything:
+
+1. Read [`docs/status.md`](docs/status.md) — shipped, in flight, next, landmines.
+2. Read pinned issue [#16](https://github.com/dip-develop/llama-pulse/issues/16)
+   — the same snapshot mirrored on GitHub.
+3. `gh pr list` — PRs #14 (params), #17 (status docs) and #18 (CLI build dir)
+   are open against `main`.
+4. `git branch -a` — the in-flight branch is `feature/runtime-downloader`
+   (local only, not pushed, 3 commits on `origin/main`: backend matrix,
+   hardware probe + runtime store, downloader/extractor; no resolver
+   integration, gate relaxation, CLI `runtime` or GUI Runtime tab yet).
+
+Rules for this repo: never merge, tag, force-push or delete branches — the
+operator does those, and no PR goes to anything but `main`. Before opening a
+PR, `dart run melos run check` must be green.

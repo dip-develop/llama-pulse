@@ -7,9 +7,13 @@ a snapshot and goes stale, so check `git branch -a`, `gh pr list` and
 
 - Baseline: `origin/main` = `3d007c00e88ef3c52063faf9460d9a8a1fe6d091`
   ("Merge pull request #12 from dip-develop/feature/chat-template", 2026-11-01).
-- Suite on that commit, from a clean worktree: `melos test` exit `0`, **698
-  tests passed** — 474 core (plus 1 env-gated skip, `native_integration_test`),
-  136 CLI, 88 app.
+  Re-checked 2026-11-01: `origin/main` is unchanged, and this checkpoint branch
+  (`chore/project-status-2`) is one docs commit on top of `f07d5a1`.
+- Suite on `main`, re-measured 2026-11-01 in this worktree after
+  `flutter pub get`: `melos test` exit `0`, **698 tests passed** — 474 core
+  (plus 1 env-gated skip, `native_integration_test`), 136 CLI, 88 app. These are
+  `main` numbers: `feature/runtime-downloader` has an extra core suite on top
+  (~7.2k added lines) and its counts are higher.
 
 ## Shipped
 
@@ -57,6 +61,20 @@ a snapshot and goes stale, so check `git branch -a`, `gh pr list` and
   -DLLAMA_BUILD_APP=OFF -DGGML_NATIVE=ON`, builds and prints the
   `LLAMA_PULSE_LIB` / `LD_LIBRARY_PATH` exports. `BUILD.md` records the recipe.
 
+## Open PRs (2026-11-01)
+
+All three target `main` and are the operator's to merge.
+
+- **#14** `feat(params): expose the full llama.cpp parameter catalog`
+  (`feature/llamacpp-params`, `62703d2`).
+- **#17** `docs: add AGENTS.md and a project status checkpoint`
+  (`chore/project-status`, `f07d5a1`) — the branch this checkpoint updates.
+- **#18** `fix(ci): create the CLI build directory before compiling`
+  (`chore/build-cli-dir`, `9d1583b`) — `dart compile exe` does not create its
+  output directory, so `melos run build:cli` (and therefore `melos run check`)
+  fails on a fresh checkout where `apps/llama_pulse_cli/build/` does not exist.
+  One-line `mkdir -p` in the Melos script.
+
 ## In flight
 
 - **PR #14 — `feat(params): expose the full llama.cpp parameter catalog`.**
@@ -71,14 +89,32 @@ a snapshot and goes stale, so check `git branch -a`, `gh pr list` and
   catalog.
 - **`feature/runtime-downloader` — local branch only, not pushed, no PR.**
   Tracking issue #15 (`feat(runtime): download and manage pinned llama.cpp
-  runtimes`). Progress: one commit, `11ba022` "feat(runtime): add the backend
-  matrix and pinned release assets" — `RuntimeBackend`, `RuntimePlatform`,
-  `RuntimeAsset`, `RuntimeRelease`, their tests (398 lines) and
-  `third_party/llama_cpp/v0.8.0/RUNTIME_ASSETS.md`; adds `crypto ^3.0.8` and
-  `archive ^4.0.0` to core. Issue step 1 is done; the issue checklist has not
-  been ticked. **In-progress step: the downloader and extractor** (HTTP fetch,
-  streaming SHA-256 verification against the pinned digest, archive unpack,
-  partial-file cleanup on mismatch, free-space check at archive size × 2.5).
+  runtimes`). Three commits on top of `origin/main` (`3d007c0`), 38 files,
+  ~7.2k added lines, confined to `packages/llama_pulse_core` plus
+  `third_party/llama_cpp/v0.8.0/RUNTIME_ASSETS.md`; `apps/` is untouched.
+  - `11ba022` — backend matrix and pinned assets: `RuntimeBackend`,
+    `RuntimePlatform`, `RuntimeAsset`, `RuntimeRelease`, `RUNTIME_ASSETS.md`,
+    tests (398 lines). Digests are the `b11960` nightly assets, which is the
+    build the upstream `v0.8.0` tag names in `nightly-tag.txt`.
+  - `523f38e` — hardware probe and installed-runtime store: `RuntimeProbe` /
+    `DartRuntimeProbe` (arch, CPU count, memory, NVIDIA/ROCm/Metal detection),
+    `RuntimeStore` / `YamlRuntimeStore`, `RuntimeManifest`, `RuntimeInstallRef`,
+    `RuntimeRecommendation`, enum serializers, a runtime directory in
+    `app_paths`.
+  - `d57efec` — download, verify, extract: `RuntimeFetcher` /
+    `HttpRuntimeFetcher` over `dart:io` `HttpClient` (redirects, no transparent
+    gzip so checksums cover the wire bytes, ETag + `If-Range` resume, pause and
+    cancellation), `RuntimeDownloader` (streaming SHA-256 against the pinned
+    digest, cleanup of partial files on mismatch, free-space check at archive
+    size × 2.5), `ArchiveExtractor` (streaming `.tar.gz` / `.zip`, strict path
+    and entry validation), `RuntimeFailure`, `RuntimeInstallResult`.
+  - Adds `crypto ^3.0.8` and `archive ^4.0.0` to core; regenerated serializers.
+  - **Still missing:** resolver integration, i.e. the native session loading
+    backends via `ggml_backend_load_all_from_path` (today it is only a
+    declaration in the vendored `ggml-backend.h`); the gate relaxation to an
+    attested `0.8.0-dev`; CLI `runtime list|install|remove`; the GUI Runtime
+    tab; user docs. The issue #15 checklist is untouched, so it still shows
+    step 1 as open.
 
 ## Decisions already made — do not relitigate
 
@@ -88,22 +124,24 @@ a snapshot and goes stale, so check `git branch -a`, `gh pr list` and
 - Configuration is YAML only; JSON is only for `--json`, NDJSON and transport.
 - The generated catalog is never hand-edited; it is regenerated from the
   vendored source and reviewed through the overrides file.
-- The native gate accepts exactly `0.8.0`. A **planned** additional acceptance
-  of an attested `0.8.0-dev` covers the official prebuilt `b11960` archives,
-  which report `0.8.0-dev`.
+- The native gate accepts exactly `0.8.0`. Acceptance of an **attested**
+  `0.8.0-dev` (official prebuilt `b11960` archives report `0.8.0-dev`) is
+  **decided but not implemented** — no gate code has changed yet.
 - Runtime v1 backend matrix: Linux x64 (cpu, cuda12, cuda13, vulkan, rocm);
-  macOS arm64 (metal, which also carries cpu); Windows x64 (cpu, cuda13,
-  vulkan). Digests are pinned in `runtime_release.dart`, never looked up at
-  install time.
+  macOS arm64 (metal, which also carries a `cpu` alias); Windows x64 (cpu,
+  cuda13, vulkan). Every asset for nightly `b11960` is pinned by SHA-256 in
+  `runtime_release.dart` and mirrored in `RUNTIME_ASSETS.md`; nothing is looked
+  up through a GitHub release API at install time.
 - The CUDA runtime archive is a second, large download (440–594 MB on Linux)
-  and is only fetched with explicit user consent.
+  and is bundled only with explicit user consent.
 - Runtime work takes `crypto` and `archive` as core dependencies; `cli_util` is
   a root `dependency_overrides` pin; `pubspec.lock` stays git-ignored.
 
 ## Remaining plan, in order
 
-1. **Finish the runtime downloader** (issue #15): downloader/extractor, then
-   resolver integration plus `ggml_backend_load_all_from_path`, then the gate
+1. **Finish the runtime downloader** (issue #15). Download, verify and extract
+   are done on `feature/runtime-downloader`; left: resolver integration plus
+   `ggml_backend_load_all_from_path`, then the attested-`0.8.0-dev` gate
    relaxation, then CLI `runtime` (list/install/remove), then the GUI Runtime
    tab, then docs.
 2. **CI**: GitHub Actions — catalog/gen drift, `dart analyze`, tests on three
@@ -138,11 +176,13 @@ a snapshot and goes stale, so check `git branch -a`, `gh pr list` and
 
 ```sh
 git fetch origin
-git branch -a                  # local work: feature/runtime-downloader
-gh pr list                     # PR #14 open
-gh issue list                  # #13 params, #15 runtime
+git branch -a                  # in-flight work: feature/runtime-downloader (local only)
+gh pr list                     # open: #14 params, #17 status docs, #18 CLI build dir
+gh issue list                  # pinned checkpoint #16, #13 params, #15 runtime
 ```
 
-Then read `AGENT.md`, `docs/parameters.md` (after PR #14 merges), this file, and
-run `dart run melos run check` on a fresh branch cut from `origin/main`. The
-open parameter-catalog issue is #13, the runtime downloader issue is #15.
+Then read `AGENT.md`, this file and pinned issue #16, and run
+`dart run melos run check` on a fresh branch cut from `origin/main`. The open
+parameter-catalog issue is #13, the runtime downloader issue is #15, and the
+checkpoint mirror is #16. `docs/parameters.md` exists only after PR #14 merges.
+The next concrete step is resolver integration on `feature/runtime-downloader`.
