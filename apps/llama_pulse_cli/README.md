@@ -294,8 +294,50 @@ $ llamapulse params set --reset
 ```
 
 Options: `--model-path`, `--context-size`, `--gpu-layers`, `--threads`,
-`--temperature`, `--top-p`, `--top-k`, `--max-tokens`, `--reset`. `--reset`
-cannot be combined with another parameter option.
+`--temperature`, `--top-p`, `--top-k`, `--max-tokens`, repeatable `--param`,
+`--reset`, `--json`. `--reset` cannot be combined with another parameter
+option.
+
+`--param` sets any embedded catalog parameter by id:
+
+```
+$ llamapulse params set --param temp=0.7 --param seed=42
+$ llamapulse params set --param min-p=0.1 --param batch-size=512
+$ llamapulse params set --param ctx-size=             # restore the default
+```
+
+`id=value` sets the value and `id=` restores the default. Values are
+canonicalized and validated against the embedded surface before anything is
+written; an unknown, managed, unsupported, removed or server-only id exits `2`
+with the catalog's message and leaves the file untouched. Repeating a
+non-repeatable id is an error. `ctx-size`, `threads`, `gpu-layers`, `temp`,
+`top-k` and `top-p` write the typed fields, so `--param temp=0.7` stores
+`temperature: 0.7`, never a `params.temp` entry. `seed`, `min-p`,
+`batch-size` and `chat-template` have no typed field and stay in the `params`
+map. When a typed flag is supplied too, the values must agree, otherwise the
+command exits `2` with `--temperature and --param temp disagree (0.5 vs 0.7)`.
+
+`params get --json` keeps the document and adds a `modified` list of the
+embedded ids whose effective value differs from the default; `seed=-1`,
+`batch-size=2048` and `top-k=40` stay hidden. `params get --show-modified`
+prints just those ids as `id: value` lines.
+
+### `params export`
+
+Print the `llama-cli`-shaped argument vector for the stored embedded
+configuration, without writing anything:
+
+```
+$ llamapulse params export
+-c 2048 -t 4 -ngl 0 --temp 0.8 --top-k 40 --top-p 0.95
+$ llamapulse params export --param seed=42 --json
+{"schemaVersion":1,"type":"paramsExport","argv":["-c","2048","-t","4","-ngl","0","--temp","0.8","--top-k","40","--top-p","0.95","--seed","42"]}
+```
+
+The vector starts with `-m`, `-c`, `-t`, `-ngl`, `--temp`, `--top-k`,
+`--top-p` and `-b`; the model path is omitted when empty and the batch size
+when absent or zero. The remaining embedded parameters follow in catalog
+order. `--param` overrides the stored values for this run only.
 
 ### `models list` and `models inspect`
 
@@ -338,22 +380,26 @@ runs: 3  generatedTokens: 36  evalMs: 818  tokensPerSecond: 44.01
 
 `run` flags: `--model`, `--lib`, `--prompt`, `--file` (`-` reads stdin),
 `--stream`, `--json`, `--threads`, `--temperature`, `--top-p`, `--top-k`,
-`--max-tokens` and `--context-size`. `--prompt` and `--file` are mutually
-exclusive; one is required. `--json` and `--stream` cannot be combined.
+`--max-tokens`, `--context-size` and repeatable `--param`. `--prompt` and
+`--file` are mutually exclusive; one is required. `--json` and `--stream`
+cannot be combined. `--param` applies the same embedded catalog rules as
+`params set` for this run only: typed owners write `ModelParams` fields, the
+rest stay in the map, and an unknown or unsupported id exits `2` before the
+engine loads.
 `--stream` writes NDJSON with `started`, `token`, `metrics`, `completed`,
 `cancelled` and `failed`. `bench` flags: `--runs` (1..50, default 3), `--json`,
-`--max-tokens` (default 32) and the shared overrides. Without `--stub`,
-`bench` requires a readable `.gguf` model: a blank path exits `2` and a missing,
-non-`.gguf` or unreadable file exits `3`. The sampler is seeded with
+`--max-tokens` (default 32), the shared overrides and `--param`. Without
+`--stub`, `bench` requires a readable `.gguf` model: a blank path exits `2` and
+a missing, non-`.gguf` or unreadable file exits `3`. The sampler is seeded with
 `LLAMA_DEFAULT_SEED` (`0xFFFFFFFF`), which llama.cpp treats as random, so
 `bench` runs differ.
 
 ## `--json`
 
-Every leaf command accepts `--json`. `server get`, `server set`, `status`,
-`stop` and `version` print one single-line JSON object; `serve` and
-`logs --follow` emit NDJSON. The `params`, `models` and `server` groups are not
-invocable and have no `--json` of their own. Configuration files on disk stay
+Every leaf command accepts `--json`. `server get`, `server set`, `params get`,
+`params export`, `status`, `stop` and `version` print one single-line JSON
+object; `serve` and `logs --follow` emit NDJSON. The `params`, `models` and
+`server` groups are not invocable and have no `--json` of their own. Configuration files on disk stay
 YAML.
 
 ## Configuration paths

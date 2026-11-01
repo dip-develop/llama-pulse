@@ -382,8 +382,9 @@ Core has no annotations and no `get_it`; it only defines gateways.
 
 The primary commands are the server group: `server get`, `server set`,
 `serve`, `status`, `stop` and `logs` (section 10.2). The earlier `version`,
-`params get`, `params set`, `models list`, `models inspect`, `run` and `bench`
-remain. `run` and `bench` are the embedded/experimental path.
+`params get`, `params set`, `params export`, `models list`, `models inspect`,
+`run` and `bench` remain. `run` and `bench` are the embedded/experimental
+path.
 
 - `run` and `bench` run the native session by default. `--stub` explicitly
   selects the deterministic `StubLlamaSession` inside the worker; it is not a
@@ -399,12 +400,23 @@ remain. `run` and `bench` are the embedded/experimental path.
   usage error (`2`) and a missing, non-`.gguf` or unreadable file exits `3`.
 - `run` flags: `--model`, `--lib`, `--prompt`, `--file` (`-` reads stdin),
   `--stream`, `--json`, `--threads`, `--temperature`, `--top-p`, `--top-k`,
-  `--max-tokens`, `--context-size`, `--chat-template` and
-  `--[no-]use-chat-template`. `--prompt` and `--file` are mutually
-  exclusive; one is required. `--json` and `--stream` cannot be combined.
+  `--max-tokens`, `--context-size`, `--chat-template`,
+  `--[no-]use-chat-template` and repeatable `--param`. `--prompt` and `--file`
+  are mutually exclusive; one is required. `--json` and `--stream` cannot be
+  combined. `--param` follows the embedded catalog rules: typed owners
+  (`ctx-size`, `threads`, `gpu-layers`, `temp`, `top-k`, `top-p`) write
+  `ModelParams` fields, `seed`, `min-p`, `batch-size` and `chat-template` stay
+  in `params`, and an unknown or unsupported id exits `2` before the engine
+  loads. Nothing is persisted.
 - `bench` flags: `--runs` (1..50, default 3), `--json`, `--max-tokens`
-  (default 32), plus the shared `--model`, `--lib` and sampling overrides. It
-  runs the fixed `benchPrompt` repeatedly and reports aggregate throughput.
+  (default 32), plus the shared `--model`, `--lib`, `--param` and sampling
+  overrides. It runs the fixed `benchPrompt` repeatedly and reports aggregate
+  throughput.
+- `params export` prints the `llama-cli`-shaped argument vector built by
+  `ModelArgumentBuilder` from the stored embedded parameters plus `--param`;
+  `--json` prints `{schemaVersion, type: "paramsExport", argv}`. `params get
+  --show-modified` prints the embedded ids whose effective value differs from
+  the default, and `params get --json` adds the same list under `modified`.
 - Schema-v1 NDJSON covers `started`, `token`, `metrics`, `completed`,
   `cancelled` and `failed`, each line carrying `schemaVersion` and `type`.
   `metrics` and `failure` are nested objects. `bench --json` emits one

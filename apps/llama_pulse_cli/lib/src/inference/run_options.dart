@@ -1,6 +1,8 @@
 import 'package:args/args.dart';
 import 'package:llama_pulse_core/llama_pulse_core.dart';
 
+import '../params/params_options.dart';
+
 /// Numeric and model-path overrides supplied on the command line.
 final class InferenceOverrides {
   /// Creates overrides; a null field leaves the stored value untouched.
@@ -63,6 +65,8 @@ final class ParsedInferenceOptions {
   const ParsedInferenceOptions({
     required this.overrides,
     required this.errors,
+    this.paramOverrides = const {},
+    this.paramErrors = const [],
     this.libraryPath,
   });
 
@@ -71,6 +75,12 @@ final class ParsedInferenceOptions {
 
   /// One message per flag whose value was not a number.
   final List<String> errors;
+
+  /// Catalog values supplied with `--param`, keyed by catalog id.
+  final Map<String, String> paramOverrides;
+
+  /// One message per `--param` argument that could not be parsed.
+  final List<String> paramErrors;
 
   /// The `--lib` path, or null to let the worker resolve the library.
   final String? libraryPath;
@@ -81,6 +91,7 @@ final class ParsedInferenceOptions {
 /// [maxTokensDefault] is set by `bench`; `run` leaves the flag unset so the
 /// stored parameter wins.
 void addInferenceOptions(ArgParser parser, {String? maxTokensDefault}) {
+  addParamOption(parser);
   parser
     ..addOption('model', help: 'Path to the .gguf model file.')
     ..addOption('lib', help: 'Absolute path to the libllama shared library.')
@@ -139,6 +150,8 @@ ParsedInferenceOptions parseInferenceOptions(ArgResults args) {
     return value;
   }
 
+  final paramArguments = parseParamArguments(args);
+
   return ParsedInferenceOptions(
     overrides: InferenceOverrides(
       modelPath: args.option('model'),
@@ -154,9 +167,23 @@ ParsedInferenceOptions parseInferenceOptions(ArgResults args) {
           : null,
     ),
     errors: errors,
+    paramOverrides: paramArguments.overrides,
+    paramErrors: paramArguments.errors,
     libraryPath: args.option('lib'),
   );
 }
+
+/// Returns the canonical values of the typed flags supplied in [overrides].
+///
+/// Only ids with a typed [ModelParams] field and a shared inference flag are
+/// included; they let `--param` detect a disagreement with the flag.
+Map<String, String> typedInferenceValues(InferenceOverrides overrides) => {
+  if (overrides.contextSize != null) 'ctx-size': '${overrides.contextSize}',
+  if (overrides.threads != null) 'threads': '${overrides.threads}',
+  if (overrides.temperature != null) 'temp': '${overrides.temperature}',
+  if (overrides.topK != null) 'top-k': '${overrides.topK}',
+  if (overrides.topP != null) 'top-p': '${overrides.topP}',
+};
 
 /// Returns the model path to use: the flag when given, else [storedPath].
 ///

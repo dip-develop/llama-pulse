@@ -394,8 +394,10 @@ $ cat prompt.txt | llamapulse run --stub --model /models/demo.gguf --file - --js
 
 Flags: `--model`, `--lib`, `--prompt`, `--file` (`-` reads stdin), `--stream`,
 `--json`, `--threads`, `--temperature`, `--top-p`, `--top-k`, `--max-tokens`,
-`--context-size`. `--prompt` and `--file` are mutually exclusive; one is
-required. `--json` and `--stream` cannot be combined.
+`--context-size`, repeatable `--param`. `--prompt` and `--file` are mutually
+exclusive; one is required. `--json` and `--stream` cannot be combined.
+`--param` applies the embedded catalog rules for this run only; an unknown or
+unsupported id exits 2 before the engine loads.
 
 `--stream` writes newline-delimited JSON (NDJSON), schema v1, one object per
 line. In the order they occur, the event types are `started`, `token`,
@@ -431,22 +433,28 @@ $ llamapulse bench --stub --runs 3 --json
 ```
 
 Flags: `--runs` (1..50, default 3), `--json`, `--max-tokens` (default 32) and
-the shared `--model`, `--threads`, `--temperature`, `--top-p`, `--top-k` and
-`--context-size` overrides. `--json` prints one object with `schemaVersion`,
-`type: "bench"`, `runs`, `modelPath`, `promptChars`, `promptTokenCount`,
-`generatedTokenCount`, `evalMs`, `tokensPerSecond` and a `perRun` array. Human
-mode prints the aggregate line on stdout; per-run progress and diagnostics go
-to stderr.
+the shared `--model`, `--threads`, `--temperature`, `--top-p`, `--top-k`,
+`--context-size` and `--param` overrides. `--json` prints one object with
+`schemaVersion`, `type: "bench"`, `runs`, `modelPath`, `promptChars`,
+`promptTokenCount`, `generatedTokenCount`, `evalMs`, `tokensPerSecond` and a
+`perRun` array. Human mode prints the aggregate line on stdout; per-run
+progress and diagnostics go to stderr.
+
+`params get --json` adds a `modified` list of the embedded ids whose effective
+value differs from the default, and `params get --show-modified` prints just
+those ids. `params export` prints the `llama-cli`-shaped argument vector for the
+stored embedded parameters; `--param` overrides it for that invocation only.
+`params export --json` prints `{schemaVersion, type: "paramsExport", argv}`.
 
 stdout carries data only — generated text, NDJSON events or the final JSON
 object. stderr carries diagnostics, the human summary and usage errors.
 
-Every leaf command — `version`, `params get`, `params set`, `models list`,
-`models inspect`, `server get`, `server set`, `serve`, `status`, `stop`,
-`logs`, `run` and `bench` — accepts `--json`; `serve` and `logs --follow` emit
-NDJSON, the rest print one single-line JSON object. The `params`, `models` and
-`server` groups are not invocable and take no `--json` of their own. The
-configuration files on disk stay YAML either way.
+Every leaf command — `version`, `params get`, `params set`, `params export`,
+`models list`, `models inspect`, `server get`, `server set`, `serve`, `status`,
+`stop`, `logs`, `run` and `bench` — accepts `--json`; `serve` and
+`logs --follow` emit NDJSON, the rest print one single-line JSON object. The
+`params`, `models` and `server` groups are not invocable and take no `--json`
+of their own. The configuration files on disk stay YAML either way.
 
 | Exit code | Meaning |
 |---|---|

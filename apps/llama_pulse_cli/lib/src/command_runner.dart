@@ -8,6 +8,7 @@ import 'commands/models_inspect_command.dart';
 import 'commands/models_list_command.dart';
 import 'commands/params_catalog_command.dart';
 import 'commands/params_describe_command.dart';
+import 'commands/params_export_command.dart';
 import 'commands/params_get_command.dart';
 import 'commands/params_set_command.dart';
 import 'commands/run_command.dart';
@@ -87,6 +88,7 @@ final class _ParamsCommand extends Command<int> {
   _ParamsCommand(CliServices services) {
     addSubcommand(ParamsGetCommand(services));
     addSubcommand(ParamsSetCommand(services));
+    addSubcommand(ParamsExportCommand(services));
     addSubcommand(ParamsCatalogCommand(services));
     addSubcommand(ParamsDescribeCommand(services));
   }

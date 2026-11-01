@@ -9,6 +9,7 @@ import '../exit_codes.dart';
 import '../inference/output_schema.dart';
 import '../inference/run_options.dart';
 import '../inference/run_session.dart';
+import '../params/params_options.dart';
 
 /// Prompt every benchmark run uses.
 const String benchPrompt = 'The quick brown fox jumps over the lazy dog.';
@@ -70,8 +71,9 @@ final class BenchCommand extends LlamaPulseCommand {
     }
 
     final parsed = parseInferenceOptions(args);
-    if (parsed.errors.isNotEmpty) {
-      for (final message in parsed.errors) {
+    final parseErrors = [...parsed.errors, ...parsed.paramErrors];
+    if (parseErrors.isNotEmpty) {
+      for (final message in parseErrors) {
         services.err.writeln('error: $message');
       }
       return ExitCodes.usage;
@@ -81,9 +83,21 @@ final class BenchCommand extends LlamaPulseCommand {
     final stub = args.flag('stub');
 
     final stored = await services.paramsRepository.load();
+    final resolved = resolveEmbeddedParams(
+      params: parsed.overrides.applyTo(stored),
+      paramOverrides: parsed.paramOverrides,
+      typedValues: typedInferenceValues(parsed.overrides),
+    );
+    if (resolved.errors.isNotEmpty) {
+      for (final message in resolved.errors) {
+        services.err.writeln('error: $message');
+      }
+      return ExitCodes.usage;
+    }
+
     final configuredPath = resolveModelPath(
       args.option('model'),
-      stored.modelPath,
+      resolved.params.modelPath,
     );
     if (!stub) {
       if (configuredPath == null) {
@@ -109,9 +123,7 @@ final class BenchCommand extends LlamaPulseCommand {
     // branch above requires a real file.
     final modelPath = configuredPath ?? _stubOnlyModelPath;
 
-    final params = parsed.overrides
-        .applyTo(stored)
-        .copyWith(modelPath: modelPath);
+    final params = resolved.params.copyWith(modelPath: modelPath);
     final violations = const ModelParamsValidator().validate(params);
     if (violations.isNotEmpty) {
       for (final violation in violations) {
