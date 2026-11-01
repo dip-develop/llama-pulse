@@ -280,8 +280,13 @@ Native session rules:
   reports, fails with `libraryVersionMismatch` and the reported version. A local
   `/opt/llama.cpp-rocm` Unsloth fork reports `0.7.0-dev` and is rejected; that
   is the gate working, not a bug. The build recipe is
-  `third_party/llama_cpp/v0.8.0/BUILD.md` (`-DBUILD_SHARED_LIBS=ON
-  -DLLAMA_BUILD_IS_DEV=OFF ...`).
+  `third_party/llama_cpp/v0.8.0/BUILD.md`; `tool/build_llama_cpp.sh [tag]`
+  (default `v0.8.0`) runs it in one command with
+  `-DBUILD_SHARED_LIBS=ON -DLLAMA_BUILD_IS_DEV=OFF -DLLAMA_BUILD_TESTS=OFF
+  -DLLAMA_BUILD_EXAMPLES=OFF -DLLAMA_BUILD_TOOLS=OFF -DLLAMA_BUILD_APP=OFF
+  -DGGML_NATIVE=ON`. `LLAMA_BUILD_APP=OFF` is required: upstream `v0.8.0`
+  otherwise fails on a missing `build-info.h` in `app/llama.cpp`, an upstream
+  packaging bug.
 - **Bindings.** Hand-written in `native/llama_bindings.dart` from the pinned
   headers. No `@Native`, no FFI codegen, and `dart:ffi` is imported only under
   `data/inference/native/`; the `llama_pulse_core.dart` barrel does not export
@@ -728,6 +733,10 @@ dart run melos run format:check
 
 # inside one package
 dart format lib test
+
+# native llama.cpp shared library (optional; needs git, cmake and ninja)
+tool/build_llama_cpp.sh          # tag defaults to v0.8.0
+tool/build_llama_cpp.sh v0.8.0
 ```
 
 `dart run melos run check` runs gen, analyze, test, the format check and the CLI
@@ -740,8 +749,10 @@ the GUI chat tab with `--dart-define=LLAMAPULSE_STUB_ENGINE=true`;
 controller with `--dart-define=LLAMAPULSE_STUB_SERVER=true`. Plain `melos run
 app` starts the real supervisor and registers the native embedded engine.
 `LLAMA_PULSE_LIB` points at the llama.cpp shared library the native session
-loads; `--lib` does the same for the CLI. Never commit `.env` files, secrets or
-absolute local paths.
+loads; `--lib` does the same for the CLI. The library directory must also be on
+`LD_LIBRARY_PATH` for the compiled CLI, because `libllama.so` otherwise resolves
+`libggml.so.0` from another install such as `/opt`; `tool/build_llama_cpp.sh`
+prints both exports. Never commit `.env` files, secrets or absolute local paths.
 
 ## 17. Definition of done for a change
 

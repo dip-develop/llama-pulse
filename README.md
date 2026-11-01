@@ -35,6 +35,7 @@ llama-pulse/
 │   ├── lib/src/domain/     entities/, gateways/, usecases/, text/
 │   └── lib/src/data/       config/, inference/, models/, server/, serialization/
 ├── third_party/llama_cpp/  vendored v0.8.0 headers, ABI check and build recipe
+├── tool/                   developer scripts, e.g. build_llama_cpp.sh
 ├── AGENT.md                contributor and agent rules
 └── LICENSE                 MIT
 ```
@@ -156,16 +157,30 @@ intended.
 
 The native path is 64-bit desktop only: the structs are passed and returned by
 value. One engine per process, because `llama_backend_init` is global. Fetch the
-matching library with:
+matching library with one command:
+
+```sh
+tool/build_llama_cpp.sh          # tag defaults to v0.8.0
+```
+
+It clones into `build/llama.cpp-v0.8.0`, applies the flags below, builds, and
+prints the `LLAMA_PULSE_LIB` and `LD_LIBRARY_PATH` exports. The same steps by
+hand:
 
 ```sh
 git clone --depth 1 --branch v0.8.0 https://github.com/ggml-org/llama.cpp
 cmake -S llama.cpp -B llama.cpp/build -G Ninja -DBUILD_SHARED_LIBS=ON \
   -DLLAMA_BUILD_IS_DEV=OFF -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=OFF \
-  -DLLAMA_BUILD_TOOLS=OFF
+  -DLLAMA_BUILD_TOOLS=OFF -DLLAMA_BUILD_APP=OFF -DGGML_NATIVE=ON
 cmake --build llama.cpp/build -j
 export LLAMA_PULSE_LIB=$PWD/llama.cpp/build/bin/libllama.so
+export LD_LIBRARY_PATH=$PWD/llama.cpp/build/bin:${LD_LIBRARY_PATH:-}
 ```
+
+`-DLLAMA_BUILD_APP=OFF` is not optional: upstream `v0.8.0` otherwise tries to
+build `app/llama.cpp` without the generated `build-info.h` and fails. Keep
+`libllama.so` and `libggml*.so` in one directory and point the loader at it, or
+an older `/opt` ggml install can be picked up instead of the matching build.
 
 Generation tokenizes the prompt, truncates it from the left to
 `n_ctx - maxTokens`, prefills it in `n_batch` chunks (logits only on the last
@@ -176,6 +191,14 @@ Each token is decoded before the next one is sampled, EOG tokens end the
 response, and `Utf8TokenAccumulator` reassembles code points split across
 tokens. Cancellation is cooperative and checked at every step and prefill
 chunk. Metrics come from `llama_perf_context` plus the loop's token counts.
+
+Verified end to end on 2026-11-01 with an upstream `v0.8.0` CPU build (ggml
+`0.28.0`, 64-bit Linux, 6 cores) and a 12B-A2.5B Q8_0 MoE thinking model (12.04
+GiB, context 512, two threads): the integration test passed in about 5.5 s
+wall time including a reload, at 12.8 GB peak RSS, and the CLI generated 16
+tokens at 19.4 tok/s on the first run and 23.9–24.3 tok/s on repeats. All of it
+is CPU inference; no GPU backend is used. The exact recipe and layout are in
+[third_party/llama_cpp/v0.8.0/BUILD.md](third_party/llama_cpp/v0.8.0/BUILD.md).
 
 The bindings in
 `packages/llama_pulse_core/lib/src/data/inference/native/llama_bindings.dart`
@@ -589,6 +612,21 @@ The embedded worker isolate backs both the experimental Chat tab and the CLI
 
 See [AGENT.md](AGENT.md) for the full rules.
 
+## Known limitations
+
+- **Raw prompts only.** The engine sends the prompt text unchanged: there is no
+  chat template and no instruction formatting yet, so a bare `Hello` on a
+  code-focused model may continue code instead of answering. This is the
+  current behaviour, not a bug.
+- **Exact version gate.** The library must report exactly `0.8.0`; a `0.8.0-dev`
+  build and any other release, including a newer one, are rejected at load with
+  `libraryVersionMismatch`.
+- **64-bit desktop only.** The native structs are passed and returned by value,
+  so the bindings do not work on 32-bit targets.
+- **One engine per process.** `llama_backend_init` is global and `dart:ffi` has
+  no `dlclose`, so a session cannot unload a library and load another one in the
+  same process.
+
 ## Roadmap
 
 - [x] Shared core with entities, validation, scanning and YAML configuration
@@ -601,6 +639,7 @@ See [AGENT.md](AGENT.md) for the full rules.
 - [x] Server dashboard with endpoint actions, metrics and log tail
 - [x] Server CLI: `server get|set`, `serve`, `status`, `stop`, `logs`
 - [x] Native embedded session (pinned upstream tag, `llama_version()` gate)
+- [ ] Chat templates and prompt formatting for the embedded engine
 - [ ] llama.cpp binary downloader and updater
 - [ ] Windows and macOS builds
 - [ ] CI for analyze, tests and builds
