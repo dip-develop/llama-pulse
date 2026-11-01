@@ -16,6 +16,9 @@ Serializers _$serializers =
           ..add(InferenceFailureCode.serializer)
           ..add(ModelFileInfo.serializer)
           ..add(ModelParams.serializer)
+          ..add(RuntimeIndex.serializer)
+          ..add(RuntimeInstallRef.serializer)
+          ..add(RuntimeManifest.serializer)
           ..add(ServerBinaryInfo.serializer)
           ..add(ServerConfig.serializer)
           ..add(ServerFailure.serializer)
@@ -31,6 +34,16 @@ Serializers _$serializers =
           ..add(WorkerRequestKind.serializer)
           ..add(WorkerResponse.serializer)
           ..add(WorkerResponseKind.serializer)
+          ..addBuilderFactory(
+            const FullType(BuiltList, const [
+              const FullType(RuntimeInstallRef),
+            ]),
+            () => ListBuilder<RuntimeInstallRef>(),
+          )
+          ..addBuilderFactory(
+            const FullType(BuiltList, const [const FullType(String)]),
+            () => ListBuilder<String>(),
+          )
           ..addBuilderFactory(
             const FullType(BuiltList, const [const FullType(String)]),
             () => ListBuilder<String>(),
