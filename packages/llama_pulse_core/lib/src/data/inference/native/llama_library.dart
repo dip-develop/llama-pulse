@@ -6,6 +6,7 @@ import 'package:path/path.dart' as p;
 
 import '../../../domain/entities/inference_failure.dart';
 import '../../../domain/entities/inference_failure_code.dart';
+import '../../runtime/runtime_attestation.dart';
 import '../llama_version_pin.dart';
 import 'ggml_backend_bindings.dart';
 import 'llama_bindings.dart';
@@ -139,15 +140,22 @@ final class LlamaLibrary {
     final version = versionPointer.toDartString();
 
     if (!LlamaVersionPin.matches(version)) {
-      final mismatch = LlamaVersionPin.mismatch(version);
-      return LlamaLibrary._(
-        bindings: bindings,
-        path: path,
-        version: version,
-        failure: mismatch.rebuild(
-          (b) => b..details = 'llama_version() reported "$version"',
-        ),
-      );
+      final attestation = LlamaVersionPin.isDev(version)
+          ? RuntimeAttestation.read(path)
+          : null;
+      if (attestation == null || !attestation.isAttested) {
+        final details = StringBuffer('llama_version() reported "$version"');
+        if (attestation != null) {
+          details.write('; ${attestation.reason}');
+        }
+        return LlamaLibrary._(
+          bindings: bindings,
+          path: path,
+          version: version,
+          failure: LlamaVersionPin.mismatch(version)
+              .rebuild((b) => b..details = details.toString()),
+        );
+      }
     }
 
     if (!_backendInitialised) {

@@ -28,6 +28,7 @@ export 'src/data/models/model_file_scanner.dart';
 export 'src/data/runtime/archive_extractor.dart';
 export 'src/data/runtime/dart_runtime_probe.dart';
 export 'src/data/runtime/http_runtime_fetcher.dart';
+export 'src/data/runtime/runtime_attestation.dart';
 export 'src/data/runtime/runtime_downloader.dart';
 export 'src/data/runtime/runtime_environment.dart';
 export 'src/data/runtime/runtime_index_file.dart';
