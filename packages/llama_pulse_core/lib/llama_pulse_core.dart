@@ -4,6 +4,9 @@ library;
 
 export 'package:built_value/serializer.dart' show Serializers;
 
+export 'src/data/catalog/catalog_digest.dart';
+export 'src/data/catalog/parameter_catalog.dart';
+export 'src/data/catalog/upstream_arg_parser.dart';
 export 'src/data/config/app_paths.dart';
 export 'src/data/config/config_names.dart';
 export 'src/data/config/in_memory_config_store.dart';
@@ -45,6 +48,7 @@ export 'src/domain/entities/inference_failure.dart';
 export 'src/domain/entities/inference_failure_code.dart';
 export 'src/domain/entities/model_file_info.dart';
 export 'src/domain/entities/model_params.dart';
+export 'src/domain/entities/parameter_spec.dart';
 export 'src/domain/entities/server_binary_info.dart';
 export 'src/domain/entities/server_config.dart';
 export 'src/domain/entities/server_failure.dart';

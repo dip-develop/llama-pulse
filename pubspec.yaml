@@ -36,6 +36,12 @@ melos:
         set -e
         cd "$MELOS_ROOT_PATH/packages/llama_pulse_core" && dart run build_runner build
         cd "$MELOS_ROOT_PATH/apps/llama_pulse" && dart run build_runner build
+    gen:catalog:
+      description: Regenerate the llama.cpp parameter catalog from the vendored source.
+      run: cd "$MELOS_ROOT_PATH/packages/llama_pulse_core" && dart run tool/args/generate_catalog.dart
+    gen:catalog:check:
+      description: Fail if the generated parameter catalog is out of date.
+      run: cd "$MELOS_ROOT_PATH/packages/llama_pulse_core" && dart run tool/args/generate_catalog.dart --check
     format:check:
       description: Fail if any Dart file is not formatted.
       run: dart format --output=none --set-exit-if-changed packages apps
@@ -59,6 +65,7 @@ melos:
       run: |
         set -e
         dart run melos run gen
+        dart run melos run gen:catalog:check
         dart run melos analyze
         dart run melos test
         dart run melos run format:check
