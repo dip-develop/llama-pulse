@@ -40,9 +40,6 @@ dart run melos run build:cli             # native `llamapulse` executable
 tool/build_llama_cpp.sh [tag]            # build the pinned shared library (v0.8.0)
 ```
 
-The `gen:catalog*` scripts arrive with the parameter catalog (PR #14); on an
-older checkout they do not exist yet.
-
 ## Where things live
 
 - `packages/llama_pulse_core` — pure-Dart domain, data, YAML, native FFI layer.
@@ -52,33 +49,27 @@ older checkout they do not exist yet.
 - `apps/llama_pulse_cli` — pure-Dart `llamapulse`: `serve`, `status`, `stop`,
   `logs`, `server`, `params`, `models`, `run`, `bench`.
 - `docs/parameters.md` — the generated parameter catalog, its provenance and
-  the regeneration/override policy.
-- `docs/status.md` — current checkpoint: what shipped, what is in flight, what
-  comes next, and the open landmines.
-- `third_party/llama_cpp/v0.8.0/` — `PIN.md` (exact pin and checksums),
-  `BUILD.md` (build recipe and real-model verification), `RUNTIME_ASSETS.md`
-  (pinned prebuilt archives, on the runtime-downloader branch).
-
-## Current status
-
-Read [`docs/status.md`](docs/status.md) and the pinned checkpoint issue
-[#16](https://github.com/dip-develop/llama-pulse/issues/16) before starting.
-They carry the branch names, PR numbers and the ordered plan; `git branch -a`,
-`gh pr list` and `gh issue list` show the live state.
+  the regeneration/override policy. `docs/status.md` — the current checkpoint.
+- `third_party/llama_cpp/v0.8.0/` — `PIN.md` (exact pin and checksums) and
+  `BUILD.md` (build recipe and real-model verification). `RUNTIME_ASSETS.md`
+  (the pinned prebuilt archives) exists only on the pushed
+  `feature/runtime-downloader` branch, not on `main`.
 
 ## Resume here
 
 A new session needs four things before it changes anything:
 
-1. Read [`docs/status.md`](docs/status.md) — shipped, in flight, next, landmines.
-2. Read pinned issue [#16](https://github.com/dip-develop/llama-pulse/issues/16)
-   — the same snapshot mirrored on GitHub.
-3. `gh pr list` — PRs #14 (params), #17 (status docs) and #18 (CLI build dir)
-   are open against `main`.
-4. `git branch -a` — the in-flight branch is `feature/runtime-downloader`
-   (local only, not pushed, 3 commits on `origin/main`: backend matrix,
-   hardware probe + runtime store, downloader/extractor; no resolver
-   integration, gate relaxation, CLI `runtime` or GUI Runtime tab yet).
+1. Read [`docs/status.md`](docs/status.md) and pinned issue
+   [#16](https://github.com/dip-develop/llama-pulse/issues/16): shipped, in
+   flight, next and landmines — the issue mirrors this file.
+2. `gh pr list` — no PR is open at this checkpoint.
+3. `git branch -a` — `feature/runtime-downloader` is **pushed** at `af3eea2`
+   (3 commits on `origin/main`: backend matrix + pinned `b11960` assets,
+   hardware probe + runtime store, downloader/extractor; 1064 tests green),
+   with **no PR** yet.
+4. Next is issue [#15](https://github.com/dip-develop/llama-pulse/issues/15):
+   resolver integration with `ggml_backend_load_all_from_path`, the attested
+   `0.8.0-dev` gate, CLI `runtime`, the GUI Runtime tab, docs, then a PR.
 
 Rules for this repo: never merge, tag, force-push or delete branches — the
 operator does those, and no PR goes to anything but `main`. Before opening a
