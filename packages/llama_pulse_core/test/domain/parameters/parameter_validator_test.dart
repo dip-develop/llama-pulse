@@ -70,6 +70,21 @@ void main() {
     );
   });
 
+  test('rejects invalid embedded runtime parameters before the session', () {
+    expect(validate({'min-p': '1.5'}, surface: ParamSurface.embedded), [
+      '--min-p must be in 0..1',
+    ]);
+    expect(validate({'seed': 'many'}, surface: ParamSurface.embedded), [
+      '--seed must be an integer',
+    ]);
+    expect(validate({'seed': '-2'}, surface: ParamSurface.embedded), [
+      '--seed must be at least -1',
+    ]);
+    expect(validate({'batch-size': '0'}, surface: ParamSurface.embedded), [
+      '--batch-size must be at least 1',
+    ]);
+  });
+
   test('checks path existence only for a start', () {
     expect(validate({'grammar-file': '/missing.gbnf'}), isEmpty);
 

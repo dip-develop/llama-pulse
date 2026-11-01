@@ -38,12 +38,12 @@ SHA-256 `fc09d12a…f2ed`). It holds **362 parameters in 12 groups**:
 
 The four sets are disjoint and cover every entry. Of the 362, **10 are
 catalogued for the embedded native session**; the rest of the configurable and
-managed entries are server-only. Seven of the 10 are wired into
-`NativeLlamaSession` today: the six typed fields
-(`ctx-size`, `threads`, `gpu-layers`, `temp`, `top-k`, `top-p`) and the
-`chat-template`. `seed`, `min-p` and `batch-size` are validated, stored and
-exported by `params export`, but the session still uses its fixed seed
-(`LLAMA_DEFAULT_SEED`), min-p `0.05` and a batch size derived from the context.
+managed entries are server-only. All 10 are honoured by `NativeLlamaSession`:
+the six typed fields (`ctx-size`, `threads`, `gpu-layers`, `temp`, `top-k`,
+`top-p`), `chat-template`, and `seed`, `min-p` and `batch-size`, which the
+session reads from the catalog map through `EmbeddedRuntimeConfig`. `min-p`
+feeds the sampler chain, `seed` feeds `llama_sampler_init_dist`, and
+`batch-size` becomes `n_batch` and `n_ubatch`, capped at the context size.
 
 Groups, in display order:
 
@@ -84,10 +84,11 @@ Only these 10 ids apply to the embedded surface:
 
 `ctx-size`, `threads`, `gpu-layers`, `temp`, `top-k`, `top-p` and
 `chat-template` have a typed `ModelParams` field. `seed`, `min-p` and
-`batch-size` live in the catalog map. The catalog marks the six typed ids that
-also back a server setting (`ctx-size`, `threads`, `gpu-layers`, `temp`,
-`top-k`, `top-p`) as `managed`, because the typed field is the only storage
-location; `--param` writes that field instead of a duplicate map entry.
+`batch-size` live in the catalog map and are read by the native session
+through `EmbeddedRuntimeConfig`. The catalog marks the six typed ids that also
+back a server setting (`ctx-size`, `threads`, `gpu-layers`, `temp`, `top-k`,
+`top-p`) as `managed`, because the typed field is the only storage location;
+`--param` writes that field instead of a duplicate map entry.
 `chat-template` is configurable with no catalog owner, but the embedded CLI and
 GUI still write `ModelParams.chatTemplate` rather than a map entry.
 

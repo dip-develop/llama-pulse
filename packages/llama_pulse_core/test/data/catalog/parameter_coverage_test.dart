@@ -3,10 +3,13 @@ import 'package:test/test.dart';
 
 import '../../support/catalog_files.dart';
 
-/// Parameters the embedded native session can honour today.
+/// Parameters the embedded native session honours.
 ///
-/// `chat-template` is wired through `ModelParams.chatTemplate` into the native
-/// session, so the catalog may claim the embedded surface for it.
+/// The six typed sampling and runtime fields and `chat-template` are read from
+/// typed [ModelParams] fields. `seed`, `min-p` and `batch-size` have no typed
+/// field; `EmbeddedRuntimeConfig` reads them from the catalog map for the
+/// sampler and the context. Every id the catalog marks embedded must appear
+/// here, so marking a new parameter embedded without session support fails.
 const _embeddedHonoured = {
   'batch-size',
   'chat-template',

@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:built_collection/built_collection.dart';
 import 'package:llama_pulse_core/llama_pulse_core.dart';
 import 'package:llama_pulse_core/src/data/inference/native/native_llama_session.dart';
 import 'package:path/path.dart' as p;
@@ -48,11 +49,13 @@ void main() {
     int gpuLayers = 7,
     int threads = 3,
     String? path,
+    Map<String, String> catalogParams = const {},
   }) => ModelParams.defaults().copyWith(
     modelPath: path ?? modelPath,
     contextSize: contextSize,
     gpuLayers: gpuLayers,
     threads: threads,
+    params: BuiltMap<String, String>(catalogParams),
   );
 
   Future<NativeLlamaSession> openSession() async {
@@ -102,6 +105,53 @@ void main() {
     expect(fake.ubatchSize, 128);
     expect(fake.gpuLayers, 0);
     expect(fake.threads, 2);
+  });
+
+  test('load uses an explicit batch-size for n_batch and n_ubatch', () async {
+    if (skipReason != null) {
+      markTestSkipped(skipReason!);
+      return;
+    }
+
+    final session = await openSession();
+
+    await session.load(params(catalogParams: {'batch-size': '256'}));
+
+    expect(fake.ctxSize, 4096);
+    expect(fake.batchSize, 256);
+    expect(fake.ubatchSize, 256);
+    expect(session.batchSize, 256);
+  });
+
+  test('load keeps an explicit batch-size above the default cap', () async {
+    if (skipReason != null) {
+      markTestSkipped(skipReason!);
+      return;
+    }
+
+    final session = await openSession();
+
+    await session.load(params(catalogParams: {'batch-size': '768'}));
+
+    expect(fake.batchSize, 768);
+    expect(fake.ubatchSize, 768);
+  });
+
+  test('load clamps a batch-size above the context to the context', () async {
+    if (skipReason != null) {
+      markTestSkipped(skipReason!);
+      return;
+    }
+
+    final session = await openSession();
+
+    await session.load(
+      params(contextSize: 512, catalogParams: {'batch-size': '8192'}),
+    );
+
+    expect(fake.ctxSize, 512);
+    expect(fake.batchSize, 512);
+    expect(fake.ubatchSize, 512);
   });
 
   test('a rejected model load is a nativeError with the path', () async {

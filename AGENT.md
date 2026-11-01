@@ -225,7 +225,8 @@ the YAML round-trip test, the CLI flags and the dashboard form.
 `ParameterCatalog.v080` in `lib/src/domain/parameters/` is the single source of
 truth for the 362 `llama-server` `v0.8.0` parameters (12 groups: 210
 configurable, 14 managed, 132 unsupported, 6 removed; 10 are catalogued for
-the embedded surface, of which seven are wired into the native session today). `ParameterSpec`, `ParameterValidator`, `ParameterValueCodec` and
+the embedded surface, and the native session honours all of them).
+`ParameterSpec`, `ParameterValidator`, `ParameterValueCodec` and
 `ParameterValues` live beside it; `ParameterCatalog` stays in `domain` and
 imports no `dart:io`.
 
@@ -342,9 +343,11 @@ Native session rules:
   the app shows the banner. Never fall back to the stub.
 - **Generation.** Tokenize the prompt, truncate on the left to
   `n_ctx - maxTokens`, prefill in `n_batch` chunks (logits only on the last
-  prompt token), then sample top-k → top-p → min-p (0.05) → temperature →
-  distribution seeded with `LLAMA_DEFAULT_SEED` (`0xFFFFFFFF`), which llama.cpp
-  treats as random, so `bench` runs differ. Decode each token before sampling
+  prompt token), then sample top-k → top-p → min-p → temperature →
+  distribution. `min-p` and `seed` come from the embedded catalog map (defaults
+  `0.05` and `LLAMA_DEFAULT_SEED`, `0xFFFFFFFF`, which llama.cpp treats as
+  random, so `bench` runs differ); `batch-size` sets `n_batch` and `n_ubatch`,
+  capped at the context size. Decode each token before sampling
   the next, stop on EOG, and check cancellation at every step and prefill
   chunk.
   Metrics come from `llama_perf_context` plus the loop's token counts.

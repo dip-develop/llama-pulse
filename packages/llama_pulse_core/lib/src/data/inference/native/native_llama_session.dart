@@ -15,6 +15,7 @@ import '../../../domain/entities/model_params.dart';
 import '../../../domain/exceptions/inference_failure_exception.dart';
 import '../../../domain/gateways/llama_session.dart';
 import '../../../domain/text/utf8_token_accumulator.dart';
+import '../embedded_runtime_config.dart';
 import '../library_locator.dart';
 import 'llama_bindings.dart';
 import 'llama_library.dart';
@@ -37,14 +38,8 @@ final class NativeLlamaSession implements LlamaSession {
     // ignore: prefer_initializing_formals
     : _libraryPath = libraryPath;
 
-  /// The largest batch llama.cpp is given for this app's models.
-  static const int _maxBatchSize = 512;
-
   /// Initial buffer for `llama_token_to_piece`; most pieces fit in it.
   static const int _pieceBufferSize = 64;
-
-  /// `LLAMA_DEFAULT_SEED` from `llama.h`.
-  static const int _defaultSeed = 0xFFFFFFFF;
 
   /// `INT32_MIN`, returned by `llama_tokenize` when the result overflows.
   static const int _int32Min = -0x80000000;
@@ -165,7 +160,7 @@ final class NativeLlamaSession implements LlamaSession {
       );
     }
 
-    final batchSize = math.min(_maxBatchSize, params.contextSize);
+    final batchSize = EmbeddedRuntimeConfig.resolve(params).batchSize;
     final contextParams = bindings.llamaContextDefaultParams()
       ..nCtx = params.contextSize
       ..nBatch = batchSize
@@ -607,8 +602,12 @@ final class NativeLlamaSession implements LlamaSession {
   }
 
   /// Builds the top-k/top-p/min-p/temperature/dist chain for [params].
+  ///
+  /// `min-p` and `seed` come from the catalog map through
+  /// [EmbeddedRuntimeConfig]; the typed fields supply the rest.
   void _buildSampler(LlamaBindings bindings, ModelParams params) {
     _freeSampler();
+    final runtime = EmbeddedRuntimeConfig.resolve(params);
     final chainParams = calloc<LlamaSamplerChainParams>();
     try {
       chainParams.ref.noPerf = false;
@@ -632,7 +631,7 @@ final class NativeLlamaSession implements LlamaSession {
       );
       bindings.llamaSamplerChainAdd(
         chain,
-        bindings.llamaSamplerInitMinP(0.05, 1),
+        bindings.llamaSamplerInitMinP(runtime.minP, 1),
       );
       bindings.llamaSamplerChainAdd(
         chain,
@@ -640,7 +639,7 @@ final class NativeLlamaSession implements LlamaSession {
       );
       bindings.llamaSamplerChainAdd(
         chain,
-        bindings.llamaSamplerInitDist(_defaultSeed),
+        bindings.llamaSamplerInitDist(runtime.seed),
       );
       _sampler = chain;
     } finally {

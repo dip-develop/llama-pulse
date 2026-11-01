@@ -187,9 +187,11 @@ an older `/opt` ggml install can be picked up instead of the matching build.
 
 Generation tokenizes the prompt, truncates it from the left to
 `n_ctx - maxTokens`, prefills it in `n_batch` chunks (logits only on the last
-prompt token), and samples through a top-k → top-p → min-p (0.05) →
-temperature → distribution chain seeded with `LLAMA_DEFAULT_SEED`
-(`0xFFFFFFFF`), which llama.cpp treats as random, so `bench` runs differ.
+prompt token), and samples through a top-k → top-p → min-p → temperature →
+distribution chain. The `min-p` and `seed` parameters feed the chain (defaults
+`0.05` and `LLAMA_DEFAULT_SEED`, `0xFFFFFFFF`, which llama.cpp treats as
+random, so `bench` runs differ), and `batch-size` sets `n_batch` and `n_ubatch`,
+capped at the context size.
 Each token is decoded before the next one is sampled, EOG tokens end the
 response, and `Utf8TokenAccumulator` reassembles code points split across
 tokens. Cancellation is cooperative and checked at every step and prefill
@@ -221,9 +223,7 @@ LlamaPulse exposes every command-line parameter of the pinned `llama.cpp`
 in 12 groups: 210 configurable, 14 managed by LlamaPulse, 132 unsupported and
 6 removed. The embedded native session has 10 catalog ids
 (`ctx-size`, `threads`, `gpu-layers`, `temp`, `top-k`, `top-p`, `min-p`, `seed`,
-`batch-size` and `chat-template`); seven of them are wired into the native
-session today, while `seed`, `min-p` and `batch-size` are accepted, stored and
-exported but still use the session's fixed seed, min-p and derived batch size.
+`batch-size` and `chat-template`), and it honours all 10.
 
 The catalog is generated from the vendored `common/arg.cpp` and a reviewed
 overrides file, not typed by hand. It is the one source of truth for
@@ -715,10 +715,9 @@ See [AGENT.md](AGENT.md) for the full rules.
 ## Known limitations
 
 - **The embedded surface is a subset.** The catalog marks 10 of the 362
-  parameters as embedded; seven are wired into the native session today
-  (`seed`, `min-p` and `batch-size` are accepted and exported but not yet read
-  by the sampler). Every other server flag is locked in the Chat panel and
-  rejected by `run`/`bench --param` with exit `2`; it is not silently ignored.
+  parameters as embedded, and the native session honours all of them. Every
+  other server flag is locked in the Chat panel and rejected by
+  `run`/`bench --param` with exit `2`; it is not silently ignored.
 - **Exact version gate.** The library must report exactly `0.8.0`; a `0.8.0-dev`
   build and any other release, including a newer one, are rejected at load with
   `libraryVersionMismatch`.

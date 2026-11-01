@@ -14,6 +14,7 @@ export 'src/data/config/yaml_file_config_store.dart';
 export 'src/data/config/yaml_model_params_repository.dart';
 export 'src/data/config/yaml_server_config_repository.dart';
 export 'src/data/config/yaml_server_state_repository.dart';
+export 'src/data/inference/embedded_runtime_config.dart';
 export 'src/data/inference/library_locator.dart';
 export 'src/data/inference/llama_version_pin.dart';
 export 'src/data/inference/model_argument_builder.dart';

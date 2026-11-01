@@ -282,6 +282,27 @@ final class FakeLlama {
     'fake_llama_sampler_free_count',
   );
 
+  late final double Function() _samplerMinP = _doubleGetter(
+    'fake_llama_sampler_min_p',
+  );
+
+  late final double Function() _samplerTopP = _doubleGetter(
+    'fake_llama_sampler_top_p',
+  );
+
+  late final double Function() _samplerTemp = _doubleGetter(
+    'fake_llama_sampler_temp',
+  );
+
+  late final int Function() _samplerTopK = _intGetter(
+    'fake_llama_sampler_top_k',
+  );
+
+  late final int Function() _samplerSeed = _library
+      .lookupFunction<ffi.Uint32 Function(), int Function()>(
+        'fake_llama_sampler_seed',
+      );
+
   late final int Function() _sampleCalls = _intGetter(
     'fake_llama_sample_calls',
   );
@@ -472,12 +493,30 @@ final class FakeLlama {
 
   int get samplerFreeCount => _samplerFreeCount();
 
+  /// The `p` passed to `llama_sampler_init_min_p`, or -1 before a chain exists.
+  double get samplerMinP => _samplerMinP();
+
+  /// The `p` passed to `llama_sampler_init_top_p`, or -1 before a chain.
+  double get samplerTopP => _samplerTopP();
+
+  /// The `t` passed to `llama_sampler_init_temp`, or -1 before a chain.
+  double get samplerTemp => _samplerTemp();
+
+  /// The `k` passed to `llama_sampler_init_top_k`, or -1 before a chain.
+  int get samplerTopK => _samplerTopK();
+
+  /// The `seed` passed to `llama_sampler_init_dist`, or 0 before a chain.
+  int get samplerSeed => _samplerSeed();
+
   int get sampleCalls => _sampleCalls();
 
   int get perfResetCount => _perfResetCount();
 
   int Function() _intGetter(String symbol) =>
       _library.lookupFunction<ffi.Int32 Function(), int Function()>(symbol);
+
+  double Function() _doubleGetter(String symbol) =>
+      _library.lookupFunction<ffi.Double Function(), double Function()>(symbol);
 }
 
 Directory _findRepoRoot() {
