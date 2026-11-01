@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:llama_pulse_core/llama_pulse_core.dart';
 
 import '../../app/platform/clipboard_service.dart';
+import '../../app/platform/file_picker.dart';
 import '../../app/platform/model_path_picker.dart';
 import '../../app/platform/server_binary_picker.dart';
 import 'bloc/server_bloc.dart';
@@ -11,6 +12,7 @@ import 'widgets/server_config_form.dart';
 import 'widgets/server_endpoint_card.dart';
 import 'widgets/server_log_panel.dart';
 import 'widgets/server_metrics_panel.dart';
+import 'widgets/server_parameters_card.dart';
 import 'widgets/server_status_card.dart';
 
 /// Primary screen: configure, start and watch the supervised `llama-server`.
@@ -22,6 +24,7 @@ class ServerDashboardScreen extends StatelessWidget {
     super.key,
     required this.picker,
     required this.binaryPicker,
+    required this.filePicker,
     required this.clipboard,
     this.demoServer = false,
   });
@@ -31,6 +34,9 @@ class ServerDashboardScreen extends StatelessWidget {
 
   /// File dialog used by the binary path browse button.
   final ServerBinaryPicker binaryPicker;
+
+  /// File dialog used by the parameter panel's Browse buttons.
+  final FilePicker filePicker;
 
   /// Clipboard seam used by the endpoint copy button.
   final ClipboardService clipboard;
@@ -69,8 +75,17 @@ class ServerDashboardScreen extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           SizedBox(
-            width: 380,
-            child: SingleChildScrollView(child: _configForm()),
+            width: 400,
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _configForm(),
+                  const SizedBox(height: 16),
+                  ServerParametersCard(filePicker: filePicker),
+                ],
+              ),
+            ),
           ),
           const SizedBox(width: 16),
           Expanded(
@@ -91,7 +106,13 @@ class ServerDashboardScreen extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [_configForm(), const SizedBox(height: 16), ..._panels()],
+        children: [
+          _configForm(),
+          const SizedBox(height: 16),
+          ServerParametersCard(filePicker: filePicker),
+          const SizedBox(height: 16),
+          ..._panels(),
+        ],
       ),
     );
   }

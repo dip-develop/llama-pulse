@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../app/di/injection.dart';
 import '../../app/platform/clipboard_service.dart';
+import '../../app/platform/file_picker.dart';
 import '../../app/platform/model_path_picker.dart';
 import '../../app/platform/server_binary_picker.dart';
 import '../inference/bloc/inference_bloc.dart';
@@ -22,6 +23,7 @@ class HomeShell extends StatefulWidget {
     super.key,
     required this.picker,
     required this.binaryPicker,
+    required this.filePicker,
     required this.clipboard,
     this.demoServer = false,
     this.demoEngine = false,
@@ -32,6 +34,9 @@ class HomeShell extends StatefulWidget {
 
   /// File dialog used by the server binary field.
   final ServerBinaryPicker binaryPicker;
+
+  /// File dialog used by the server parameter panel.
+  final FilePicker filePicker;
 
   /// Clipboard seam used by the endpoint copy button.
   final ClipboardService clipboard;
@@ -97,6 +102,7 @@ class _HomeShellState extends State<HomeShell> {
         ServerDashboardScreen(
           picker: widget.picker,
           binaryPicker: widget.binaryPicker,
+          filePicker: widget.filePicker,
           clipboard: widget.clipboard,
           demoServer: widget.demoServer,
         ),

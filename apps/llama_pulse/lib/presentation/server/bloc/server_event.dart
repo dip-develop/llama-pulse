@@ -22,6 +22,31 @@ final class ServerConfigChanged extends ServerEvent {
   final ServerConfig config;
 }
 
+/// The user edited one catalog parameter in the parameters panel.
+///
+/// [value] is the canonical string form produced by
+/// `ParameterValueCodec`; `null` removes the parameter, which makes llama.cpp
+/// fall back to its own default.
+final class ServerParamChanged extends ServerEvent {
+  const ServerParamChanged(this.id, this.value);
+
+  /// Catalog id of the parameter.
+  final String id;
+
+  /// Canonical value, or `null` to remove the parameter.
+  final String? value;
+}
+
+/// The user reset several catalog parameters at once.
+///
+/// Every id in [ids] is removed, whatever it currently holds.
+final class ServerParamsReset extends ServerEvent {
+  const ServerParamsReset(this.ids);
+
+  /// Catalog ids to remove.
+  final Set<String> ids;
+}
+
 /// Persists the current configuration.
 final class ServerSaveRequested extends ServerEvent {
   const ServerSaveRequested();

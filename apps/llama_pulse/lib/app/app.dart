@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../presentation/home/home_shell.dart';
 import 'platform/clipboard_service.dart';
+import 'platform/file_picker.dart';
 import 'platform/model_path_picker.dart';
 import 'platform/server_binary_picker.dart';
 import 'theme/app_theme.dart';
@@ -15,6 +16,7 @@ class LlamaPulseApp extends StatelessWidget {
     super.key,
     this.picker = const FileSelectorModelPathPicker(),
     this.binaryPicker = const FileSelectorServerBinaryPicker(),
+    this.filePicker = const SystemFilePicker(),
     this.clipboard = const SystemClipboardService(),
     this.demoServer = false,
     this.demoEngine = false,
@@ -25,6 +27,9 @@ class LlamaPulseApp extends StatelessWidget {
 
   /// File dialog used by the server binary field.
   final ServerBinaryPicker binaryPicker;
+
+  /// File dialog used by the parameter panel's Browse buttons.
+  final FilePicker filePicker;
 
   /// Clipboard seam used by the endpoint copy button.
   final ClipboardService clipboard;
@@ -46,6 +51,7 @@ class LlamaPulseApp extends StatelessWidget {
       home: HomeShell(
         picker: picker,
         binaryPicker: binaryPicker,
+        filePicker: filePicker,
         clipboard: clipboard,
         demoServer: demoServer,
         demoEngine: demoEngine,
