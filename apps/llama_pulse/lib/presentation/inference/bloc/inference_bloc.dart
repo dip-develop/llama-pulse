@@ -23,6 +23,8 @@ class InferenceBloc extends Bloc<InferenceEvent, InferenceState> {
   ) : super(InferenceState.initial()) {
     on<InferenceStarted>(_onStarted);
     on<InferenceParamsChanged>(_onParamsChanged);
+    on<InferenceParamChanged>(_onParamChanged);
+    on<InferenceParamsReset>(_onParamsReset);
     on<InferencePromptChanged>(_onPromptChanged);
     on<InferenceSaveRequested>(_onSaveRequested);
     on<InferenceLoadRequested>(_onLoadRequested);
@@ -71,6 +73,119 @@ class InferenceBloc extends Bloc<InferenceEvent, InferenceState> {
   ) {
     _userEdited = true;
     _emit(emit, state.rebuild((b) => b..params.replace(event.params)));
+  }
+
+  void _onParamChanged(
+    InferenceParamChanged event,
+    Emitter<InferenceState> emit,
+  ) {
+    _userEdited = true;
+    final ModelParams next = _writeParam(state.params, event.id, event.value);
+    if (next == state.params) {
+      return;
+    }
+    _emit(emit, state.rebuild((b) => b..params.replace(next)));
+  }
+
+  void _onParamsReset(
+    InferenceParamsReset event,
+    Emitter<InferenceState> emit,
+  ) {
+    if (event.ids.isEmpty) {
+      return;
+    }
+    _userEdited = true;
+    var next = state.params;
+    for (final String id in event.ids) {
+      next = _resetParam(next, id);
+    }
+    _emit(emit, state.rebuild((b) => b..params.replace(next)));
+  }
+
+  /// Writes [value] for [id], using the typed field when one exists.
+  ///
+  /// A typed field is authoritative, so a stale catalog entry for the same id
+  /// is dropped. Unknown or map-backed ids go through [ParameterValues.set].
+  ModelParams _writeParam(ModelParams params, String id, String? value) {
+    final ModelParams? typed = switch (id) {
+      'ctx-size' => _writeInt(
+        params,
+        value,
+        ModelParams.defaults().contextSize,
+        (p, v) => p.copyWith(contextSize: v),
+      ),
+      'threads' => _writeInt(
+        params,
+        value,
+        ModelParams.defaults().threads,
+        (p, v) => p.copyWith(threads: v),
+      ),
+      'gpu-layers' => _writeInt(
+        params,
+        value,
+        ModelParams.defaults().gpuLayers,
+        (p, v) => p.copyWith(gpuLayers: v),
+      ),
+      'temp' => _writeDouble(
+        params,
+        value,
+        ModelParams.defaults().temperature,
+        (p, v) => p.copyWith(temperature: v),
+      ),
+      'top-k' => _writeInt(
+        params,
+        value,
+        ModelParams.defaults().topK,
+        (p, v) => p.copyWith(topK: v),
+      ),
+      'top-p' => _writeDouble(
+        params,
+        value,
+        ModelParams.defaults().topP,
+        (p, v) => p.copyWith(topP: v),
+      ),
+      'chat-template' => params.copyWith(
+        chatTemplate: value == null || value.isEmpty ? null : value,
+      ),
+      _ => null,
+    };
+    if (typed == null) {
+      return params.copyWith(
+        params: ParameterValues.set(params.params, id, value),
+      );
+    }
+    return typed.copyWith(params: ParameterValues.remove(typed.params, id));
+  }
+
+  /// Clears [id], returning a typed field to the [ModelParams.defaults] value.
+  ModelParams _resetParam(ModelParams params, String id) =>
+      _writeParam(params, id, null);
+
+  /// Applies [value] to an integer field, or the default when it is null.
+  ///
+  /// Invalid text is ignored: the row validates before dispatching, so this is
+  /// only a guard for a programmatic caller.
+  ModelParams _writeInt(
+    ModelParams params,
+    String? value,
+    int fallback,
+    ModelParams Function(ModelParams params, int value) apply,
+  ) {
+    final int? parsed = value == null ? fallback : int.tryParse(value.trim());
+    return parsed == null ? params : apply(params, parsed);
+  }
+
+  /// Applies [value] to a double field, or the default when it is null.
+  ModelParams _writeDouble(
+    ModelParams params,
+    String? value,
+    double fallback,
+    ModelParams Function(ModelParams params, double value) apply,
+  ) {
+    final double? parsed = value == null
+        ? fallback
+        : double.tryParse(value.trim());
+    return parsed == null ? params : apply(params, parsed);
   }
 
   void _onPromptChanged(

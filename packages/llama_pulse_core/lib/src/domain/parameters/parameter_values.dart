@@ -94,6 +94,7 @@ abstract final class ParameterValues {
       'top-p' => _double(params.topP),
       'top-k' => '${params.topK}',
       'predict' => '${params.maxTokens}',
+      'chat-template' => params.chatTemplate,
       _ => null,
     };
     return typed ?? params.params[id];

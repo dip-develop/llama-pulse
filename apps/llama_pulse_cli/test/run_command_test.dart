@@ -453,6 +453,28 @@ void main() {
     expect(engine.generateRequests.single.params.useChatTemplate, isFalse);
   });
 
+  test('--param chat-template=none reaches the engine as typed', () async {
+    final runner = makeRunner();
+
+    expect(
+      await runner.run([
+        'run',
+        '--stub',
+        '--model',
+        '/tmp/demo.gguf',
+        '--prompt',
+        'hi',
+        '--param',
+        'chat-template=none',
+      ]),
+      ExitCodes.ok,
+    );
+
+    expect(engine.loadedParams?.chatTemplate, 'none');
+    expect(engine.loadedParams?.params.containsKey('chat-template'), isFalse);
+    expect(engine.generateRequests.single.params.chatTemplate, 'none');
+  });
+
   test('--file - reads the prompt from the injected stdin', () async {
     final runner = makeRunner(
       stdin: Stream<List<int>>.value(utf8.encode('from stdin')),

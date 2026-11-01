@@ -183,6 +183,7 @@ Map<String, String> typedInferenceValues(InferenceOverrides overrides) => {
   if (overrides.temperature != null) 'temp': '${overrides.temperature}',
   if (overrides.topK != null) 'top-k': '${overrides.topK}',
   if (overrides.topP != null) 'top-p': '${overrides.topP}',
+  if (overrides.chatTemplate != null) 'chat-template': overrides.chatTemplate!,
 };
 
 /// Returns the model path to use: the flag when given, else [storedPath].

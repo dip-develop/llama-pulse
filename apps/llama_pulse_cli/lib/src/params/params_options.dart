@@ -171,6 +171,9 @@ ResolvedEmbeddedParams resolveEmbeddedParams({
         if (typed == null) {
           next = _applyTyped(next, id, _typedDefault(spec));
         }
+        // A hand-edited document may still carry the id in the map; the typed
+        // field is authoritative, so the stale entry is dropped.
+        next = next.copyWith(params: ParameterValues.remove(next.params, id));
         continue;
       }
 
@@ -238,8 +241,10 @@ ResolvedEmbeddedParams resolveEmbeddedParams({
 
 /// Embedded ids with a typed [ModelParams] field and the flag that owns it.
 ///
-/// `batch-size`, `seed`, `min-p` and `chat-template` have no typed field and
-/// stay in [ModelParams.params].
+/// `chat-template` is typed on [ModelParams] even though the catalog does not
+/// give it an owner, so the CLI writes the field instead of the map. `seed`,
+/// `min-p` and `batch-size` have no typed field and stay in
+/// [ModelParams.params].
 const Map<String, String> _embeddedTypedFields = {
   'ctx-size': '--context-size',
   'threads': '--threads',
@@ -247,6 +252,7 @@ const Map<String, String> _embeddedTypedFields = {
   'temp': '--temperature',
   'top-k': '--top-k',
   'top-p': '--top-p',
+  'chat-template': '--chat-template',
 };
 
 typedef _Applied = ({ModelParams? params, String? error});
@@ -293,6 +299,12 @@ _Applied _applyCanonical(ModelParams params, String id, String canonical) =>
         canonical,
         '--top-p',
         (p, v) => p.copyWith(topP: v),
+      ),
+      'chat-template' => (
+        params: params.copyWith(
+          chatTemplate: canonical.isEmpty ? null : canonical,
+        ),
+        error: null,
       ),
       _ => (params: params, error: null),
     };

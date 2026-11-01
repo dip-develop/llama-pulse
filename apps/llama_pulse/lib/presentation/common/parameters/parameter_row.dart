@@ -23,10 +23,14 @@ class ParameterRow extends StatefulWidget {
     required this.onReset,
     this.locked = false,
     this.lockReason,
+    this.keyPrefix = 'server-param',
   });
 
   /// Parameter this row edits or explains.
   final ParameterSpec spec;
+
+  /// Prefix of every key this row exposes.
+  final String keyPrefix;
 
   /// Stored value of an editable row, effective value of a managed one.
   final String? value;
@@ -140,7 +144,7 @@ class _ParameterRowState extends State<ParameterRow> {
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
-    final String prefix = 'server-param-${widget.spec.id}';
+    final String prefix = '${widget.keyPrefix}-${widget.spec.id}';
     return Padding(
       key: ValueKey(prefix),
       padding: const EdgeInsets.symmetric(vertical: 5),
@@ -225,7 +229,7 @@ class _ParameterRowState extends State<ParameterRow> {
         if (value != null)
           Text(
             'Effective value: $value',
-            key: ValueKey('server-param-${widget.spec.id}-effective'),
+            key: ValueKey('${widget.keyPrefix}-${widget.spec.id}-effective'),
             style: style,
           ),
       ],

@@ -187,5 +187,20 @@ void main() {
 
       expect(ParameterValues.valueForModel(params, 'seed'), '42');
     });
+
+    test('reads the typed chat template and keeps the map as a fallback', () {
+      final params = ModelParams.defaults().copyWith(chatTemplate: 'chatml');
+
+      expect(ParameterValues.valueForModel(params, 'chat-template'), 'chatml');
+      expect(
+        ParameterValues.valueForModel(
+          ModelParams.defaults().copyWith(
+            params: BuiltMap<String, String>({'chat-template': 'alpaca'}),
+          ),
+          'chat-template',
+        ),
+        'alpaca',
+      );
+    });
   });
 }

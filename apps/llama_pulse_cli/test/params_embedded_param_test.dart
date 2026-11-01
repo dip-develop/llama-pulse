@@ -90,6 +90,49 @@ void main() {
       expect(err.toString(), isEmpty);
     });
 
+    test('chat-template writes the typed field, not the map', () async {
+      expect(
+        await runner.run(['params', 'set', '--param', 'chat-template=chatml']),
+        ExitCodes.ok,
+      );
+
+      final params = await storedParams();
+      expect(params['chatTemplate'], 'chatml');
+      expect(await storedCatalogParams(), isEmpty);
+      expect(out.toString(), contains('chatTemplate: chatml'));
+      expect(
+        out.toString(),
+        isNot(contains('chat-template:')),
+        reason: 'the map must not carry the typed template',
+      );
+    });
+
+    test('chat-template=none is stored as the typed value', () async {
+      expect(
+        await runner.run(['params', 'set', '--param', 'chat-template=none']),
+        ExitCodes.ok,
+      );
+
+      final params = await storedParams();
+      expect(params['chatTemplate'], 'none');
+      expect(await storedCatalogParams(), isEmpty);
+    });
+
+    test('chat-template= restores the typed default', () async {
+      expect(
+        await runner.run(['params', 'set', '--param', 'chat-template=chatml']),
+        ExitCodes.ok,
+      );
+
+      expect(
+        await runner.run(['params', 'set', '--param', 'chat-template=']),
+        ExitCodes.ok,
+      );
+
+      expect((await storedParams())['chatTemplate'], isNull);
+      expect(await storedCatalogParams(), isEmpty);
+    });
+
     test('seed, min-p and batch-size stay in the params map', () async {
       expect(
         await runner.run([
@@ -281,6 +324,18 @@ void main() {
   });
 
   group('params get --show-modified', () {
+    test('text lists the typed chat template', () async {
+      expect(
+        await runner.run(['params', 'set', '--param', 'chat-template=chatml']),
+        ExitCodes.ok,
+      );
+
+      out.clear();
+      expect(await runner.run(['params', 'get', '--show-modified']), 0);
+
+      expect(out.toString(), 'chat-template: chatml\n');
+    });
+
     test('text lists only ids that differ from the defaults', () async {
       expect(
         await runner.run([
@@ -345,6 +400,10 @@ void main() {
         ]),
         ExitCodes.ok,
       );
+
+      // The template is typed, so it must not also land in the map.
+      expect((await storedParams())['chatTemplate'], '{{prompt}}');
+      expect(await storedCatalogParams(), isNot(contains('chat-template')));
 
       out.clear();
       expect(await runner.run(['params', 'export']), ExitCodes.ok);

@@ -18,10 +18,14 @@ class ParameterGroupTile extends StatelessWidget {
     required this.children,
     this.modifiedCount = 0,
     this.onReset,
+    this.keyPrefix = 'server-param',
   });
 
   /// Group metadata and rows.
   final ParameterGroupView group;
+
+  /// Prefix of every key this tile exposes.
+  final String keyPrefix;
 
   /// Whether the rows are part of the tree.
   final bool expanded;
@@ -42,15 +46,14 @@ class ParameterGroupTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
     final String id = group.spec.id;
-    final String? resetKey = onReset == null
-        ? null
-        : 'server-param-group-$id-reset';
+    final String groupKey = '$keyPrefix-group-$id';
+    final String? resetKey = onReset == null ? null : '$groupKey-reset';
     return Column(
-      key: ValueKey('server-param-group-$id'),
+      key: ValueKey(groupKey),
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         InkWell(
-          key: ValueKey('server-param-group-$id-toggle'),
+          key: ValueKey('$groupKey-toggle'),
           onTap: onToggle,
           borderRadius: BorderRadius.circular(6),
           child: Padding(
@@ -79,7 +82,7 @@ class ParameterGroupTile extends StatelessWidget {
                     padding: const EdgeInsets.symmetric(horizontal: 6),
                     child: Text(
                       '$modifiedCount',
-                      key: ValueKey('server-param-group-$id-modified'),
+                      key: ValueKey('$groupKey-modified'),
                       style: theme.textTheme.labelSmall?.copyWith(
                         color: theme.colorScheme.tertiary,
                       ),
@@ -102,7 +105,7 @@ class ParameterGroupTile extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.only(left: 8, right: 4),
             child: Column(
-              key: ValueKey('server-param-group-$id-rows'),
+              key: ValueKey('$groupKey-rows'),
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: children,
             ),

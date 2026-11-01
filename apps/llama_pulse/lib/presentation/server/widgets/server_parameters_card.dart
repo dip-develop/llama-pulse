@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:llama_pulse_core/llama_pulse_core.dart';
 
 import '../../../app/platform/file_picker.dart';
+import '../../common/parameters/parameter_filter.dart';
 import '../../common/parameters/parameter_panel.dart';
 import '../bloc/server_bloc.dart';
 import '../bloc/server_dashboard_state.dart';
@@ -32,8 +33,12 @@ class ServerParametersCard extends StatelessWidget {
           builder: (BuildContext context, ServerConfig config) {
             final ServerBloc bloc = context.read<ServerBloc>();
             return ParameterPanel(
-              config: config,
+              params: config.params,
               filePicker: filePicker,
+              editable: editableServerParameters(),
+              lockedGroups: serverLockedParameterGroups(),
+              valueForLocked: (ParameterSpec spec) =>
+                  ParameterValues.valueFor(config, spec.id),
               onChanged: (String id, String? value) =>
                   bloc.add(ServerParamChanged(id, value)),
               onReset: (Set<String> ids) => bloc.add(ServerParamsReset(ids)),

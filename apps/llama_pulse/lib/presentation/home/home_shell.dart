@@ -113,6 +113,7 @@ class _HomeShellState extends State<HomeShell> {
             Expanded(
               child: ChatScreen(
                 picker: widget.picker,
+                filePicker: widget.filePicker,
                 demoEngine: widget.demoEngine,
               ),
             ),

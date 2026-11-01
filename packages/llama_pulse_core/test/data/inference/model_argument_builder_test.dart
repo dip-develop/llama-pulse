@@ -13,6 +13,7 @@ ModelParams _params({
   double topP = 0.95,
   int topK = 40,
   int maxTokens = 256,
+  String? chatTemplate,
   Map<String, String> params = const {},
 }) => ModelParams(
   (b) => b
@@ -24,6 +25,7 @@ ModelParams _params({
     ..topP = topP
     ..topK = topK
     ..maxTokens = maxTokens
+    ..chatTemplate = chatTemplate
     ..params.replace(BuiltMap<String, String>(params)),
 );
 
@@ -110,6 +112,45 @@ void main() {
         () => _builder.build(_params(params: {'batch-size': 'many'})),
         throwsArgumentError,
       );
+    });
+  });
+
+  group('chat-template', () {
+    test('emits the typed template in catalog order', () {
+      expect(
+        _builder.build(
+          _params(
+            chatTemplate: 'chatml',
+            params: {'seed': '42', 'min-p': '0.1'},
+          ),
+        ),
+        [
+          ..._typedBlock,
+          '--seed',
+          '42',
+          '--min-p',
+          '0.1',
+          '--chat-template',
+          'chatml',
+        ],
+      );
+    });
+
+    test('a typed template wins over a stale map entry', () {
+      expect(
+        _builder.build(
+          _params(chatTemplate: 'chatml', params: {'chat-template': 'alpaca'}),
+        ),
+        [..._typedBlock, '--chat-template', 'chatml'],
+      );
+    });
+
+    test('falls back to a map entry when the typed field is null', () {
+      expect(_builder.build(_params(params: {'chat-template': 'alpaca'})), [
+        ..._typedBlock,
+        '--chat-template',
+        'alpaca',
+      ]);
     });
   });
 

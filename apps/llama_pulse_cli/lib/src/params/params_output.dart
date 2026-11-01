@@ -57,4 +57,5 @@ bool _hasTypedModelField(String id) => const {
   'temp',
   'top-k',
   'top-p',
+  'chat-template',
 }.contains(id);

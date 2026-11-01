@@ -5,9 +5,8 @@ import '../../support/catalog_files.dart';
 
 /// Parameters the embedded native session can honour today.
 ///
-/// `chat-template` is part of the embedded chat path; the session wiring lands
-/// with the chat-template work, and the catalog must not claim a surface the
-/// session cannot apply.
+/// `chat-template` is wired through `ModelParams.chatTemplate` into the native
+/// session, so the catalog may claim the embedded surface for it.
 const _embeddedHonoured = {
   'batch-size',
   'chat-template',
@@ -207,6 +206,16 @@ void main() {
     for (final id in _embeddedHonoured) {
       expect(catalog.byId(id), isNotNull, reason: 'missing embedded id $id');
     }
+  });
+
+  test('the embedded chat template maps to the typed field', () {
+    final ParameterSpec spec = catalog.byId('chat-template')!;
+    final ModelParams params = ModelParams.defaults().copyWith(
+      chatTemplate: 'chatml',
+    );
+
+    expect(spec.appliesTo(ParamSurface.embedded), isTrue);
+    expect(ParameterValues.valueForModel(params, 'chat-template'), 'chatml');
   });
 
   test('the overrides list the same ids the catalog classifies', () {

@@ -9,7 +9,7 @@ const String unavailableParameterGroupId = 'unsupported';
 
 /// One group of rows as the parameter panel presents it.
 ///
-/// [locked] is true for the two container groups: the managed values come from
+/// [locked] is true for the read-only containers: the managed values come from
 /// a typed field or from the supervisor, and unsupported or removed flags
 /// cannot be passed at all. The panel renders their rows without a control.
 final class ParameterGroupView {
@@ -18,6 +18,8 @@ final class ParameterGroupView {
     required this.spec,
     required this.parameters,
     required this.locked,
+    this.lockReason,
+    this.showValue = true,
   });
 
   /// Group metadata: id, name, order and the default expansion.
@@ -28,6 +30,39 @@ final class ParameterGroupView {
 
   /// Whether every row of this group is read-only.
   final bool locked;
+
+  /// Explanation shown for every locked row; `null` keeps the per-spec reason.
+  final String? lockReason;
+
+  /// Whether the panel prints the effective value of a locked row.
+  final bool showValue;
+}
+
+/// A read-only container the panel appends after the editable groups.
+///
+/// The server surface uses the catalog's managed and unavailable groups; the
+/// embedded chat uses its own containers for the values the essentials form
+/// owns and for the flags the embedded engine cannot honour.
+final class LockedParameterGroup {
+  /// Creates a locked container.
+  const LockedParameterGroup({
+    required this.spec,
+    required this.parameters,
+    this.reason,
+    this.showValue = true,
+  });
+
+  /// Group metadata: id, name, order and the default expansion.
+  final ParameterGroupSpec spec;
+
+  /// Rows of this group, in catalog order.
+  final List<ParameterSpec> parameters;
+
+  /// Explanation shown for every row; `null` keeps the per-spec reason.
+  final String? reason;
+
+  /// Whether the panel prints the effective value of a row.
+  final bool showValue;
 }
 
 final List<ParameterSpec> _serverParameters = ParameterCatalog.v080.forSurface(
@@ -140,30 +175,89 @@ bool isGroupExpanded({
   required Set<String> expanded,
 }) => query.trim().isNotEmpty || expanded.contains(groupId);
 
+/// The read-only containers of the server surface, in catalog order.
+List<LockedParameterGroup> serverLockedParameterGroups() => _serverLockedGroups;
+
+final List<LockedParameterGroup> _serverLockedGroups = List.unmodifiable([
+  LockedParameterGroup(
+    spec: _group(managedParameterGroupId),
+    parameters: _managed,
+  ),
+  LockedParameterGroup(
+    spec: _group(unavailableParameterGroupId),
+    parameters: _unavailable,
+    showValue: false,
+  ),
+]);
+
 /// Builds the groups the panel shows for [params].
 ///
-/// Configurable groups keep catalog order. The managed and unavailable
-/// containers are appended at their catalog position (orders 900 and 999) and
-/// are read-only. Groups without a matching row are dropped, so an empty
-/// result is the "no parameters match" state. Modified-only hides the locked
-/// containers: they hold no user edits by definition.
+/// [editable] defaults to the server rows and [lockedGroups] to the server
+/// containers. Configurable groups keep catalog order. The locked containers
+/// are appended at their catalog position (orders 900 and 999) and are
+/// read-only. Groups without a matching row are dropped, so an empty result is
+/// the "no parameters match" state. Modified-only hides the locked containers:
+/// they hold no user edits by definition.
 List<ParameterGroupView> parameterGroups({
   required BuiltMap<String, String> params,
   String query = '',
   bool modifiedOnly = false,
+  List<ParameterSpec>? editable,
+  List<LockedParameterGroup>? lockedGroups,
 }) {
+  final List<ParameterSpec> editableRows =
+      editable ?? editableServerParameters();
+  final List<LockedParameterGroup> containers =
+      lockedGroups ?? serverLockedParameterGroups();
+  final Set<String> lockedIds = {
+    for (final LockedParameterGroup group in containers) group.spec.id,
+  };
+
   bool visible(ParameterSpec spec) =>
       (!modifiedOnly || isParameterModified(spec, params[spec.id])) &&
       parameterMatchesQuery(spec, query);
 
+  final List<ParameterGroupSpec> groupSpecs =
+      [
+        for (final group in ParameterCatalog.v080.groups)
+          if (!lockedIds.contains(group.id)) group,
+        for (final LockedParameterGroup group in containers) group.spec,
+      ]..sort(
+        (ParameterGroupSpec a, ParameterGroupSpec b) =>
+            a.order.compareTo(b.order),
+      );
+
+  final Map<String, LockedParameterGroup> lockedById = {
+    for (final LockedParameterGroup group in containers) group.spec.id: group,
+  };
+
   final List<ParameterGroupView> groups = [];
-  for (final group in ParameterCatalog.v080.groups) {
-    if (group.id == managedParameterGroupId ||
-        group.id == unavailableParameterGroupId) {
+  for (final ParameterGroupSpec group in groupSpecs) {
+    final LockedParameterGroup? locked = lockedById[group.id];
+    if (locked != null) {
+      if (modifiedOnly) {
+        continue;
+      }
+      final List<ParameterSpec> rows = [
+        for (final spec in locked.parameters)
+          if (parameterMatchesQuery(spec, query, groupName: group.name)) spec,
+      ];
+      if (rows.isEmpty) {
+        continue;
+      }
+      groups.add(
+        ParameterGroupView(
+          spec: group,
+          parameters: rows,
+          locked: true,
+          lockReason: locked.reason,
+          showValue: locked.showValue,
+        ),
+      );
       continue;
     }
-    final rows = [
-      for (final spec in _editable)
+    final List<ParameterSpec> rows = [
+      for (final spec in editableRows)
         if (spec.group == group.id && visible(spec)) spec,
     ];
     if (rows.isNotEmpty) {
@@ -172,41 +266,6 @@ List<ParameterGroupView> parameterGroups({
       );
     }
   }
-  if (!modifiedOnly) {
-    final ParameterGroupSpec managed = _group(managedParameterGroupId);
-    final managedRows = [
-      for (final spec in _managed)
-        if (parameterMatchesQuery(spec, query, groupName: managed.name)) spec,
-    ];
-    if (managedRows.isNotEmpty) {
-      groups.add(
-        ParameterGroupView(
-          spec: managed,
-          parameters: managedRows,
-          locked: true,
-        ),
-      );
-    }
-    final ParameterGroupSpec unavailable = _group(unavailableParameterGroupId);
-    final unavailableRows = [
-      for (final spec in _unavailable)
-        if (parameterMatchesQuery(spec, query, groupName: unavailable.name))
-          spec,
-    ];
-    if (unavailableRows.isNotEmpty) {
-      groups.add(
-        ParameterGroupView(
-          spec: unavailable,
-          parameters: unavailableRows,
-          locked: true,
-        ),
-      );
-    }
-  }
-  groups.sort(
-    (ParameterGroupView a, ParameterGroupView b) =>
-        a.spec.order.compareTo(b.spec.order),
-  );
   return groups;
 }
 

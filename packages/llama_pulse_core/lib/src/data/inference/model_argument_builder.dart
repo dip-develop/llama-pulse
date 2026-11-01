@@ -24,6 +24,11 @@ final class ModelArgumentBuilder {
   /// `--top-p` and `-b`. The model path is omitted when it is empty and the
   /// batch size is omitted when it is absent or zero. Every other embedded
   /// parameter follows in catalog order.
+  ///
+  /// `chat-template` is typed on [ModelParams] but is emitted at its catalog
+  /// position, between `--min-p` and the server flags. A typed template wins
+  /// over a stale map entry; an absent typed template still falls back to the
+  /// map, matching `ParameterValues.valueForModel`.
   List<String> build(ModelParams params) {
     final arguments = <String>[];
 
@@ -85,6 +90,16 @@ final class ModelArgumentBuilder {
   /// hand-edited document from producing an ambiguous command.
   void _appendParameters(List<String> arguments, ModelParams params) {
     for (final spec in catalog.parameters) {
+      // The chat template has a typed field, so the map entry is only a
+      // fallback for a hand-edited document.
+      if (spec.id == 'chat-template' &&
+          params.chatTemplate != null &&
+          params.chatTemplate!.isNotEmpty) {
+        if (spec.flags.isNotEmpty && spec.appliesTo(ParamSurface.embedded)) {
+          arguments.addAll([_preferredFlag(spec), params.chatTemplate!]);
+        }
+        continue;
+      }
       final raw = params.params[spec.id];
       if (raw == null) {
         continue;

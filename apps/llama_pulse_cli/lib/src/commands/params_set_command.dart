@@ -139,6 +139,7 @@ final class ParamsSetCommand extends LlamaPulseCommand {
         if (temperature != null) 'temp': '$temperature',
         if (topK != null) 'top-k': '$topK',
         if (topP != null) 'top-p': '$topP',
+        'chat-template': ?chatTemplate,
       },
     );
     if (resolved.errors.isNotEmpty) {
