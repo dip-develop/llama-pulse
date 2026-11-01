@@ -32,6 +32,27 @@ tool/args/generate_catalog.dart` parses its `add_opt(common_arg(...))` blocks;
 the parser and the coverage test fail if a server-visible flag is not accounted
 for. It is not compiled and does not take part in the native build.
 
+### Why `arg.cpp` is vendored
+
+The catalog must be reproducible offline and reviewable in a diff. Parsing the
+file at runtime would need a network clone of the tag, and generating it from a
+local checkout would make the digest depend on the machine. The vendored file
+pins the exact bytes: `SHA256SUMS` covers it, the catalog records its hash as
+`source.sha256`, and `parameter_coverage_test.dart` re-parses it so a flag
+cannot silently disappear from the catalog.
+
+The generated outputs are
+`packages/llama_pulse_core/catalog/llama_args.v0.8.0.yaml` and
+`packages/llama_pulse_core/lib/src/domain/parameters/parameter_catalog.generated.dart`.
+The only hand-edited input is
+`packages/llama_pulse_core/catalog/llama_args.v0.8.0.overrides.yaml`.
+`dart run melos run gen:catalog:check` fails when either generated file is
+stale. See [docs/parameters.md](../../../docs/parameters.md) for the workflow.
+
+This file is the `llama-server` surface only. The embedded shared library is
+pinned separately by `include/llama.h` and `LlamaVersionPin`; moving one pin
+does not automatically move the other.
+
 `ggml-alloc.h` and `ggml-opt.h` are not used by the bindings directly, but
 `llama.h` includes them (`ggml-backend.h` pulls in `ggml-alloc.h`, and
 `llama_opt_*` needs `ggml-opt.h`), so `abi_check.c` cannot compile the header

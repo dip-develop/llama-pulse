@@ -90,8 +90,8 @@ $ llamapulse server set --param logit-bias=1=+2 --param logit-bias=3=-4
 `id=value` sets the value, `id=` removes it and a bare `id` sets a boolean to
 `true`. A repeatable parameter keeps every `--param` occurrence
 newline-separated. Values are canonicalized and validated against the catalog
-before anything is written; an unknown, managed, unsupported, removed or
-wrong-surface id exits `2` with the catalog's message and leaves the file
+before anything is written; an unknown, unsupported, removed, wrong-surface or
+ownerless managed id exits `2` with the catalog's message and leaves the file
 untouched. An id with a typed flag (`threads`, `ctx-size`, `port`, `model` and
 so on) writes that typed field instead of the `params` map. When the typed flag
 is supplied too, the values must agree, otherwise the command exits `2` with
@@ -250,7 +250,8 @@ Sampling & penalties (sampling)
 ```
 
 `--surface` filters to `all` (default), `server` or `embedded`; `--group` is
-repeatable. `--json` prints one object with `schemaVersion: 1`,
+repeatable. An unknown group or id exits `2`. `--json` prints one object with
+`schemaVersion: 1`,
 `type: "parameterCatalog"`, `surface`, `upstreamTag`, `count`, `groups` and
 `parameters`, where every parameter carries the full field set (`id`,
 `displayName`, `flags`, `negatedFlag`, `type`, `arity`, `defaultValue`, `min`,
@@ -308,14 +309,15 @@ $ llamapulse params set --param ctx-size=             # restore the default
 
 `id=value` sets the value and `id=` restores the default. Values are
 canonicalized and validated against the embedded surface before anything is
-written; an unknown, managed, unsupported, removed or server-only id exits `2`
-with the catalog's message and leaves the file untouched. Repeating a
+written; an unknown, unsupported, removed, server-only or ownerless managed id
+exits `2` with the catalog's message and leaves the file untouched. Repeating a
 non-repeatable id is an error. `ctx-size`, `threads`, `gpu-layers`, `temp`,
-`top-k` and `top-p` write the typed fields, so `--param temp=0.7` stores
-`temperature: 0.7`, never a `params.temp` entry. `seed`, `min-p`,
-`batch-size` and `chat-template` have no typed field and stay in the `params`
-map. When a typed flag is supplied too, the values must agree, otherwise the
-command exits `2` with `--temperature and --param temp disagree (0.5 vs 0.7)`.
+`top-k`, `top-p` and `chat-template` write the typed fields, so `--param
+temp=0.7` stores `temperature: 0.7` and `--param chat-template=chatml` stores
+`chatTemplate: chatml`, never a `params.temp` entry. `seed`, `min-p` and
+`batch-size` have no typed field and stay in the `params` map. When a typed
+flag is supplied too, the values must agree, otherwise the command exits `2`
+with `--temperature and --param temp disagree (0.5 vs 0.7)`.
 
 `params get --json` keeps the document and adds a `modified` list of the
 embedded ids whose effective value differs from the default; `seed=-1`,
@@ -380,12 +382,14 @@ runs: 3  generatedTokens: 36  evalMs: 818  tokensPerSecond: 44.01
 
 `run` flags: `--model`, `--lib`, `--prompt`, `--file` (`-` reads stdin),
 `--stream`, `--json`, `--threads`, `--temperature`, `--top-p`, `--top-k`,
-`--max-tokens`, `--context-size` and repeatable `--param`. `--prompt` and
-`--file` are mutually exclusive; one is required. `--json` and `--stream`
-cannot be combined. `--param` applies the same embedded catalog rules as
-`params set` for this run only: typed owners write `ModelParams` fields, the
-rest stay in the map, and an unknown or unsupported id exits `2` before the
-engine loads.
+`--max-tokens`, `--context-size`, `--chat-template`,
+`--[no-]use-chat-template` and repeatable `--param`. `--prompt` and `--file`
+are mutually exclusive; one is required. `--json` and `--stream` cannot be
+combined. `--param` applies the same embedded catalog rules as `params set`
+for this run only: typed owners write `ModelParams` fields, the rest stay in
+the map, and an unknown or unsupported id exits `2` before the engine loads.
+`--chat-template` names a built-in template (for example `chatml`), `none`
+disables templating and `--no-use-chat-template` sends the raw prompt.
 `--stream` writes NDJSON with `started`, `token`, `metrics`, `completed`,
 `cancelled` and `failed`. `bench` flags: `--runs` (1..50, default 3), `--json`,
 `--max-tokens` (default 32), the shared overrides and `--param`. Without
@@ -397,10 +401,10 @@ a missing, non-`.gguf` or unreadable file exits `3`. The sampler is seeded with
 ## `--json`
 
 Every leaf command accepts `--json`. `server get`, `server set`, `params get`,
-`params export`, `status`, `stop` and `version` print one single-line JSON
-object; `serve` and `logs --follow` emit NDJSON. The `params`, `models` and
-`server` groups are not invocable and have no `--json` of their own. Configuration files on disk stay
-YAML.
+`params catalog`, `params describe`, `params export`, `status`, `stop` and
+`version` print one single-line JSON object; `serve` and `logs --follow` emit
+NDJSON. The `params`, `models` and `server` groups are not invocable and have
+no `--json` of their own. Configuration files on disk stay YAML.
 
 ## Configuration paths
 
@@ -464,4 +468,8 @@ $ llamapulse serve --help
 $ llamapulse status --help
 $ llamapulse stop --help
 $ llamapulse logs --help
+$ llamapulse params catalog --help
+$ llamapulse params describe --help
+$ llamapulse params set --help
+$ llamapulse params export --help
 ```

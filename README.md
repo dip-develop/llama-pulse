@@ -16,8 +16,9 @@ against a pinned llama.cpp shared library; without one they report
   files, configuration and logs stay on disk.
 - **A real OpenAI-compatible endpoint.** Start `llama-server` once and point
   any compatible client at `http://127.0.0.1:8080/v1`.
-- **Parameters you can see.** Model, context, threads, GPU layers, slots and
-  sampling stay visible and editable in `server.yaml`.
+- **Every parameter you can see.** A generated catalog of all 362 `llama.cpp`
+  `v0.8.0` server parameters drives the CLI and both GUI panels, with the same
+  descriptions, defaults and validation everywhere.
 - **One shared core.** The GUI, the CLI and the supervisor share entities,
   validation, configuration and the process seam.
 
@@ -34,7 +35,8 @@ llama-pulse/
 ├── packages/llama_pulse_core/
 │   ├── lib/src/domain/     entities/, gateways/, usecases/, text/
 │   └── lib/src/data/       config/, inference/, models/, server/, serialization/
-├── third_party/llama_cpp/  vendored v0.8.0 headers, ABI check and build recipe
+├── third_party/llama_cpp/  vendored v0.8.0 headers, arg.cpp and build recipe
+├── docs/                   parameter catalog and workflow documentation
 ├── tool/                   developer scripts, e.g. build_llama_cpp.sh
 ├── AGENT.md                contributor and agent rules
 └── LICENSE                 MIT
@@ -96,14 +98,15 @@ Naming: app `llama_pulse`, CLI `llamapulse`, package `llama_pulse_core`.
   [Embedded native engine](#embedded-native-engine)). It is not the primary path
   and does not use the supervised server. Without a resolvable library the
   screen reports `libraryNotFound` with every searched path.
-- **CLI**: `server get|set`, `serve`, `status`, `stop`, `logs`, plus the
-  earlier `version`, `params get|set`, `models list|inspect`, `run` and `bench`.
+- **CLI**: `server get|set`, `serve`, `status`, `stop`, `logs`, plus
+  `params catalog|describe|get|set|export`, `models list|inspect`, `run` and
+  `bench`.
 - **Binary discovery and version warning**: a configured path, an environment
   variable, the app bundle, the config `bin/` directory and `PATH` are tried in
   that order. Builds below `b4000` warn, and an unknown or unreadable
   `llama-server --version` reports `supported: true` with a warning; nothing
   blocks a start on the version.
-- **698 tests** across the three packages (474 core, 136 CLI, 88 app); one
+- **936 tests** across the three packages (599 core, 204 CLI, 133 app); one
   further core integration test is skipped unless a native library and model are
   set.
 
@@ -210,6 +213,92 @@ compiles `abi_check.c` with clang and compares every struct size and field
 offset. The headers are a binding reference only: they are not compiled by the
 Flutter build and no llama.cpp binary ships with LlamaPulse. `dart:ffi` stays
 inside the worker isolate.
+
+## Parameters
+
+LlamaPulse exposes every command-line parameter of the pinned `llama.cpp`
+`v0.8.0` `llama-server` through one generated catalog. It holds 362 parameters
+in 12 groups: 210 configurable, 14 managed by LlamaPulse, 132 unsupported and
+6 removed. The embedded native session has 10 catalog ids
+(`ctx-size`, `threads`, `gpu-layers`, `temp`, `top-k`, `top-p`, `min-p`, `seed`,
+`batch-size` and `chat-template`); seven of them are wired into the native
+session today, while `seed`, `min-p` and `batch-size` are accepted, stored and
+exported but still use the session's fixed seed, min-p and derived batch size.
+
+The catalog is generated from the vendored `common/arg.cpp` and a reviewed
+overrides file, not typed by hand. It is the one source of truth for
+descriptions: the CLI listing, `params describe`, every validation message and
+every GUI tooltip read the same `ParameterSpec`. Change the overrides file and
+run `dart run melos run gen:catalog`; `gen:catalog:check` fails when the
+generated YAML or Dart file is stale. The full workflow is in
+[docs/parameters.md](docs/parameters.md).
+
+### Browsing the catalog
+
+```console
+$ llamapulse params catalog --group sampling
+Sampling & penalties (sampling)
+  seed  -s --seed  int  default=-1  configurable
+  temp  --temp --temperature  double  default=0.8  configurable
+  top-k  --top-k  int  default=40  configurable
+  ...
+$ llamapulse params describe min-p
+id: min-p
+flags: --min-p
+type: double
+default: 0.05
+range: 0..1
+surfaces: server, embedded
+exposure: configurable
+$ llamapulse params catalog --surface embedded --json
+```
+
+`--surface` filters to `all`, `server` or `embedded`; `--group` is repeatable;
+`--include-unsupported` also lists the 132 unsupported and 6 removed ids with
+their reasons. `params describe <id>` answers for every id, including the
+reason and replacement of an unavailable one. Both commands accept `--json`.
+
+### Setting values
+
+`--param` works on `server set`, `serve`, `params set`, `run`, `bench` and
+`params export`:
+
+```console
+$ llamapulse server set --param repeat-penalty=1.1 --param cont-batching=false
+$ llamapulse server get --show-modified
+$ llamapulse params set --param chat-template=chatml
+$ llamapulse params export
+$ llamapulse run --stub --model /tmp/demo.gguf --prompt hi --param temp=0.2
+```
+
+`id=value` sets a value, `id=` removes it and a bare `id` sets a boolean to
+`true`; a repeatable id keeps every occurrence. Values are canonicalized and
+validated against the catalog before anything is written or loaded. An unknown,
+unsupported, removed, wrong-surface or ownerless managed id exits `2` with the
+catalog's message. A typed owner writes its field (`--param threads=8` stores `threads:
+8`); when the typed flag is supplied too, the two values must agree, otherwise
+the command exits `2` with `--threads and --param threads disagree (4 vs 8)`.
+`params export` prints the `llama-cli`-shaped argument vector for the stored
+embedded configuration without writing anything. Nothing about `run`, `bench`
+or `params export` is persisted.
+
+### GUI parameter panel
+
+The server dashboard and the Chat tab share one grouped, collapsible panel
+under their essentials form. It offers search across ids, flags, names and
+descriptions; a modified-only switch; per-row and per-group reset with undo;
+and an info tooltip built from the same catalog entry. Managed, unsupported and
+removed rows are locked: managed rows show their effective value when there is
+one and who owns them, while unavailable rows explain the reason without a
+control. The Chat panel also locks the values its essentials form owns and the
+server flags the embedded engine cannot honour.
+
+Only non-empty values are stored: `server.yaml` keeps them in `server.params`
+and `params.yaml` in `params.params`; an empty map removes the key. Values are
+written in catalog order, and clearing a field removes it rather than copying
+the default. See [docs/parameters.md](docs/parameters.md) for the overrides
+file, the digest, the pin-bump procedure and the emission rules both argument
+builders share.
 
 ## Quick start
 
@@ -394,10 +483,13 @@ $ cat prompt.txt | llamapulse run --stub --model /models/demo.gguf --file - --js
 
 Flags: `--model`, `--lib`, `--prompt`, `--file` (`-` reads stdin), `--stream`,
 `--json`, `--threads`, `--temperature`, `--top-p`, `--top-k`, `--max-tokens`,
-`--context-size`, repeatable `--param`. `--prompt` and `--file` are mutually
-exclusive; one is required. `--json` and `--stream` cannot be combined.
-`--param` applies the embedded catalog rules for this run only; an unknown or
-unsupported id exits 2 before the engine loads.
+`--context-size`, `--chat-template`, `--[no-]use-chat-template`, repeatable
+`--param`. `--prompt` and `--file` are mutually exclusive; one is required.
+`--json` and `--stream` cannot be combined. `--param` applies the embedded
+catalog rules for this run only; an unknown or unsupported id exits 2 before
+the engine loads. `--chat-template` names a built-in template (for example
+`chatml`); `none` disables templating and `--no-use-chat-template` sends the raw
+prompt.
 
 `--stream` writes newline-delimited JSON (NDJSON), schema v1, one object per
 line. In the order they occur, the event types are `started`, `token`,
@@ -622,10 +714,11 @@ See [AGENT.md](AGENT.md) for the full rules.
 
 ## Known limitations
 
-- **Raw prompts only.** The engine sends the prompt text unchanged: there is no
-  chat template and no instruction formatting yet, so a bare `Hello` on a
-  code-focused model may continue code instead of answering. This is the
-  current behaviour, not a bug.
+- **The embedded surface is a subset.** The catalog marks 10 of the 362
+  parameters as embedded; seven are wired into the native session today
+  (`seed`, `min-p` and `batch-size` are accepted and exported but not yet read
+  by the sampler). Every other server flag is locked in the Chat panel and
+  rejected by `run`/`bench --param` with exit `2`; it is not silently ignored.
 - **Exact version gate.** The library must report exactly `0.8.0`; a `0.8.0-dev`
   build and any other release, including a newer one, are rejected at load with
   `libraryVersionMismatch`.
@@ -647,7 +740,10 @@ See [AGENT.md](AGENT.md) for the full rules.
 - [x] Server dashboard with endpoint actions, metrics and log tail
 - [x] Server CLI: `server get|set`, `serve`, `status`, `stop`, `logs`
 - [x] Native embedded session (pinned upstream tag, `llama_version()` gate)
-- [ ] Chat templates and prompt formatting for the embedded engine
+- [x] Chat templates and prompt formatting for the embedded engine
+- [x] Full `llama.cpp` parameter catalog: 362 ids, 12 groups, GUI panel and
+  `--param` on the server surface, plus the 10 ids catalogued for the embedded
+  engine
 - [ ] llama.cpp binary downloader and updater
 - [ ] Windows and macOS builds
 - [ ] CI for analyze, tests and builds

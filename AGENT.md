@@ -220,6 +220,41 @@ The CLI's `params get` and `server get` print exactly the document the matching
 repository writes. Changing a field means updating the entity, the validator,
 the YAML round-trip test, the CLI flags and the dashboard form.
 
+### Parameter catalog
+
+`ParameterCatalog.v080` in `lib/src/domain/parameters/` is the single source of
+truth for the 362 `llama-server` `v0.8.0` parameters (12 groups: 210
+configurable, 14 managed, 132 unsupported, 6 removed; 10 are catalogued for
+the embedded surface, of which seven are wired into the native session today). `ParameterSpec`, `ParameterValidator`, `ParameterValueCodec` and
+`ParameterValues` live beside it; `ParameterCatalog` stays in `domain` and
+imports no `dart:io`.
+
+Rules:
+
+- Generated files are never hand-edited: the only editable catalog input is
+  `catalog/llama_args.v0.8.0.overrides.yaml`, and
+  `parameter_catalog.generated.dart` is a generated part of
+  `parameter_catalog.dart`. `catalog/llama_args.v0.8.0.yaml` is generated too.
+- `ServerArgumentBuilder` and `ModelArgumentBuilder` share the emission rules.
+  Emit a flag and its value as separate vector tokens, never `--flag=value`;
+  iterate the catalog, not the map; skip typed-owner and unavailable ids.
+- A managed id cannot be stored in `params:`. An id with a typed owner is
+  written through that field and may be named by `--param` as an alias; managed
+  ids without an owner (`load-mode`, `metrics`, `slots`) are rejected.
+- One owner per id: a value comes from its typed field or from the catalog map,
+  never both. `ParameterValues.normalized` keeps map order stable and unknown
+  ids sorted at the end for the validator.
+- Descriptions are defined once in the catalog. The CLI listing,
+  `params describe`, the validation messages and the GUI tooltips all read the
+  same `summary`/`description`.
+- Both YAML documents store only non-empty values: `server.yaml` under
+  `server.params` and `params.yaml` under `params.params` (the outer `params` is
+  the `ModelParams` document).
+- `crypto` is a dev dependency only: the generator and the tests use it for the
+  catalog digest and the vendored-file check.
+- `dart run melos run gen:catalog` rewrites both generated files and
+  `gen:catalog:check` fails on drift; both are part of `melos run check`.
+
 ## 7. FFI and isolates
 
 A worker isolate exists. Core's `data/inference/` holds the protocol
@@ -382,9 +417,9 @@ Core has no annotations and no `get_it`; it only defines gateways.
 
 The primary commands are the server group: `server get`, `server set`,
 `serve`, `status`, `stop` and `logs` (section 10.2). The earlier `version`,
-`params get`, `params set`, `params export`, `models list`, `models inspect`,
-`run` and `bench` remain. `run` and `bench` are the embedded/experimental
-path.
+`params catalog`, `params describe`, `params get`, `params set`,
+`params export`, `models list`, `models inspect`, `run` and `bench` remain.
+`run` and `bench` are the embedded/experimental path.
 
 - `run` and `bench` run the native session by default. `--stub` explicitly
   selects the deterministic `StubLlamaSession` inside the worker; it is not a
@@ -404,10 +439,10 @@ path.
   `--[no-]use-chat-template` and repeatable `--param`. `--prompt` and `--file`
   are mutually exclusive; one is required. `--json` and `--stream` cannot be
   combined. `--param` follows the embedded catalog rules: typed owners
-  (`ctx-size`, `threads`, `gpu-layers`, `temp`, `top-k`, `top-p`) write
-  `ModelParams` fields, `seed`, `min-p`, `batch-size` and `chat-template` stay
-  in `params`, and an unknown or unsupported id exits `2` before the engine
-  loads. Nothing is persisted.
+  (`ctx-size`, `threads`, `gpu-layers`, `temp`, `top-k`, `top-p`,
+  `chat-template`) write `ModelParams` fields, `seed`, `min-p` and `batch-size`
+  stay in `params`, and an unknown or unsupported id exits `2` before the
+  engine loads. Nothing is persisted.
 - `bench` flags: `--runs` (1..50, default 3), `--json`, `--max-tokens`
   (default 32), plus the shared `--model`, `--lib`, `--param` and sampling
   overrides. It runs the fixed `benchPrompt` repeatedly and reports aggregate
@@ -417,6 +452,19 @@ path.
   `--json` prints `{schemaVersion, type: "paramsExport", argv}`. `params get
   --show-modified` prints the embedded ids whose effective value differs from
   the default, and `params get --json` adds the same list under `modified`.
+- `params catalog` lists the generated catalog grouped by presentation group
+  with `--surface all|server|embedded`, repeatable `--group` and
+  `--include-unsupported`; `params describe <id>` prints one full entry,
+  including the reason and replacement of an unavailable id. Unknown groups and
+  ids exit `2`.
+- `--param` is shared by `server set`, `serve`, `params set`, `params export`,
+  `run` and `bench`: `id=value` sets, `id=` removes and a bare `id` sets a
+  boolean to `true`; a repeatable id keeps every occurrence. Values are
+  canonicalized and validated against the catalog. Typed owners write their
+  field; when the typed flag is also supplied the values must agree, otherwise
+  the command exits `2` (`--threads and --param threads disagree (4 vs 8)`) and
+  changes nothing. `server get --show-modified` prints the server ids that
+  differ from the defaults.
 - Schema-v1 NDJSON covers `started`, `token`, `metrics`, `completed`,
   `cancelled` and `failed`, each line carrying `schemaVersion` and `type`.
   `metrics` and `failure` are nested objects. `bench --json` emits one
@@ -588,12 +636,18 @@ APIs, no `!` on nullable values, no empty `catch` blocks.
 
 From the root, `dart run melos test`. Melos picks `flutter test` for the app and
 `dart test` for core and CLI. Test the critical seams, not every line. Coverage
-is not a target. The suites hold 698 tests today: 474 core (plus one
-env-gated skip), 136 CLI, 88 app.
+is not a target. The suites hold 936 tests today: 599 core (plus one
+env-gated skip), 204 CLI, 133 app.
 
 Must test today:
 
 - YAML round-trip, quoting and double formatting.
+- The parameter catalog: the digest over the canonical body, the vendored
+  `arg.cpp` hash, unique ids and flags, group integrity, owner fields and the
+  lookup helpers; coverage of every server-visible flag (covered or explicitly
+  ignored with a reason), exposure disjointness and the 10-entry embedded
+  subset; the codec for every type, bound, allow-list and canonical form; the
+  validator's managed/unsupported/removed messages; both argument builders.
 - Repository fallbacks: missing file, malformed YAML, stale `schemaVersion`,
   invalid parameters, for both `params.yaml` and `server.yaml`; the
   `server-state.yaml` round-trip.
@@ -705,6 +759,17 @@ rules updates `AGENT.md` in the same PR.
 
 ## 15. Extending
 
+Add a catalog parameter:
+1. Change the pin if upstream changed; vendor `arg.cpp`, update `SHA256SUMS`
+   and `PIN.md`.
+2. Run `dart run melos run gen:catalog`; classify the new id in
+   `catalog/llama_args.v0.8.0.overrides.yaml` (exposure, group, text, ranges,
+   owner, surfaces) and regenerate until the generator and coverage test pass.
+3. Run `gen:catalog:check` and the catalog tests.
+4. If the id needs a typed field, continue with "Add an embedded parameter" or
+   "Add a server setting"; otherwise it is edited through the generic panel and
+   `--param`.
+
 Add an embedded parameter:
 1. Add the field and default to `ModelParams` and its builder.
 2. Update `copyWith` and the limits in `ModelParamLimits`/validator.
@@ -746,6 +811,8 @@ native failure surfaces as an `InferenceFailure`.
 # at the root only
 flutter pub get
 dart run melos run gen
+dart run melos run gen:catalog
+dart run melos run gen:catalog:check
 dart run melos run check
 dart run melos run app
 dart run melos run app:stub
@@ -783,7 +850,11 @@ prints both exports. Never commit `.env` files, secrets or absolute local paths.
 
 - [ ] The workspace resolves with one lockfile (`flutter pub get` at the root).
 - [ ] `pubspec.lock` stays untracked.
-- [ ] `dart run melos run check` is green (698 tests: 474 core, 136 CLI, 88 app).
+- [ ] `dart run melos run check` is green (936 tests: 599 core, 204 CLI, 133
+  app; one core integration test is skipped without a native library).
+- [ ] `dart run melos run gen:catalog:check` is green, and the generated
+  `llama_args.v0.8.0.yaml` and `parameter_catalog.generated.dart` are committed
+  unchanged by a second generation.
 - [ ] The server path works end to end: the plain app can start a real
   `llama-server` when a binary is present, and `serve`/`status`/`stop` work from
   the compiled CLI.
