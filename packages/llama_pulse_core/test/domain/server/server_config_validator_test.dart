@@ -2,6 +2,8 @@ import 'package:built_collection/built_collection.dart';
 import 'package:llama_pulse_core/llama_pulse_core.dart';
 import 'package:test/test.dart';
 
+bool _pathDoesNotExist(String _) => false;
+
 void main() {
   const validator = ServerConfigValidator();
 
@@ -18,7 +20,7 @@ void main() {
     test('accepts a fully populated configuration', () {
       final config = withModel(
         ServerConfig.defaults().copyWith(
-          extraArgs: BuiltList<String>(['--verbose', '--no-warmup']),
+          extraArgs: BuiltList<String>(['--future-flag', '--other-flag']),
           binaryPath: '/opt/llama.cpp/llama-server',
         ),
       );
@@ -199,7 +201,7 @@ void main() {
 
     test('rejects more than 64 extra arguments', () {
       final config = ServerConfig.defaults().copyWith(
-        extraArgs: BuiltList<String>(List.filled(65, '--verbose')),
+        extraArgs: BuiltList<String>(List.filled(65, '--future-flag')),
       );
 
       expect(validator.validate(config), [
@@ -209,7 +211,7 @@ void main() {
 
     test('accepts 64 extra arguments', () {
       final config = ServerConfig.defaults().copyWith(
-        extraArgs: BuiltList<String>(List.filled(64, '--verbose')),
+        extraArgs: BuiltList<String>(List.filled(64, '--future-flag')),
       );
 
       expect(validator.validate(config), isEmpty);
@@ -248,7 +250,7 @@ void main() {
     test('rejects every managed flag in extraArgs', () {
       for (final flag in ServerConfigValidator.managedFlags) {
         final config = ServerConfig.defaults().copyWith(
-          extraArgs: BuiltList<String>(['--verbose', flag]),
+          extraArgs: BuiltList<String>(['--future-flag', flag]),
         );
 
         expect(validator.validate(config), [
@@ -278,7 +280,10 @@ void main() {
 
     test('accepts unmanaged flags in flag=value form', () {
       final config = withModel().copyWith(
-        extraArgs: BuiltList<String>(['--verbose=true', '--chat-template=x']),
+        extraArgs: BuiltList<String>([
+          '--future-flag=true',
+          '--not-in-catalog=x',
+        ]),
       );
 
       expect(validator.validate(config), isEmpty);
@@ -350,11 +355,78 @@ void main() {
         'startupTimeoutSeconds must be in 10..600',
       ]);
     });
+
+    test('rejects a managed typed field in params', () {
+      final config = ServerConfig.defaults().copyWith(
+        contextSize: 8192,
+        params: BuiltMap<String, String>({'ctx-size': '9999'}),
+      );
+
+      expect(validator.validate(config), [
+        "'ctx-size' is managed by ServerConfig",
+      ]);
+    });
+
+    test('rejects every catalog flag in extraArgs', () {
+      for (final argument in <String>['--ctx-size=999', '--metrics']) {
+        final flag = argument.split('=').first;
+        final config = withModel().copyWith(
+          extraArgs: BuiltList<String>([argument]),
+        );
+
+        expect(validator.validate(config), [
+          '$flag is managed by the server configuration',
+        ], reason: argument);
+      }
+    });
+
+    test('rejects the option terminator in extraArgs', () {
+      final config = withModel().copyWith(extraArgs: BuiltList<String>(['--']));
+
+      expect(validator.validate(config), [
+        '-- is managed by the server configuration',
+      ]);
+    });
+
+    test('rejects an extra argument that repeats a params flag', () {
+      final config = withModel().copyWith(
+        params: BuiltMap<String, String>({'chat-template': '{{a}}'}),
+        extraArgs: BuiltList<String>(['--chat-template={{b}}']),
+      );
+
+      expect(validator.validate(config), [
+        '--chat-template is managed by the server configuration',
+      ]);
+    });
+
+    test('validates params values through the catalog', () {
+      final config = ServerConfig.defaults().copyWith(
+        params: BuiltMap<String, String>({'pooling': 'Mean'}),
+      );
+
+      expect(validator.validate(config), [
+        '--pooling must be one of: none, mean, cls, last, rank',
+      ]);
+    });
   });
 
   group('validateForStart', () {
     test('accepts a .gguf model', () {
       expect(validator.validateForStart(withModel()), isEmpty);
+    });
+
+    test('checks parameter paths only for a start', () {
+      final config = withModel().copyWith(
+        params: BuiltMap<String, String>({'grammar-file': '/missing.gbnf'}),
+      );
+      const startValidator = ServerConfigValidator(
+        pathExists: _pathDoesNotExist,
+      );
+
+      expect(validator.validate(config), isEmpty);
+      expect(startValidator.validateForStart(config), [
+        '--grammar-file path does not exist: /missing.gbnf',
+      ]);
     });
 
     test('accepts an uppercase .GGUF suffix', () {

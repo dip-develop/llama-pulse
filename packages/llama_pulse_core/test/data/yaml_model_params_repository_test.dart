@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:built_collection/built_collection.dart';
 import 'package:llama_pulse_core/llama_pulse_core.dart';
 import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
@@ -214,5 +215,85 @@ void main() {
 
     expect(await paramsFile.exists(), isTrue);
     expect((await repository.load()).modelPath, '');
+  });
+
+  test('omits params from the document when the map is empty', () {
+    final document = repository.toDocument(ModelParams.defaults());
+    final params = document['params']! as Map<String, Object?>;
+
+    expect(params.containsKey('params'), isFalse);
+    expect(YamlEncoder.encode(document), isNot(contains('\n  params:\n')));
+  });
+
+  test('round-trips catalog values', () async {
+    final params = _params().copyWith(
+      params: BuiltMap<String, String>({'seed': '42', 'min-p': '0.05'}),
+    );
+
+    await repository.save(params);
+
+    expect(await repository.load(), params);
+  });
+
+  test('normalizes params insertion order before writing', () {
+    final first = _params().copyWith(
+      params: BuiltMap<String, String>({'seed': '42', 'temp': '0.5'}),
+    );
+    final second = _params().copyWith(
+      params: BuiltMap<String, String>({'temp': '0.5', 'seed': '42'}),
+    );
+
+    expect(
+      YamlEncoder.encode(repository.toDocument(first)),
+      YamlEncoder.encode(repository.toDocument(second)),
+    );
+  });
+
+  test(
+    'an old document without params loads and re-saves byte for byte',
+    () async {
+      final encoded = YamlEncoder.encode(repository.toDocument(_params()));
+      expect(encoded, isNot(contains('\n  params:\n')));
+      await paramsFile.writeAsString(encoded);
+
+      final loaded = await repository.load();
+      await repository.save(loaded);
+
+      expect(await paramsFile.readAsString(), encoded);
+    },
+  );
+
+  test('rejects a managed typed field in params', () async {
+    final params = _params().copyWith(
+      params: BuiltMap<String, String>({'ctx-size': '9999'}),
+    );
+
+    await expectLater(
+      repository.save(params),
+      throwsA(
+        isA<InvalidModelParamsException>().having(
+          (error) => error.violations,
+          'violations',
+          ["'ctx-size' is managed by ServerConfig"],
+        ),
+      ),
+    );
+  });
+
+  test('rejects a server-only parameter on the embedded surface', () async {
+    final params = _params().copyWith(
+      params: BuiltMap<String, String>({'top-nsigma': '0.5'}),
+    );
+
+    await expectLater(
+      repository.save(params),
+      throwsA(
+        isA<InvalidModelParamsException>().having(
+          (error) => error.violations,
+          'violations',
+          ["'top-nsigma' is not available for embedded"],
+        ),
+      ),
+    );
   });
 }

@@ -22,6 +22,29 @@ final class InferenceParamsChanged extends InferenceEvent {
   final ModelParams params;
 }
 
+/// The user edited one catalog parameter in the chat panel.
+///
+/// The bloc writes a typed [ModelParams] field when the id has one and the
+/// catalog map otherwise, so the essentials form and the panel can never
+/// disagree about the same value.
+final class InferenceParamChanged extends InferenceEvent {
+  const InferenceParamChanged(this.id, this.value);
+
+  /// Catalog id that changed.
+  final String id;
+
+  /// Canonical value, or `null` to remove the parameter.
+  final String? value;
+}
+
+/// The user reset every modified value of one panel group.
+final class InferenceParamsReset extends InferenceEvent {
+  const InferenceParamsReset(this.ids);
+
+  /// Catalog ids to clear; typed fields return to their defaults.
+  final Set<String> ids;
+}
+
 /// The user edited the prompt text.
 final class InferencePromptChanged extends InferenceEvent {
   const InferencePromptChanged(this.prompt);

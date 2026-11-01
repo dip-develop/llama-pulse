@@ -1,0 +1,915 @@
+# Reviewed overrides for the generated llama.cpp parameter catalog.
+#
+# The generator reads this file, merges it with the parsed vendored
+# common/arg.cpp, and writes catalog/llama_args.v0.8.0.yaml. Edit this file,
+# then run from the core package:
+#   dart run tool/args/generate_catalog.dart
+#
+# Classification rules:
+# - exposure defaults to configurable; this file lists everything else.
+# - managed: LlamaPulse owns the value and always passes it.
+# - unsupported: llama-server accepts the flag but LlamaPulse does not expose
+#   it, either because it belongs to another llama.cpp tool or because it is
+#   a per-request/interactive concern. Every entry has a reason.
+# - removed: upstream removed the flag; the reason (and a replacement when
+#   one exists) is required.
+# - groupMap lists every configurable parameter and every managed parameter,
+#   which keeps its functional group. The generator fails if one is missing.
+
+schemaVersion: 1
+
+source:
+  project: "llama.cpp"
+  tag: "v0.8.0"
+  commit: "8642541b255bfb5dc39cd351a178be09013a55d6"
+  file: "third_party/llama_cpp/v0.8.0/source/arg.cpp"
+  sha256: "fc09d12abd18c08a879c98a472e27ec80688c97b8c52720552112fe2c548f2ed"
+  surface: "llama-server"
+
+groups:
+  - id: essentials
+    name: "Model & context"
+    order: 10
+    defaultOpen: true
+  - id: memory
+    name: "Memory & loading"
+    order: 20
+    defaultOpen: false
+  - id: threads
+    name: "Threads & CPU"
+    order: 30
+    defaultOpen: false
+  - id: gpu
+    name: "GPU & offload"
+    order: 40
+    defaultOpen: false
+  - id: batching
+    name: "Batching & cache"
+    order: 50
+    defaultOpen: false
+  - id: sampling
+    name: "Sampling & penalties"
+    order: 60
+    defaultOpen: true
+  - id: grammar
+    name: "Grammar & constraints"
+    order: 70
+    defaultOpen: false
+  - id: lora
+    name: "LoRA, control vectors, multimodal"
+    order: 80
+    defaultOpen: false
+  - id: server
+    name: "Server, network & security"
+    order: 90
+    defaultOpen: false
+  - id: logging
+    name: "Logging & diagnostics"
+    order: 100
+    defaultOpen: false
+  - id: managed
+    name: "Managed by LlamaPulse"
+    order: 900
+    defaultOpen: false
+  - id: unsupported
+    name: "Not available"
+    order: 999
+    defaultOpen: false
+
+groupMap:
+  essentials:
+    - model
+    - ctx-size
+    - threads
+    - parallel
+    - predict
+    - keep
+    - cache-prompt
+    - cache-reuse
+    - kv-unified
+    - kv-unified-per-slot
+    - cache-ram
+    - cache-idle-slots
+    - swa-full
+    - ctx-checkpoints
+    - checkpoint-min-step
+    - context-shift
+  memory:
+    - load-mode
+    - lazy-mode
+    - check-tensors
+    - override-kv
+    - no-host
+    - cache-type-k
+    - cache-type-v
+    - rope-scaling
+    - rope-scale
+    - rope-freq-base
+    - rope-freq-scale
+    - yarn-orig-ctx
+    - yarn-ext-factor
+    - yarn-attn-factor
+    - yarn-beta-slow
+    - yarn-beta-fast
+  threads:
+    - threads-batch
+    - cpu-mask
+    - cpu-range
+    - cpu-strict
+    - prio
+    - poll
+    - cpu-mask-batch
+    - cpu-range-batch
+    - cpu-strict-batch
+    - prio-batch
+    - poll-batch
+    - threads-http
+    - spec-draft-threads
+    - spec-draft-threads-batch
+    - spec-draft-cpu-mask
+    - spec-draft-cpu-range
+    - spec-draft-cpu-strict
+    - spec-draft-prio
+    - spec-draft-poll
+    - spec-draft-cpu-mask-batch
+    - spec-draft-cpu-strict-batch
+    - spec-draft-prio-batch
+    - spec-draft-poll-batch
+  gpu:
+    - gpu-layers
+    - flash-attn
+    - device
+    - override-tensor
+    - cpu-moe
+    - n-cpu-moe
+    - moe-cache-mib
+    - n-cpu-ffn
+    - split-mode
+    - tensor-split
+    - main-gpu
+    - fit
+    - fit-target
+    - fit-ctx
+    - op-offload
+    - rpc
+    - numa
+    - repack
+    - kv-offload
+    - spec-draft-ngl
+    - spec-draft-device
+    - spec-draft-cpu-moe
+    - spec-draft-n-cpu-moe
+    - spec-draft-override-tensor
+    - spec-draft-n-ubatch
+  batching:
+    - batch-size
+    - ubatch-size
+    - cont-batching
+  sampling:
+    - samplers
+    - seed
+    - sampler-seq
+    - ignore-eos
+    - temp
+    - top-k
+    - top-p
+    - min-p
+    - top-nsigma
+    - xtc-probability
+    - xtc-threshold
+    - typical
+    - repeat-last-n
+    - repeat-penalty
+    - presence-penalty
+    - frequency-penalty
+    - dry-multiplier
+    - dry-base
+    - dry-allowed-length
+    - dry-penalty-last-n
+    - dry-sequence-breaker
+    - adaptive-target
+    - adaptive-decay
+    - dynatemp-range
+    - dynatemp-exp
+    - mirostat
+    - mirostat-lr
+    - mirostat-ent
+    - logit-bias
+    - backend-sampling
+    - spec-draft-n-max
+    - spec-draft-n-min
+    - spec-draft-p-split
+    - spec-draft-p-min
+    - spec-draft-backend-sampling
+    - spec-draft-sampling
+    - spec-type
+    - spec-synth-len
+    - spec-synth-rates
+    - spec-ngram-mod-n-min
+    - spec-ngram-mod-n-max
+    - spec-ngram-mod-n-match
+    - spec-ngram-simple-size-n
+    - spec-ngram-simple-size-m
+    - spec-ngram-simple-min-hits
+    - spec-ngram-map-k-size-n
+    - spec-ngram-map-k-size-m
+    - spec-ngram-map-k-min-hits
+    - spec-ngram-map-k4v-size-n
+    - spec-ngram-map-k4v-size-m
+    - spec-ngram-map-k4v-min-hits
+  grammar:
+    - grammar
+    - grammar-file
+    - json-schema
+    - json-schema-file
+  lora:
+    - lora
+    - lora-scaled
+    - control-vector
+    - control-vector-scaled
+    - control-vector-layer-range
+    - lora-init-without-apply
+    - mmproj
+    - mmproj-url
+    - mmproj-auto
+    - mmproj-offload
+    - mmproj-device
+    - image-min-tokens
+    - image-max-tokens
+    - mtmd-batch-max-tokens
+    - video-fps
+    - video-timestamp-interval
+    - video-ffmpeg-dir
+  server:
+    - host
+    - port
+    - api-key
+    - alias
+    - tags
+    - reuse-port
+    - path
+    - cors-origins
+    - cors-methods
+    - cors-headers
+    - cors-credentials
+    - api-prefix
+    - ui-config
+    - ui-config-file
+    - ui-mcp-proxy
+    - tools
+    - tools-runtime
+    - mcp-servers-config
+    - mcp-servers-json
+    - agent
+    - ui
+    - connect
+    - connect-code
+    - embedding
+    - rerank
+    - pooling
+    - api-key-file
+    - ssl-key-file
+    - ssl-cert-file
+    - timeout
+    - sse-ping-interval
+    - props
+    - slot-save-path
+    - slot-prompt-similarity
+    - media-path
+    - models-dir
+    - models-preset
+    - models-max
+    - models-memory-margin
+    - models-autoload
+    - sleep-idle-seconds
+    - chat-template
+    - chat-template-file
+    - chat-template-kwargs
+    - jinja
+    - skip-chat-parsing
+    - prefill-assistant
+    - reasoning-format
+    - reasoning
+    - reasoning-effort
+    - reasoning-budget
+    - reasoning-budget-message
+    - reasoning-preserve
+    - spec-draft-model
+    - spec-draft-type-k
+    - spec-draft-type-v
+  logging:
+    - perf
+    - log-disable
+    - log-file
+    - log-jsonl
+    - log-prompts-dir
+    - log-colors
+    - verbose
+    - verbosity
+    - log-prefix
+    - log-timestamps
+  managed:
+    - metrics
+    - slots
+    - extra-args
+
+managed:
+  - id: model
+    owner: modelPath
+    managedBy: "ServerConfig"
+    reason: "LlamaPulse always passes the configured model file."
+  - id: ctx-size
+    owner: contextSize
+    managedBy: "ServerConfig"
+    reason: "LlamaPulse always passes the configured context size."
+  - id: threads
+    owner: threads
+    managedBy: "ServerConfig"
+    reason: "LlamaPulse always passes the configured thread count."
+  - id: gpu-layers
+    owner: gpuLayers
+    managedBy: "ServerConfig"
+    reason: "LlamaPulse always passes the configured GPU layer count."
+  - id: parallel
+    owner: parallelSlots
+    managedBy: "ServerConfig"
+    reason: "LlamaPulse always passes the configured slot count."
+  - id: host
+    owner: host
+    managedBy: "ServerConfig"
+    reason: "LlamaPulse always passes the configured bind address."
+  - id: port
+    owner: port
+    managedBy: "ServerConfig"
+    reason: "LlamaPulse always passes the configured port."
+  - id: alias
+    owner: modelAlias
+    managedBy: "ServerConfig"
+    reason: "LlamaPulse always passes the configured model alias."
+  - id: api-key
+    owner: apiKey
+    managedBy: "ServerConfig"
+    reason: "LlamaPulse always passes the configured API key."
+  - id: flash-attn
+    owner: flashAttention
+    managedBy: "ServerConfig"
+    reason: "LlamaPulse always passes the configured flash-attention mode."
+  - id: load-mode
+    owner: null
+    managedBy: "ServerConfig"
+    reason: "Derived from ServerConfig.mmap and ServerConfig.mlock."
+  - id: metrics
+    owner: null
+    managedBy: "LlamaPulse supervisor"
+    reason: "The dashboard needs the Prometheus endpoint, so it is always enabled."
+  - id: slots
+    owner: null
+    managedBy: "LlamaPulse supervisor"
+    reason: "The dashboard reads slot state, so the slots endpoint is always enabled."
+
+removed:
+  - id: draft
+    replacement: "--spec-draft-n-max or --spec-ngram-mod-n-max"
+    reason: "Upstream removed --draft in favour of the explicit speculative-decoding flags."
+  - id: draft-min
+    replacement: "--spec-draft-n-min or --spec-ngram-mod-n-min"
+    reason: "Upstream removed --draft-min in favour of the explicit speculative-decoding flags."
+  - id: spec-ngram-size-n
+    replacement: "--spec-ngram-simple-size-n, --spec-ngram-map-k-size-n or --spec-ngram-map-k4v-size-n"
+    reason: "Upstream split the generic ngram size into per-method flags."
+  - id: spec-ngram-size-m
+    replacement: "--spec-ngram-simple-size-m, --spec-ngram-map-k-size-m or --spec-ngram-map-k4v-size-m"
+    reason: "Upstream split the generic ngram size into per-method flags."
+  - id: spec-ngram-min-hits
+    replacement: "--spec-ngram-simple-min-hits, --spec-ngram-map-k-min-hits or --spec-ngram-map-k4v-min-hits"
+    reason: "Upstream split the generic ngram hit count into per-method flags."
+  - id: defrag-thold
+    replacement: null
+    reason: "Deprecated upstream; KV cache defragmentation is automatic, so no replacement flag is needed."
+
+unsupported:
+  - reason: "Prints information and exits; a supervised server never returns from it."
+    ids:
+      - help
+      - version
+      - cache-list
+      - completion-bash
+      - list-devices
+  - reason: "CLI client mode: connects to another server instead of hosting one."
+    ids:
+      - server-base
+  - reason: "CLI diagnostics only; llama-server does not print these reports."
+    ids:
+      - show-timings
+  - reason: "Lookup-decoding tool only; llama-server does not use it."
+    ids:
+      - lookup-cache-static
+      - lookup-cache-dynamic
+  - reason: "Perplexity and evaluation tool only; llama-server does not run it."
+    ids:
+      - hellaswag
+      - hellaswag-tasks
+      - winogrande
+      - winogrande-tasks
+      - multiple-choice
+      - multiple-choice-tasks
+      - kl-divergence
+      - save-all-logits
+      - ppl-stride
+      - ppl-output-type
+      - ppl
+      - chunk
+      - chunks
+  - reason: "Batched-bench tool only; llama-server does not report these scores."
+    ids:
+      - npp
+      - ntg
+      - npl
+      - pps
+      - tgs
+  - reason: "Imatrix tool only; llama-server does not collect statistics."
+    ids:
+      - output
+      - output-frequency
+      - output-format
+      - save-frequency
+      - process-output
+      - nextn
+      - context-file
+      - chunk-size
+      - chunk-separator
+      - junk
+      - pos
+      - show-statistics
+  - reason: "Embedding and retrieval tool output only; the server has its own JSON protocol."
+    ids:
+      - embd-normalize
+      - embd-output-format
+      - embd-separator
+      - cls-separator
+      - in-file
+  - reason: "Embedding tool only; llama-server does not accept this launch setting."
+    ids:
+      - attention
+  - reason: "Tokenize tool only; the server tokenizes chat requests itself."
+    ids:
+      - ids
+      - parse-special
+      - no-parse-special
+      - show-count
+      - stdin
+  - reason: "Diffusion (image generation) tool only."
+    ids:
+      - diffusion-steps
+      - diffusion-visual
+      - diffusion-eps
+      - diffusion-algorithm
+      - diffusion-alg-temp
+      - diffusion-block-length
+      - diffusion-cfg-scale
+      - diffusion-add-gumbel-noise
+      - positive-file
+      - negative-file
+      - pca-batch
+      - pca-iter
+      - method
+  - reason: "Text-to-speech tool only."
+    ids:
+      - tts-lang
+      - tts-voice
+      - tts-speaker-file
+  - reason: "Training tool only; llama-server does not train."
+    ids:
+      - learning-rate
+      - learning-rate-min
+      - learning-rate-decay-epochs
+      - weight-decay
+      - val-split
+      - epochs
+      - optimizer
+      - check
+      - save-logits
+      - logits-output-dir
+      - tensor-filter
+  - reason: "Completion/passkey and fit tool only; llama-server does not use it."
+    ids:
+      - grp-attn-n
+      - grp-attn-w
+      - fit-print
+  - reason: "Parallel-decoding tool only; llama-server has no counterpart."
+    ids:
+      - sequences
+  - reason: "Preloads a media file for the CLI; llama-server accepts media per request."
+    ids:
+      - image
+  - reason: "Downloads or resolves a model from the internet; the supervisor expects an existing local file."
+    ids:
+      - model-url
+      - docker-repo
+      - hf-repo
+      - hf-file
+      - hf-token
+      - offline
+      - mtp
+      - dflash
+      - eagle3
+      - spec-draft-hf
+  - reason: "Fixture shortcut: rewrites several parameters and downloads weights."
+    ids:
+      - embd-gemma-default
+      - fim-qwen-1.5b-default
+      - fim-qwen-3b-default
+      - fim-qwen-7b-default
+      - fim-qwen-7b-spec
+      - fim-qwen-14b-spec
+      - fim-qwen-30b-default
+      - gpt-oss-20b-default
+      - gpt-oss-120b-default
+      - vision-gemma-4b-default
+      - vision-gemma-12b-default
+      - spec-default
+  - reason: "Speculative-decoding tool only; llama-server does not accept this flag."
+    ids:
+      - spec-draft-cpu-range-batch
+  - reason: "Interactive or single-shot CLI prompt handling; llama-server takes prompts per request."
+    ids:
+      - prompt
+      - system-prompt
+      - system-prompt-file
+      - file
+      - binary-file
+      - reverse-prompt
+      - prompt-cache
+      - prompt-cache-all
+      - prompt-cache-ro
+      - conversation
+      - single-turn
+      - interactive
+      - interactive-first
+      - multiline-input
+      - in-prefix
+      - in-prefix-bos
+      - in-suffix
+      - escape
+      - print-token-count
+      - special
+      - verbose-prompt
+      - display-prompt
+      - color
+      - simple-io
+      - spm-infill
+      - no-bos
+      - warmup
+
+curated:
+  model:
+    displayName: "Model file"
+    summary: "GGUF model file served by llama-server."
+    description: "Path to the GGUF model to load. LlamaPulse manages this value from ServerConfig.modelPath."
+    type: "path"
+    owner: "modelPath"
+    requiresExistingPath: true
+  ctx-size:
+    displayName: "Context size"
+    summary: "Prompt context window in tokens."
+    description: "Number of tokens in the KV cache. 0 loads the trained context size from the model. Larger values use more memory on every slot."
+    type: "int"
+    defaultValue: 0
+    min: 0
+    step: 256
+    owner: "contextSize"
+  threads:
+    displayName: "Generation threads"
+    summary: "CPU threads used during generation."
+    description: "Worker threads for token generation. 0 or a negative value uses the hardware concurrency reported by the OS."
+    type: "int"
+    min: 0
+    owner: "threads"
+  gpu-layers:
+    displayName: "GPU layers"
+    summary: "Layers offloaded to the GPU."
+    description: "Number of model layers kept in VRAM. Use 0 for CPU-only inference or a number up to the model's layer count; llama.cpp v0.8.0 also accepts 'auto' and 'all'."
+    type: "string"
+    owner: "gpuLayers"
+  parallel:
+    displayName: "Parallel slots"
+    summary: "Server slots that can process requests concurrently."
+    description: "Number of request slots. -1 lets llama.cpp choose from the context size; every slot splits the context budget."
+    type: "int"
+    defaultValue: -1
+    min: -1
+    owner: "parallelSlots"
+  batch-size:
+    displayName: "Logical batch size"
+    summary: "Maximum logical batch size."
+    description: "Maximum number of tokens in a logical batch. Larger batches improve prompt throughput but use more memory."
+    type: "int"
+    defaultValue: 2048
+    min: 1
+    step: 64
+  ubatch-size:
+    displayName: "Physical batch size"
+    summary: "Maximum physical batch size."
+    description: "Maximum number of tokens in a physical batch, which bounds the compute buffer. It must not exceed the logical batch size."
+    type: "int"
+    defaultValue: 512
+    min: 1
+    step: 64
+  flash-attn:
+    displayName: "Flash attention"
+    summary: "Flash-attention mode."
+    description: "Enables flash attention, which reduces KV cache memory and speeds up long contexts. \"auto\" enables it when the backend supports it."
+    type: "enum"
+    defaultValue: "auto"
+    allowed: [on, off, auto]
+    owner: "flashAttention"
+  host:
+    displayName: "Bind address"
+    summary: "Address llama-server listens on."
+    description: "IP address to bind. 0.0.0.0 exposes the server on every interface; 127.0.0.1 keeps it local."
+    type: "string"
+    defaultValue: "127.0.0.1"
+    owner: "host"
+  port:
+    displayName: "Port"
+    summary: "TCP port llama-server listens on."
+    description: "Port for the OpenAI-compatible HTTP API and the dashboard metrics."
+    type: "int"
+    defaultValue: 8080
+    min: 1
+    max: 65535
+    owner: "port"
+  api-key:
+    displayName: "API key"
+    summary: "Bearer token required from clients."
+    description: "When set, every request must send this key as a bearer token. Leave empty to disable authentication."
+    type: "string"
+    owner: "apiKey"
+    warning: "The key is stored in plain text in server.yaml."
+  alias:
+    displayName: "Model alias"
+    summary: "Model name reported to clients."
+    description: "Name returned by the models endpoint and shown to API clients."
+    type: "string"
+    owner: "modelAlias"
+  temp:
+    displayName: "Temperature"
+    summary: "Sampling temperature."
+    description: "Scales the logit distribution. 0 is greedy, higher values are more random. 0.8 is a general-purpose default."
+    type: "double"
+    defaultValue: 0.8
+    min: 0
+    max: 2
+    step: 0.01
+  top-k:
+    displayName: "Top-k"
+    summary: "Top-k sampling cutoff."
+    description: "Keep only the k most likely tokens before sampling. 0 disables the cutoff."
+    type: "int"
+    defaultValue: 40
+    min: 0
+  top-p:
+    displayName: "Top-p"
+    summary: "Nucleus sampling probability mass."
+    description: "Keep the smallest set of tokens whose cumulative probability reaches p. 1.0 disables the cutoff."
+    type: "double"
+    defaultValue: 0.95
+    min: 0
+    max: 1
+    step: 0.01
+  min-p:
+    displayName: "Min-p"
+    summary: "Minimum probability relative to the most likely token."
+    description: "Drop tokens whose probability is below p times the probability of the best token. 0 disables the cutoff."
+    type: "double"
+    defaultValue: 0.05
+    min: 0
+    max: 1
+    step: 0.01
+  seed:
+    displayName: "Seed"
+    summary: "RNG seed for sampling."
+    description: "Fixed seed makes sampling reproducible. -1 draws a random seed for every run."
+    type: "int"
+    defaultValue: -1
+    min: -1
+  repeat-penalty:
+    displayName: "Repeat penalty"
+    summary: "Penalty for repeated tokens."
+    description: "Divides the probability of tokens that already appeared. 1.0 disables the penalty."
+    type: "double"
+    defaultValue: 1.0
+    min: 0
+    step: 0.01
+  chat-template:
+    displayName: "Chat template"
+    summary: "Jinja chat template override."
+    description: "Replaces the template stored in the model metadata. Leave empty to use the model default."
+    type: "string"
+  jinja:
+    displayName: "Jinja templates"
+    summary: "Use the Jinja chat template engine."
+    description: "Renders chat templates with Jinja instead of the legacy parser. Needed for most modern chat models."
+    type: "bool"
+  grammar:
+    displayName: "Grammar"
+    summary: "BNF grammar that constrains generation."
+    description: "Grammar in llama.cpp GBNF syntax. Mutually exclusive with a JSON schema."
+    type: "string"
+  cache-type-k:
+    displayName: "KV cache type (K)"
+    summary: "Data type for the key half of the KV cache."
+    description: "Lower-precision cache types reduce memory at the cost of quality. f16 is the upstream default."
+    type: "enum"
+    defaultValue: "f16"
+    allowed: [f32, f16, bf16, q8_0, q4_0, q4_1, iq4_nl, q5_0, q5_1]
+  cache-type-v:
+    displayName: "KV cache type (V)"
+    summary: "Data type for the value half of the KV cache."
+    description: "Lower-precision cache types reduce memory at the cost of quality. f16 is the upstream default."
+    type: "enum"
+    defaultValue: "f16"
+    allowed: [f32, f16, bf16, q8_0, q4_0, q4_1, iq4_nl, q5_0, q5_1]
+  mmproj:
+    displayName: "Multimodal projector"
+    summary: "Projector file for image and audio input."
+    description: "Path to the mmproj file that lets a multimodal model accept media. Leave empty for text-only models."
+    type: "path"
+    requiresExistingPath: true
+  load-mode:
+    displayName: "Model load mode"
+    summary: "How the model file is mapped into memory."
+    description: "auto memory-maps unless a device cannot; none reads eagerly; mmap maps the file; mlock keeps it resident; mmap+mlock combines both."
+    type: "enum"
+    defaultValue: "auto"
+    allowed: [auto, none, mmap, mlock, mmap+mlock]
+
+  tts-lang:
+    type: "string"
+  lora-scaled:
+    type: "string"
+  control-vector-scaled:
+    type: "string"
+  hf-file:
+    type: "string"
+
+synthetic:
+  - id: extra-args
+    displayName: Extra arguments
+    summary: Raw llama-server tokens appended after the managed arguments.
+    description: The separator entry documents the passthrough convention. LlamaPulse stores the tokens in ServerConfig.extraArgs and appends them after its managed arguments.
+    flags: ["--"]
+    type: string
+    arity: 0
+    repeatable: true
+    group: managed
+    owner: extraArgs
+    managedBy: ServerConfig.extraArgs
+    reason: LlamaPulse appends ServerConfig.extraArgs after its managed arguments.
+
+embeddedIds:
+  - ctx-size
+  - threads
+  - gpu-layers
+  - temp
+  - top-k
+  - top-p
+  - min-p
+  - seed
+  - batch-size
+  - chat-template
+
+repeatableIds:
+  - logit-bias
+  - override-kv
+  - lora
+  - lora-scaled
+  - control-vector
+  - control-vector-scaled
+  - image
+  - tensor-filter
+
+requiresExistingPathIds:
+  - model
+  - mmproj
+  - lora
+  - control-vector
+  - grammar-file
+  - json-schema-file
+  - api-key-file
+  - ssl-key-file
+  - ssl-cert-file
+  - chat-template-file
+  - media-path
+  - models-dir
+  - models-preset
+  - video-ffmpeg-dir
+  - spec-draft-model
+  - ui-config-file
+  - mcp-servers-config
+  - positive-file
+  - negative-file
+  - tts-speaker-file
+
+itemTypes:
+  lora: string
+  lora-scaled: string
+  control-vector: string
+  control-vector-scaled: string
+  override-kv: string
+  logit-bias: string
+  api-key: string
+  image: string
+  dry-sequence-breaker: string
+
+advancedIds:
+  - no-host
+  - check-tensors
+  - override-kv
+  - op-offload
+  - split-mode
+  - tensor-split
+  - main-gpu
+  - rpc
+  - numa
+  - repack
+  - kv-offload
+  - sampler-seq
+  - samplers
+  - typical
+  - top-nsigma
+  - backend-sampling
+  - logit-bias
+  - repeat-last-n
+  - tags
+  - reuse-port
+  - api-prefix
+  - path
+  - props
+  - media-path
+  - embedding
+  - rerank
+  - pooling
+  - perf
+  - prefill-assistant
+  - skip-chat-parsing
+  - chat-template-kwargs
+  - spec-type
+  - device
+  - override-tensor
+  - threads-batch
+  - prio
+  - prio-batch
+  - poll
+  - poll-batch
+  - verbose
+  - verbosity
+
+advancedPrefixes:
+  - spec-
+  - dry-
+  - adaptive-
+  - dynatemp-
+  - xtc-
+  - mirostat-
+  - yarn-
+  - rope-
+  - cpu-
+  - fit
+  - moe-
+  - n-cpu-
+  - cors-
+  - ui-
+  - mcp-
+  - reasoning-
+  - video-
+  - image-
+  - mtmd-
+  - models-
+  - ssl-
+  - log-
+  - tools
+  - connect
+  - threads-http
+  - sleep-idle
+  - sse-ping
+  - slot-prompt
+  - cache-type-
+
+ignoredFlags:
+  - flag: --no-kv-unified
+    reason: "Alternate negation of kv-unified; the catalog records -no-kvu."
+  - flag: --no-kv-offload
+    reason: "Alternate negation of kv-offload; the catalog records -nkvo."
+  - flag: --no-repack
+    reason: "Alternate negation of repack; the catalog records -nr."
+  - flag: --no-cont-batching
+    reason: "Alternate negation of cont-batching; the catalog records -nocb."
+  - flag: --no-mmproj-auto
+    reason: "Alternate negation of mmproj-auto; the catalog records --no-mmproj."
+  - flag: --no-webui-mcp-proxy
+    reason: "Alternate negation of ui-mcp-proxy; the catalog records --no-ui-mcp-proxy."
+  - flag: --no-agent
+    reason: "Alternate negation of agent; the catalog records -no-ag."
+  - flag: --no-webui
+    reason: "Alternate negation of ui; the catalog records --no-ui."

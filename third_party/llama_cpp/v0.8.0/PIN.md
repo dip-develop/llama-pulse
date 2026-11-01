@@ -21,9 +21,37 @@ All files were downloaded from the tag with `curl -fsSL`:
 - `include/ggml-opt.h` — https://raw.githubusercontent.com/ggml-org/llama.cpp/v0.8.0/ggml/include/ggml-opt.h
 - `include/gguf.h` — https://raw.githubusercontent.com/ggml-org/llama.cpp/v0.8.0/ggml/include/gguf.h
 - `LICENSE` — https://raw.githubusercontent.com/ggml-org/llama.cpp/v0.8.0/LICENSE
+- `source/arg.cpp` — https://raw.githubusercontent.com/ggml-org/llama.cpp/v0.8.0/common/arg.cpp
 
 The ggml headers live under `ggml/include/` in this tag; only `llama.h` is at
 the repository root's `include/`.
+
+`source/arg.cpp` is vendored for one purpose: it is the source of truth for the
+`llama-server` command-line parameter catalog. `dart run
+tool/args/generate_catalog.dart` parses its `add_opt(common_arg(...))` blocks;
+the parser and the coverage test fail if a server-visible flag is not accounted
+for. It is not compiled and does not take part in the native build.
+
+### Why `arg.cpp` is vendored
+
+The catalog must be reproducible offline and reviewable in a diff. Parsing the
+file at runtime would need a network clone of the tag, and generating it from a
+local checkout would make the digest depend on the machine. The vendored file
+pins the exact bytes: `SHA256SUMS` covers it, the catalog records its hash as
+`source.sha256`, and `parameter_coverage_test.dart` re-parses it so a flag
+cannot silently disappear from the catalog.
+
+The generated outputs are
+`packages/llama_pulse_core/catalog/llama_args.v0.8.0.yaml` and
+`packages/llama_pulse_core/lib/src/domain/parameters/parameter_catalog.generated.dart`.
+The only hand-edited input is
+`packages/llama_pulse_core/catalog/llama_args.v0.8.0.overrides.yaml`.
+`dart run melos run gen:catalog:check` fails when either generated file is
+stale. See [docs/parameters.md](../../../docs/parameters.md) for the workflow.
+
+This file is the `llama-server` surface only. The embedded shared library is
+pinned separately by `include/llama.h` and `LlamaVersionPin`; moving one pin
+does not automatically move the other.
 
 `ggml-alloc.h` and `ggml-opt.h` are not used by the bindings directly, but
 `llama.h` includes them (`ggml-backend.h` pulls in `ggml-alloc.h`, and
@@ -41,6 +69,7 @@ d114067f9099c4a0e2bbc0625c676d4894d9cf0ea27168ee072c7de0e71bb51d  include/ggml-a
 e56714aab702e5ce62ee587a409643c08f7e93e8fbb77f48ef7cc85075f96fa4  include/gguf.h
 c0854771d3760a41642c4e59429c5b3b9fc774887c59d37eeadc4527681732cd  include/llama.h
 94f29bbed6a22c35b992c5c6ebf0e7c92f13b836b90f36f461c9cf2f0f1d010d  LICENSE
+fc09d12abd18c08a879c98a472e27ec80688c97b8c52720552112fe2c548f2ed  source/arg.cpp
 ```
 
 `SHA256SUMS` repeats the same list with paths relative to the repository root,

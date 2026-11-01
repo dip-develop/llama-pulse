@@ -11,6 +11,10 @@ and worker layer.
   `ServerHealth`, `ServerFailure`, `ServerBinaryInfo`, `ServerProbeResult`,
   `ServerLogEntry`, `ServerLogStream`, `ServerFlashAttention`).
 - `ModelParamLimits`, `ModelParamsValidator` and `ServerConfigValidator`.
+- The generated parameter catalog: `ParameterCatalog.v080` and
+  `ParameterSpec`/`ParameterGroupSpec`, with `ParameterValidator`,
+  `ParameterValueCodec` and `ParameterValues`. `ServerArgumentBuilder` and
+  `ModelArgumentBuilder` turn catalog values into command-line vectors.
 - Gateways: `LlamaEngine`, `LlamaSession`, `ModelParamsRepository`,
   `ModelScanner`, `ConfigStore`, and the server seams
   `ServerConfigRepository`, `ServerStateRepository`, `ServerController`,
@@ -175,6 +179,95 @@ server:
 `serverYamlFile`, `serverStateYamlFile`, `serverLogFile`, `binDirectory` and
 `modelsDirectory`.
 
+`server.yaml` stores additional catalog values in `server.params`, only when
+the map is non-empty; an empty map removes the key.
+
+## Parameter catalog
+
+`ParameterCatalog.v080` is the runtime catalog for the pinned `llama.cpp`
+`v0.8.0` `llama-server`: 362 parameters in 12 groups (210 configurable, 14
+managed, 132 unsupported, 6 removed), of which 10 are catalogued for the
+embedded native session. Seven of those are consumed by `NativeLlamaSession`
+today; `seed`, `min-p` and `batch-size` are stored and exported but the sampler
+still uses its fixed seed, min-p and derived batch size. `ParameterSpec`
+carries the flags, type, arity, default, bounds, allow-list, repeatability,
+surfaces, exposure, owner, environment variable and the curated
+summary/description. `ParameterCatalog` lives in
+`lib/src/domain/parameters/` and imports no `dart:io`.
+
+The catalog is generated, never typed by hand:
+
+| Path | Role |
+|---|---|
+| `third_party/llama_cpp/v0.8.0/source/arg.cpp` | Vendored upstream source of truth. |
+| `catalog/llama_args.v0.8.0.overrides.yaml` | Reviewed overrides; the only editable input. |
+| `catalog/llama_args.v0.8.0.yaml` | Generated catalog document. |
+| `lib/src/domain/parameters/parameter_catalog.generated.dart` | Generated part of `parameter_catalog.dart`. |
+| `lib/src/data/catalog/upstream_arg_parser.dart` | Parser for `add_opt(common_arg(...))` blocks. |
+| `lib/src/data/catalog/catalog_digest.dart` | Canonical body and SHA-256 digest. |
+| `tool/args/generate_catalog.dart` | Generator (`--check` for CI). |
+
+From the workspace root:
+
+```sh
+dart run melos run gen:catalog
+dart run melos run gen:catalog:check
+```
+
+Never edit the generated YAML or Dart file: change the overrides file and
+regenerate. `gen:catalog:check` fails when either generated file is stale and
+runs in `melos run check`. The digest covers the canonical body without
+timestamps or local paths; `source.sha256` covers the vendored `arg.cpp`.
+`package:crypto` is a dev dependency used only by the generator and tests, never
+by runtime code. The generator details are in
+[`tool/args/README.md`](tool/args/README.md) and the full workflow in
+[docs/parameters.md](../../docs/parameters.md).
+
+### Validation and storage
+
+`ParameterValueCodec` canonicalizes and validates one value: booleans accept
+`true`/`false`/`1`/`0`/`on`/`off`; integers and finite doubles round-trip
+through their canonical string; enums must be in `allowed`; a path is checked
+for existence only when a start is prepared; repeatable and arity-2 values use
+newline separators; values are capped at 4096 characters and reject control
+characters. An empty value means "unset".
+
+`ParameterValidator` rejects managed ids, unsupported and removed ids, ids
+outside the requested surface, unknown ids and invalid values, with one message
+per problem in catalog order. `ParameterValues` normalizes a map into catalog
+order, keeps unknown ids sorted at the end, and resolves the effective value of
+an id (typed owner first, then the catalog map).
+
+Catalog values are persisted only when non-empty. `server.yaml` keeps them
+under `server.params`; `params.yaml` keeps them under `params.params`, because
+the outer `params` is the `ModelParams` document:
+
+```yaml
+schemaVersion: 1
+params:
+  modelPath: /models/llama-3.2-3b-instruct.Q4_K_M.gguf
+  contextSize: 2048
+  temperature: 0.8
+  chatTemplate: chatml
+  params:
+    seed: '42'
+    min-p: '0.05'
+```
+
+A value with a typed field is stored only in that field, never duplicated in
+the map. One id has one owner.
+
+### Argument builders
+
+`ServerArgumentBuilder` emits the managed server block, then `server.params` in
+catalog order, then `extraArgs`. `ModelArgumentBuilder` emits the typed
+`ModelParams` block (`-m`, `-c`, `-t`, `-ngl`, `--temp`, `--top-k`, `--top-p`,
+`-b`), then the remaining embedded parameters in catalog order. Both emit a
+flag and its value as separate vector tokens (never `--flag=value`), emit the
+negated flag for a false boolean when one exists, repeat repeatable values, and
+skip typed-owner, wrong-surface, managed, unsupported and removed ids. Tokens
+are never shell-quoted.
+
 ### JSON boundary
 
 JSON decoding is confined to `lib/src/data/server/` (`ServerMonitor` decodes
@@ -269,10 +362,15 @@ params:
   topP: 0.95
   topK: 40
   maxTokens: 256
+  chatTemplate: chatml
+  params:
+    seed: '42'
 ```
 
-The repository treats a missing, malformed or stale document as "use defaults"
-and validates before writing.
+`chatTemplate` and the `params` map are optional; only non-empty values are
+written, and `params` disappears entirely when empty. A typed field always wins
+over a stale map entry. The repository treats a missing, malformed or stale
+document as "use defaults" and validates before writing.
 
 ## Usage
 

@@ -28,6 +28,8 @@ class ServerBloc extends Bloc<ServerEvent, ServerDashboardState> {
   }) : super(ServerDashboardState.initial(serverState: _controller.state)) {
     on<ServerDashboardStarted>(_onStarted);
     on<ServerConfigChanged>(_onConfigChanged);
+    on<ServerParamChanged>(_onParamChanged);
+    on<ServerParamsReset>(_onParamsReset);
     on<ServerSaveRequested>(_onSaveRequested);
     on<ServerReloadRequested>(_onReloadRequested);
     on<ServerStartRequested>(_onStartRequested);
@@ -168,6 +170,51 @@ class ServerBloc extends Bloc<ServerEvent, ServerDashboardState> {
       state.rebuild(
         (b) => b
           ..config.replace(event.config)
+          ..dirty = true,
+      ),
+    );
+  }
+
+  void _onParamChanged(
+    ServerParamChanged event,
+    Emitter<ServerDashboardState> emit,
+  ) {
+    final BuiltMap<String, String> params = ParameterValues.set(
+      state.config.params,
+      event.id,
+      event.value,
+    );
+    // Typing back the value that is already stored is not an edit; marking the
+    // form dirty for it would be a lie.
+    if (params == state.config.params) {
+      return;
+    }
+    _emit(
+      emit,
+      state.rebuild(
+        (b) => b
+          ..config.replace(state.config.copyWith(params: params))
+          ..dirty = true,
+      ),
+    );
+  }
+
+  void _onParamsReset(
+    ServerParamsReset event,
+    Emitter<ServerDashboardState> emit,
+  ) {
+    var params = state.config.params;
+    for (final String id in event.ids) {
+      params = ParameterValues.remove(params, id);
+    }
+    if (params == state.config.params) {
+      return;
+    }
+    _emit(
+      emit,
+      state.rebuild(
+        (b) => b
+          ..config.replace(state.config.copyWith(params: params))
           ..dirty = true,
       ),
     );

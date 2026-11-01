@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:built_collection/built_collection.dart';
 import 'package:llama_pulse_core/llama_pulse_core.dart';
 import 'package:llama_pulse_core/src/data/inference/native/native_llama_session.dart';
 import 'package:path/path.dart' as p;
@@ -43,12 +44,16 @@ void main() {
     }
   });
 
-  ModelParams params({int contextSize = 4096, int maxTokens = 8}) =>
-      ModelParams.defaults().copyWith(
-        modelPath: modelPath,
-        contextSize: contextSize,
-        maxTokens: maxTokens,
-      );
+  ModelParams params({
+    int contextSize = 4096,
+    int maxTokens = 8,
+    Map<String, String> catalogParams = const {},
+  }) => ModelParams.defaults().copyWith(
+    modelPath: modelPath,
+    contextSize: contextSize,
+    maxTokens: maxTokens,
+    params: BuiltMap<String, String>(catalogParams),
+  );
 
   Future<NativeLlamaSession> openSession() async {
     final session = NativeLlamaSession(libraryPath: libraryPath);
@@ -435,6 +440,54 @@ void main() {
     expect(finalMetrics?.generatedTokenCount, 3);
     expect(finalMetrics?.tokensPerSecond, 12.0);
     expect(finalMetrics?.promptTokensPerSecond, 2000.0);
+  });
+
+  test('begin applies min-p and seed from the catalog map', () async {
+    if (skipReason != null) {
+      markTestSkipped(skipReason!);
+      return;
+    }
+    final session = await loadedSession();
+    fake.setTokenizeResult(1);
+
+    session.begin(
+      request(
+        modelParams: params(catalogParams: {'min-p': '0.2', 'seed': '42'}),
+      ),
+    );
+
+    expect(fake.samplerMinP, closeTo(0.2, 1e-6));
+    expect(fake.samplerSeed, 42);
+    expect(fake.samplerTopK, 40);
+    expect(fake.samplerTopP, closeTo(0.95, 1e-6));
+    expect(fake.samplerTemp, closeTo(0.8, 1e-6));
+  });
+
+  test('begin defaults min-p and seed when the map is empty', () async {
+    if (skipReason != null) {
+      markTestSkipped(skipReason!);
+      return;
+    }
+    final session = await loadedSession();
+    fake.setTokenizeResult(1);
+
+    session.begin(request());
+
+    expect(fake.samplerMinP, closeTo(0.05, 1e-6));
+    expect(fake.samplerSeed, 0xFFFFFFFF);
+  });
+
+  test('seed -1 resolves to the random default seed', () async {
+    if (skipReason != null) {
+      markTestSkipped(skipReason!);
+      return;
+    }
+    final session = await loadedSession();
+    fake.setTokenizeResult(1);
+
+    session.begin(request(modelParams: params(catalogParams: {'seed': '-1'})));
+
+    expect(fake.samplerSeed, 0xFFFFFFFF);
   });
 
   test('every begin clears memory and replaces the sampler chain', () async {

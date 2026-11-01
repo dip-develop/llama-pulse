@@ -4,11 +4,13 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:llama_pulse/app/app.dart';
 import 'package:llama_pulse/app/di/injection.dart';
 import 'package:llama_pulse/app/platform/clipboard_service.dart';
+import 'package:llama_pulse/app/platform/file_picker.dart';
 import 'package:llama_pulse/app/platform/model_path_picker.dart';
 import 'package:llama_pulse/app/platform/server_binary_picker.dart';
 import 'package:llama_pulse_core/llama_pulse_core.dart';
 
 import 'fake_clipboard_service.dart';
+import 'fake_file_picker.dart';
 import 'fake_model_path_picker.dart';
 import 'fake_server_binary_picker.dart';
 import 'fake_server_controller.dart';
@@ -28,6 +30,7 @@ Future<void> pumpLlamaPulse(
   LlamaEngine? engine,
   ModelPathPicker? picker,
   ServerBinaryPicker? binaryPicker,
+  FilePicker? filePicker,
   ClipboardService? clipboard,
   ServerState? recordedState,
   bool demoServer = false,
@@ -66,6 +69,7 @@ Future<void> pumpLlamaPulse(
     LlamaPulseApp(
       picker: picker ?? FakeModelPathPicker(),
       binaryPicker: binaryPicker ?? FakeServerBinaryPicker(),
+      filePicker: filePicker ?? FakeFilePicker(),
       clipboard: clipboard ?? FakeClipboardService(),
       demoServer: demoServer,
       demoEngine: demoEngine,

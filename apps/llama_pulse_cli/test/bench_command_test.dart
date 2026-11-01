@@ -414,4 +414,75 @@ void main() {
       expect(engine.disposeCalls, 1);
     },
   );
+
+  group('--param', () {
+    test('writes typed owners and keeps map values', () async {
+      final runner = makeRunner();
+
+      expect(
+        await runner.run([
+          'bench',
+          '--stub',
+          '--json',
+          '--runs',
+          '1',
+          '--model',
+          '/tmp/demo.gguf',
+          '--param',
+          'temp=0.2',
+          '--param',
+          'seed=42',
+        ]),
+        ExitCodes.ok,
+      );
+
+      final params = engine.loadedParams;
+      expect(params?.temperature, 0.2);
+      expect(params?.params['seed'], '42');
+      expect(params?.params.containsKey('temp'), isFalse);
+    });
+
+    test('rejects an unknown id before any engine work', () async {
+      final runner = makeRunner();
+
+      expect(
+        await runner.run([
+          'bench',
+          '--stub',
+          '--runs',
+          '1',
+          '--param',
+          'nope=1',
+        ]),
+        ExitCodes.usage,
+      );
+
+      expect(err.toString(), contains("unknown parameter 'nope'"));
+      expect(engine.loadCalls, 0);
+    });
+
+    test('rejects a value that disagrees with a typed flag', () async {
+      final runner = makeRunner();
+
+      expect(
+        await runner.run([
+          'bench',
+          '--stub',
+          '--runs',
+          '1',
+          '--threads',
+          '4',
+          '--param',
+          'threads=8',
+        ]),
+        ExitCodes.usage,
+      );
+
+      expect(
+        err.toString(),
+        contains('--threads and --param threads disagree (4 vs 8)'),
+      );
+      expect(engine.loadCalls, 0);
+    });
+  });
 }

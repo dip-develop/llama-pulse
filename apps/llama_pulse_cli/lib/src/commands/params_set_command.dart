@@ -3,11 +3,13 @@ import 'package:llama_pulse_core/llama_pulse_core.dart';
 import '../command_runner.dart';
 import '../exit_codes.dart';
 import '../output.dart';
+import '../params/params_options.dart';
 
 /// Applies flags to the stored model parameters and saves them.
 final class ParamsSetCommand extends LlamaPulseCommand {
   /// Creates the command.
   ParamsSetCommand(super.services) {
+    addParamOption(argParser);
     argParser
       ..addOption('model-path', help: 'Path to the model file.')
       ..addOption('context-size', help: 'Context window, in tokens.')
@@ -55,7 +57,8 @@ final class ParamsSetCommand extends LlamaPulseCommand {
   Future<int> run() async {
     final args = parsedArgs;
     final reset = args.flag('reset');
-    if (reset && _hasParameterOptions) {
+    final paramArguments = parseParamArguments(args);
+    if (reset && (_hasParameterOptions || args.wasParsed('param'))) {
       services.err.writeln(
         'error: --reset cannot be combined with other parameter options',
       );
@@ -99,6 +102,7 @@ final class ParamsSetCommand extends LlamaPulseCommand {
     final useChatTemplate = args.wasParsed('use-chat-template')
         ? args.flag('use-chat-template')
         : null;
+    invalid.addAll(paramArguments.errors);
 
     if (invalid.isNotEmpty) {
       for (final message in invalid) {
@@ -124,6 +128,27 @@ final class ParamsSetCommand extends LlamaPulseCommand {
         useChatTemplate: useChatTemplate ?? params.useChatTemplate,
       );
     }
+
+    final resolved = resolveEmbeddedParams(
+      params: params,
+      paramOverrides: paramArguments.overrides,
+      typedValues: {
+        if (contextSize != null) 'ctx-size': '$contextSize',
+        if (threads != null) 'threads': '$threads',
+        if (gpuLayers != null) 'gpu-layers': '$gpuLayers',
+        if (temperature != null) 'temp': '$temperature',
+        if (topK != null) 'top-k': '$topK',
+        if (topP != null) 'top-p': '$topP',
+        'chat-template': ?chatTemplate,
+      },
+    );
+    if (resolved.errors.isNotEmpty) {
+      for (final message in resolved.errors) {
+        services.err.writeln('error: $message');
+      }
+      return ExitCodes.usage;
+    }
+    params = resolved.params;
 
     try {
       await services.paramsRepository.save(params);

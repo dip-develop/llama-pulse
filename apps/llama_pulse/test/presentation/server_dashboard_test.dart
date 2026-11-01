@@ -155,12 +155,12 @@ void main() {
     await _enter(
       tester,
       'server-extra-args',
-      '  --verbose  \n\n  --cont-batching  \n',
+      '  --future-flag  \n\n  --other-flag  \n',
     );
     await _tapKey(tester, 'server-save');
 
     final ServerConfig saved = await getIt<ServerConfigRepository>().load();
-    expect(saved.extraArgs, <String>['--verbose', '--cont-batching']);
+    expect(saved.extraArgs, <String>['--future-flag', '--other-flag']);
   });
 
   testWidgets('copies the endpoint through the clipboard seam', (tester) async {

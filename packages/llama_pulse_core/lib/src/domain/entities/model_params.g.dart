@@ -52,6 +52,14 @@ class _$ModelParamsSerializer implements StructuredSerializer<ModelParams> {
         object.maxTokens,
         specifiedType: const FullType(int),
       ),
+      'params',
+      serializers.serialize(
+        object.params,
+        specifiedType: const FullType(BuiltMap, const [
+          const FullType(String),
+          const FullType(String),
+        ]),
+      ),
     ];
     Object? value;
     value = object.chatTemplate;
@@ -163,6 +171,17 @@ class _$ModelParamsSerializer implements StructuredSerializer<ModelParams> {
             specifiedType: const FullType(bool),
           ) as bool?;
           break;
+        case 'params':
+          result.params.replace(
+            serializers.deserialize(
+              value,
+              specifiedType: const FullType(BuiltMap, const [
+                const FullType(String),
+                const FullType(String),
+              ]),
+            )!,
+          );
+          break;
       }
     }
 
@@ -191,6 +210,8 @@ class _$ModelParams extends ModelParams {
   final String? chatTemplate;
   @override
   final bool? useChatTemplate;
+  @override
+  final BuiltMap<String, String> params;
 
   factory _$ModelParams([void Function(ModelParamsBuilder)? updates]) =>
       (ModelParamsBuilder()..update(updates))._build();
@@ -206,6 +227,7 @@ class _$ModelParams extends ModelParams {
     required this.maxTokens,
     this.chatTemplate,
     this.useChatTemplate,
+    required this.params,
   }) : super._();
   @override
   ModelParams rebuild(void Function(ModelParamsBuilder) updates) =>
@@ -227,7 +249,8 @@ class _$ModelParams extends ModelParams {
         topK == other.topK &&
         maxTokens == other.maxTokens &&
         chatTemplate == other.chatTemplate &&
-        useChatTemplate == other.useChatTemplate;
+        useChatTemplate == other.useChatTemplate &&
+        params == other.params;
   }
 
   @override
@@ -243,6 +266,7 @@ class _$ModelParams extends ModelParams {
     _$hash = $jc(_$hash, maxTokens.hashCode);
     _$hash = $jc(_$hash, chatTemplate.hashCode);
     _$hash = $jc(_$hash, useChatTemplate.hashCode);
+    _$hash = $jc(_$hash, params.hashCode);
     _$hash = $jf(_$hash);
     return _$hash;
   }
@@ -259,7 +283,8 @@ class _$ModelParams extends ModelParams {
           ..add('topK', topK)
           ..add('maxTokens', maxTokens)
           ..add('chatTemplate', chatTemplate)
-          ..add('useChatTemplate', useChatTemplate))
+          ..add('useChatTemplate', useChatTemplate)
+          ..add('params', params))
         .toString();
   }
 }
@@ -308,6 +333,11 @@ class ModelParamsBuilder implements Builder<ModelParams, ModelParamsBuilder> {
   set useChatTemplate(bool? useChatTemplate) =>
       _$this._useChatTemplate = useChatTemplate;
 
+  MapBuilder<String, String>? _params;
+  MapBuilder<String, String> get params =>
+      _$this._params ??= MapBuilder<String, String>();
+  set params(MapBuilder<String, String>? params) => _$this._params = params;
+
   ModelParamsBuilder();
 
   ModelParamsBuilder get _$this {
@@ -323,6 +353,7 @@ class ModelParamsBuilder implements Builder<ModelParams, ModelParamsBuilder> {
       _maxTokens = $v.maxTokens;
       _chatTemplate = $v.chatTemplate;
       _useChatTemplate = $v.useChatTemplate;
+      _params = $v.params.toBuilder();
       _$v = null;
     }
     return this;
@@ -342,52 +373,69 @@ class ModelParamsBuilder implements Builder<ModelParams, ModelParamsBuilder> {
   ModelParams build() => _build();
 
   _$ModelParams _build() {
-    final _$result =
-        _$v ??
-        _$ModelParams._(
-          modelPath: BuiltValueNullFieldError.checkNotNull(
-            modelPath,
-            r'ModelParams',
-            'modelPath',
-          ),
-          contextSize: BuiltValueNullFieldError.checkNotNull(
-            contextSize,
-            r'ModelParams',
-            'contextSize',
-          ),
-          gpuLayers: BuiltValueNullFieldError.checkNotNull(
-            gpuLayers,
-            r'ModelParams',
-            'gpuLayers',
-          ),
-          threads: BuiltValueNullFieldError.checkNotNull(
-            threads,
-            r'ModelParams',
-            'threads',
-          ),
-          temperature: BuiltValueNullFieldError.checkNotNull(
-            temperature,
-            r'ModelParams',
-            'temperature',
-          ),
-          topP: BuiltValueNullFieldError.checkNotNull(
-            topP,
-            r'ModelParams',
-            'topP',
-          ),
-          topK: BuiltValueNullFieldError.checkNotNull(
-            topK,
-            r'ModelParams',
-            'topK',
-          ),
-          maxTokens: BuiltValueNullFieldError.checkNotNull(
-            maxTokens,
-            r'ModelParams',
-            'maxTokens',
-          ),
-          chatTemplate: chatTemplate,
-          useChatTemplate: useChatTemplate,
+    _$ModelParams _$result;
+    try {
+      _$result =
+          _$v ??
+          _$ModelParams._(
+            modelPath: BuiltValueNullFieldError.checkNotNull(
+              modelPath,
+              r'ModelParams',
+              'modelPath',
+            ),
+            contextSize: BuiltValueNullFieldError.checkNotNull(
+              contextSize,
+              r'ModelParams',
+              'contextSize',
+            ),
+            gpuLayers: BuiltValueNullFieldError.checkNotNull(
+              gpuLayers,
+              r'ModelParams',
+              'gpuLayers',
+            ),
+            threads: BuiltValueNullFieldError.checkNotNull(
+              threads,
+              r'ModelParams',
+              'threads',
+            ),
+            temperature: BuiltValueNullFieldError.checkNotNull(
+              temperature,
+              r'ModelParams',
+              'temperature',
+            ),
+            topP: BuiltValueNullFieldError.checkNotNull(
+              topP,
+              r'ModelParams',
+              'topP',
+            ),
+            topK: BuiltValueNullFieldError.checkNotNull(
+              topK,
+              r'ModelParams',
+              'topK',
+            ),
+            maxTokens: BuiltValueNullFieldError.checkNotNull(
+              maxTokens,
+              r'ModelParams',
+              'maxTokens',
+            ),
+            chatTemplate: chatTemplate,
+            useChatTemplate: useChatTemplate,
+            params: params.build(),
+          );
+    } catch (_) {
+      late String _$failedField;
+      try {
+        _$failedField = 'params';
+        params.build();
+      } catch (e) {
+        throw BuiltValueNestedFieldError(
+          r'ModelParams',
+          _$failedField,
+          e.toString(),
         );
+      }
+      rethrow;
+    }
     replace(_$result);
     return _$result;
   }

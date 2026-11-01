@@ -39,16 +39,30 @@ final class ServeCommand extends LlamaPulseCommand {
   Future<int> run() async {
     final parsed = parseServerOptions(parsedArgs);
     final json = parsed.json;
-    if (parsed.errors.isNotEmpty) {
+    final parseErrors = [...parsed.errors, ...parsed.paramErrors];
+    if (parseErrors.isNotEmpty) {
       return _failPreStart(
         json: json,
-        failure: _invalidConfig(parsed.errors),
+        failure: _invalidConfig(parseErrors),
         exitCode: ExitCodes.usage,
       );
     }
 
     final stored = await services.serverConfigRepository.load();
-    final config = parsed.overrides.applyTo(stored);
+    final resolved = resolveServerConfig(
+      config: stored,
+      overrides: parsed.overrides,
+      paramOverrides: parsed.paramOverrides,
+      forStart: true,
+    );
+    if (resolved.errors.isNotEmpty) {
+      return _failPreStart(
+        json: json,
+        failure: _invalidConfig(resolved.errors),
+        exitCode: ExitCodes.usage,
+      );
+    }
+    final config = resolved.config;
     final violations = const ServerConfigValidator().validateForStart(config);
     if (violations.isNotEmpty) {
       return _failPreStart(

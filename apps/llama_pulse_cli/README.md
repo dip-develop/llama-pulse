@@ -49,7 +49,11 @@ server:
   startupTimeoutSeconds: 120
 ```
 
-`--json` prints the same document as one line.
+`--json` prints the same document as one line, plus the additive `params`
+object and a `modified` list of the ids whose effective value differs from the
+default. `--show-modified` prints just those ids as `id: value` lines; typed
+fields are included, so `threads: 8` appears after `server set --param
+threads=8`.
 
 ### `server set`
 
@@ -69,9 +73,29 @@ Options: `--model-path` (alias `--model`), `--host`, `--port`,
 `--context-size`, `--threads`, `--gpu-layers`, `--parallel`, `--alias`,
 `--api-key`, `--flash-attn` (`on`, `off`, `auto`), `--[no-]mlock`,
 `--[no-]mmap`, repeatable `--extra-arg`, `--binary`, `--startup-timeout`,
-`--reset` and `--json`. Omitted flags keep the stored value. `--mlock` and
-`--mmap` are negatable, and `--extra-arg` replaces the stored list.
-`--reset` restores the defaults and cannot be combined with other options.
+repeatable `--param`, `--reset` and `--json`. Omitted flags keep the stored
+value. `--mlock` and `--mmap` are negatable, and `--extra-arg` replaces the
+stored list. `--reset` restores the defaults and cannot be combined with other
+options.
+
+`--param` sets any catalog parameter by id:
+
+```
+$ llamapulse server set --param top-k=33 --param cont-batching=false
+$ llamapulse server set --param cont-batching        # boolean true
+$ llamapulse server set --param top-k=               # remove the stored id
+$ llamapulse server set --param logit-bias=1=+2 --param logit-bias=3=-4
+```
+
+`id=value` sets the value, `id=` removes it and a bare `id` sets a boolean to
+`true`. A repeatable parameter keeps every `--param` occurrence
+newline-separated. Values are canonicalized and validated against the catalog
+before anything is written; an unknown, unsupported, removed, wrong-surface or
+ownerless managed id exits `2` with the catalog's message and leaves the file
+untouched. An id with a typed flag (`threads`, `ctx-size`, `port`, `model` and
+so on) writes that typed field instead of the `params` map. When the typed flag
+is supplied too, the values must agree, otherwise the command exits `2` with
+`--threads and --param threads disagree (4 vs 8)`.
 
 `--extra-arg` must not repeat a flag LlamaPulse manages (`-m`, `--host`,
 `--port`, `-c`, `-t`, `-ngl`, `-np`, `-a`, `--api-key`, `-fa`, `--metrics`,
@@ -209,6 +233,45 @@ The on-disk file is `server.log` in the configuration directory, one
 `timestamp<TAB>sequence<TAB>stream<TAB>line` record per line, rotated at 1 MiB
 to `server.log.1`.
 
+### `params catalog` and `params describe`
+
+Browse the generated llama.cpp catalog. `params catalog` prints one line per
+parameter, grouped by presentation group, with the id, flags, type, default and
+exposure; unsupported and removed entries are hidden unless
+`--include-unsupported` is set.
+
+```
+$ llamapulse params catalog --group sampling
+Sampling & penalties (sampling)
+  seed  -s --seed  int  default=-1  configurable
+  temp  --temp --temperature  double  default=0.8  configurable
+  top-k  --top-k  int  default=40  configurable
+  ...
+```
+
+`--surface` filters to `all` (default), `server` or `embedded`; `--group` is
+repeatable. An unknown group or id exits `2`. `--json` prints one object with
+`schemaVersion: 1`,
+`type: "parameterCatalog"`, `surface`, `upstreamTag`, `count`, `groups` and
+`parameters`, where every parameter carries the full field set (`id`,
+`displayName`, `flags`, `negatedFlag`, `type`, `arity`, `defaultValue`, `min`,
+`max`, `allowed`, `itemType`, `repeatable`, `group`, `surfaces`, `exposure`,
+`owner`, `managedBy`, `envVar`, `advanced`, `deprecated`, `replacement`,
+`requiresExistingPath`, `warning`, `summary`, `description`, `reason`).
+
+`params describe <id>` prints the same entry as text, including the reason for
+an unsupported or removed id and the replacement when upstream provides one.
+`--json` prints it as one object with `schemaVersion` and the same fields. An
+unknown id exits `2`:
+
+```
+$ llamapulse params describe server-base
+id: server-base
+...
+exposure: unsupported
+reason: CLI client mode: connects to another server instead of hosting one.
+```
+
 ### `params get` and `params set` (embedded)
 
 The chat parameters live in `params.yaml`. `params get` prints the exact
@@ -232,8 +295,51 @@ $ llamapulse params set --reset
 ```
 
 Options: `--model-path`, `--context-size`, `--gpu-layers`, `--threads`,
-`--temperature`, `--top-p`, `--top-k`, `--max-tokens`, `--reset`. `--reset`
-cannot be combined with another parameter option.
+`--temperature`, `--top-p`, `--top-k`, `--max-tokens`, repeatable `--param`,
+`--reset`, `--json`. `--reset` cannot be combined with another parameter
+option.
+
+`--param` sets any embedded catalog parameter by id:
+
+```
+$ llamapulse params set --param temp=0.7 --param seed=42
+$ llamapulse params set --param min-p=0.1 --param batch-size=512
+$ llamapulse params set --param ctx-size=             # restore the default
+```
+
+`id=value` sets the value and `id=` restores the default. Values are
+canonicalized and validated against the embedded surface before anything is
+written; an unknown, unsupported, removed, server-only or ownerless managed id
+exits `2` with the catalog's message and leaves the file untouched. Repeating a
+non-repeatable id is an error. `ctx-size`, `threads`, `gpu-layers`, `temp`,
+`top-k`, `top-p` and `chat-template` write the typed fields, so `--param
+temp=0.7` stores `temperature: 0.7` and `--param chat-template=chatml` stores
+`chatTemplate: chatml`, never a `params.temp` entry. `seed`, `min-p` and
+`batch-size` have no typed field and stay in the `params` map. When a typed
+flag is supplied too, the values must agree, otherwise the command exits `2`
+with `--temperature and --param temp disagree (0.5 vs 0.7)`.
+
+`params get --json` keeps the document and adds a `modified` list of the
+embedded ids whose effective value differs from the default; `seed=-1`,
+`batch-size=2048` and `top-k=40` stay hidden. `params get --show-modified`
+prints just those ids as `id: value` lines.
+
+### `params export`
+
+Print the `llama-cli`-shaped argument vector for the stored embedded
+configuration, without writing anything:
+
+```
+$ llamapulse params export
+-c 2048 -t 4 -ngl 0 --temp 0.8 --top-k 40 --top-p 0.95
+$ llamapulse params export --param seed=42 --json
+{"schemaVersion":1,"type":"paramsExport","argv":["-c","2048","-t","4","-ngl","0","--temp","0.8","--top-k","40","--top-p","0.95","--seed","42"]}
+```
+
+The vector starts with `-m`, `-c`, `-t`, `-ngl`, `--temp`, `--top-k`,
+`--top-p` and `-b`; the model path is omitted when empty and the batch size
+when absent or zero. The remaining embedded parameters follow in catalog
+order. `--param` overrides the stored values for this run only.
 
 ### `models list` and `models inspect`
 
@@ -276,23 +382,29 @@ runs: 3  generatedTokens: 36  evalMs: 818  tokensPerSecond: 44.01
 
 `run` flags: `--model`, `--lib`, `--prompt`, `--file` (`-` reads stdin),
 `--stream`, `--json`, `--threads`, `--temperature`, `--top-p`, `--top-k`,
-`--max-tokens` and `--context-size`. `--prompt` and `--file` are mutually
-exclusive; one is required. `--json` and `--stream` cannot be combined.
+`--max-tokens`, `--context-size`, `--chat-template`,
+`--[no-]use-chat-template` and repeatable `--param`. `--prompt` and `--file`
+are mutually exclusive; one is required. `--json` and `--stream` cannot be
+combined. `--param` applies the same embedded catalog rules as `params set`
+for this run only: typed owners write `ModelParams` fields, the rest stay in
+the map, and an unknown or unsupported id exits `2` before the engine loads.
+`--chat-template` names a built-in template (for example `chatml`), `none`
+disables templating and `--no-use-chat-template` sends the raw prompt.
 `--stream` writes NDJSON with `started`, `token`, `metrics`, `completed`,
 `cancelled` and `failed`. `bench` flags: `--runs` (1..50, default 3), `--json`,
-`--max-tokens` (default 32) and the shared overrides. Without `--stub`,
-`bench` requires a readable `.gguf` model: a blank path exits `2` and a missing,
-non-`.gguf` or unreadable file exits `3`. The sampler is seeded with
+`--max-tokens` (default 32), the shared overrides and `--param`. Without
+`--stub`, `bench` requires a readable `.gguf` model: a blank path exits `2` and
+a missing, non-`.gguf` or unreadable file exits `3`. The sampler is seeded with
 `LLAMA_DEFAULT_SEED` (`0xFFFFFFFF`), which llama.cpp treats as random, so
 `bench` runs differ.
 
 ## `--json`
 
-Every leaf command accepts `--json`. `server get`, `server set`, `status`,
-`stop` and `version` print one single-line JSON object; `serve` and
-`logs --follow` emit NDJSON. The `params`, `models` and `server` groups are not
-invocable and have no `--json` of their own. Configuration files on disk stay
-YAML.
+Every leaf command accepts `--json`. `server get`, `server set`, `params get`,
+`params catalog`, `params describe`, `params export`, `status`, `stop` and
+`version` print one single-line JSON object; `serve` and `logs --follow` emit
+NDJSON. The `params`, `models` and `server` groups are not invocable and have
+no `--json` of their own. Configuration files on disk stay YAML.
 
 ## Configuration paths
 
@@ -356,4 +468,8 @@ $ llamapulse serve --help
 $ llamapulse status --help
 $ llamapulse stop --help
 $ llamapulse logs --help
+$ llamapulse params catalog --help
+$ llamapulse params describe --help
+$ llamapulse params set --help
+$ llamapulse params export --help
 ```

@@ -72,6 +72,11 @@ void main() {
     await _openChat(tester);
 
     expect(_top(tester, 'parameters-card'), _top(tester, 'output-card'));
+    expect(
+      _top(tester, 'chat-params-panel'),
+      greaterThan(_top(tester, 'parameters-card')),
+      reason: 'the catalog panel sits under the essentials form',
+    );
   });
 
   testWidgets('stacks the cards on narrow windows', (tester) async {
@@ -82,6 +87,11 @@ void main() {
     expect(
       _top(tester, 'output-card'),
       greaterThan(_top(tester, 'parameters-card')),
+    );
+    expect(
+      _top(tester, 'chat-params-panel'),
+      greaterThan(_top(tester, 'parameters-card')),
+      reason: 'the catalog panel sits under the essentials form',
     );
   });
 

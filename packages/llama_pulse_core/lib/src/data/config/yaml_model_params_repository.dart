@@ -5,6 +5,7 @@ import '../../domain/exceptions/invalid_model_params_exception.dart';
 import '../../domain/gateways/config_store.dart';
 import '../../domain/gateways/model_params_repository.dart';
 import '../../domain/model_params_validator.dart';
+import '../../domain/parameters/parameter_values.dart';
 import 'config_names.dart';
 
 /// Loads and saves [ModelParams] in the `params.yaml` document.
@@ -60,14 +61,21 @@ final class YamlModelParamsRepository implements ModelParamsRepository {
   /// callers that preview a document (for example the CLI's `params get`)
   /// cannot drift apart.
   Map<String, Object?> toDocument(ModelParams params) {
+    final normalized = params.copyWith(
+      params: ParameterValues.normalized(params.params),
+    );
     final serialized = _serializers.serializeWith(
       ModelParams.serializer,
-      params,
+      normalized,
     );
     if (serialized is! Map<String, Object?>) {
       throw StateError('ModelParams did not serialize to a map');
     }
-    return {'schemaVersion': ModelParams.schemaVersion, 'params': serialized};
+    final document = Map<String, Object?>.of(serialized);
+    if (normalized.params.isEmpty) {
+      document.remove('params');
+    }
+    return {'schemaVersion': ModelParams.schemaVersion, 'params': document};
   }
 
   /// Validates and writes [params], throwing [InvalidModelParamsException] and

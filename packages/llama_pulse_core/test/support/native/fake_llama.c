@@ -129,6 +129,15 @@ static int g_memory_clear_count = 0;
 static int g_sampler_init_count = 0;
 static int g_sampler_free_count = 0;
 
+// Arguments the session passed to the most recent sampler constructors. The
+// defaults are impossible values, so a test can tell "not called" from a real
+// setting.
+static float g_sampler_min_p = -1.0f;
+static float g_sampler_top_p = -1.0f;
+static float g_sampler_temp = -1.0f;
+static int32_t g_sampler_top_k = -1;
+static uint32_t g_sampler_seed = 0;
+
 static struct llama_perf_context_data g_perf;
 static int g_perf_reset_count = 0;
 
@@ -315,6 +324,11 @@ void fake_llama_reset(void) {
     g_memory_clear_count = 0;
     g_sampler_init_count = 0;
     g_sampler_free_count = 0;
+    g_sampler_min_p = -1.0f;
+    g_sampler_top_p = -1.0f;
+    g_sampler_temp = -1.0f;
+    g_sampler_top_k = -1;
+    g_sampler_seed = 0;
     memset(&g_perf, 0, sizeof g_perf);
     g_perf_reset_count = 0;
 }
@@ -364,6 +378,11 @@ int fake_llama_batch_free_count(void) { return g_batch_free_count; }
 int fake_llama_memory_clear_count(void) { return g_memory_clear_count; }
 int fake_llama_sampler_init_count(void) { return g_sampler_init_count; }
 int fake_llama_sampler_free_count(void) { return g_sampler_free_count; }
+double fake_llama_sampler_min_p(void) { return (double) g_sampler_min_p; }
+double fake_llama_sampler_top_p(void) { return (double) g_sampler_top_p; }
+double fake_llama_sampler_temp(void) { return (double) g_sampler_temp; }
+int fake_llama_sampler_top_k(void) { return g_sampler_top_k; }
+uint32_t fake_llama_sampler_seed(void) { return g_sampler_seed; }
 int fake_llama_sample_calls(void) { return g_sample_calls; }
 int fake_llama_perf_reset_count(void) { return g_perf_reset_count; }
 
@@ -762,29 +781,29 @@ void llama_sampler_chain_add(
 }
 
 struct llama_sampler *llama_sampler_init_top_k(int32_t k) {
-    (void) k;
+    g_sampler_top_k = k;
     return (struct llama_sampler *) &g_sampler_sentinel;
 }
 
 struct llama_sampler *llama_sampler_init_top_p(float p, size_t min_keep) {
-    (void) p;
     (void) min_keep;
+    g_sampler_top_p = p;
     return (struct llama_sampler *) &g_sampler_sentinel;
 }
 
 struct llama_sampler *llama_sampler_init_min_p(float p, size_t min_keep) {
-    (void) p;
     (void) min_keep;
+    g_sampler_min_p = p;
     return (struct llama_sampler *) &g_sampler_sentinel;
 }
 
 struct llama_sampler *llama_sampler_init_temp(float t) {
-    (void) t;
+    g_sampler_temp = t;
     return (struct llama_sampler *) &g_sampler_sentinel;
 }
 
 struct llama_sampler *llama_sampler_init_dist(uint32_t seed) {
-    (void) seed;
+    g_sampler_seed = seed;
     return (struct llama_sampler *) &g_sampler_sentinel;
 }
 

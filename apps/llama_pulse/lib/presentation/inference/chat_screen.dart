@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:llama_pulse_core/llama_pulse_core.dart';
 
+import '../../app/platform/file_picker.dart';
 import '../../app/platform/model_path_picker.dart';
 import 'bloc/inference_bloc.dart';
 import 'bloc/inference_state.dart';
 import 'bloc/inference_status.dart';
+import 'widgets/chat_parameters_card.dart';
 import 'widgets/failure_banner.dart';
 import 'widgets/generation_controls.dart';
 import 'widgets/generation_output.dart';
@@ -18,10 +20,18 @@ import 'widgets/status_chip.dart';
 /// It renders inside the application shell, so it owns no [Scaffold] and no
 /// [AppBar]: the shell provides those and keeps both tabs alive.
 class ChatScreen extends StatelessWidget {
-  const ChatScreen({super.key, required this.picker, this.demoEngine = false});
+  const ChatScreen({
+    super.key,
+    required this.picker,
+    required this.filePicker,
+    this.demoEngine = false,
+  });
 
   /// File dialog seam handed to the parameter form.
   final ModelPathPicker picker;
+
+  /// File dialog seam handed to the catalog parameter panel.
+  final FilePicker filePicker;
 
   /// Whether output comes from the synthetic stub engine.
   final bool demoEngine;
@@ -48,9 +58,9 @@ class ChatScreen extends StatelessWidget {
                 // Below 900 px a 380 px parameter column would leave too
                 // little room for output, so the layout stacks instead.
                 if (constraints.maxWidth >= 900) {
-                  return _WideLayout(picker: picker);
+                  return _WideLayout(picker: picker, filePicker: filePicker);
                 }
-                return _NarrowLayout(picker: picker);
+                return _NarrowLayout(picker: picker, filePicker: filePicker);
               },
             ),
           ),
@@ -107,9 +117,10 @@ class _PromptSection extends StatelessWidget {
 }
 
 class _WideLayout extends StatelessWidget {
-  const _WideLayout({required this.picker});
+  const _WideLayout({required this.picker, required this.filePicker});
 
   final ModelPathPicker picker;
+  final FilePicker filePicker;
 
   @override
   Widget build(BuildContext context) {
@@ -121,7 +132,7 @@ class _WideLayout extends StatelessWidget {
           SizedBox(
             width: 380,
             child: SingleChildScrollView(
-              child: _ParametersSection(picker: picker),
+              child: _ParametersSection(picker: picker, filePicker: filePicker),
             ),
           ),
           const SizedBox(width: 16),
@@ -141,9 +152,10 @@ class _WideLayout extends StatelessWidget {
 }
 
 class _NarrowLayout extends StatelessWidget {
-  const _NarrowLayout({required this.picker});
+  const _NarrowLayout({required this.picker, required this.filePicker});
 
   final ModelPathPicker picker;
+  final FilePicker filePicker;
 
   @override
   Widget build(BuildContext context) {
@@ -152,7 +164,7 @@ class _NarrowLayout extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _ParametersSection(picker: picker),
+          _ParametersSection(picker: picker, filePicker: filePicker),
           const SizedBox(height: 16),
           const SizedBox(height: 320, child: GenerationOutput()),
           const SizedBox(height: 16),
@@ -164,9 +176,10 @@ class _NarrowLayout extends StatelessWidget {
 }
 
 class _ParametersSection extends StatelessWidget {
-  const _ParametersSection({required this.picker});
+  const _ParametersSection({required this.picker, required this.filePicker});
 
   final ModelPathPicker picker;
+  final FilePicker filePicker;
 
   @override
   Widget build(BuildContext context) {
@@ -178,7 +191,14 @@ class _ParametersSection extends StatelessWidget {
       selector: (InferenceState state) => (state.status, state.params),
       builder: (BuildContext context, (InferenceStatus, ModelParams) data) {
         final (InferenceStatus status, ModelParams params) = data;
-        return ModelParamsForm(status: status, params: params, picker: picker);
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            ModelParamsForm(status: status, params: params, picker: picker),
+            const SizedBox(height: 16),
+            ChatParametersCard(filePicker: filePicker),
+          ],
+        );
       },
     );
   }

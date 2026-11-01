@@ -4,6 +4,7 @@ import 'package:llama_pulse_core/llama_pulse_core.dart';
 
 import '../../../presentation/inference/bloc/inference_bloc.dart';
 import '../../../presentation/server/bloc/server_bloc.dart';
+import '../platform/file_picker.dart';
 import 'injection.config.dart';
 
 /// Service locator shared by the whole app.
@@ -89,7 +90,8 @@ Future<void> configureDependencies({
     )
     ..registerLazySingleton<ServerLogStore>(
       () => ServerLogStore(filePath: resolvedPaths.serverLogFile),
-    );
+    )
+    ..registerLazySingleton<FilePicker>(SystemFilePicker.new);
   if (engine != null) {
     getIt.registerLazySingleton<LlamaEngine>(() => engine);
   } else if (useStubEngine ?? _stubEngineEnabled) {

@@ -6,6 +6,7 @@ import '../../domain/entities/server_failure_code.dart';
 import '../../domain/exceptions/server_exception.dart';
 import '../../domain/gateways/config_store.dart';
 import '../../domain/gateways/server_config_repository.dart';
+import '../../domain/parameters/parameter_values.dart';
 import '../../domain/server_config_validator.dart';
 import 'config_names.dart';
 
@@ -61,14 +62,21 @@ final class YamlServerConfigRepository implements ServerConfigRepository {
   /// The shape is fixed here so that [save] and callers that preview the
   /// document cannot drift apart.
   Map<String, Object?> toDocument(ServerConfig config) {
+    final normalized = config.copyWith(
+      params: ParameterValues.normalized(config.params),
+    );
     final serialized = _serializers.serializeWith(
       ServerConfig.serializer,
-      config,
+      normalized,
     );
     if (serialized is! Map<String, Object?>) {
       throw StateError('ServerConfig did not serialize to a map');
     }
-    return {'schemaVersion': ServerConfig.schemaVersion, 'server': serialized};
+    final server = Map<String, Object?>.of(serialized);
+    if (normalized.params.isEmpty) {
+      server.remove('params');
+    }
+    return {'schemaVersion': ServerConfig.schemaVersion, 'server': server};
   }
 
   /// Validates and writes [config], throwing [ServerException] and writing

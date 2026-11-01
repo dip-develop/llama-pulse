@@ -453,6 +453,28 @@ void main() {
     expect(engine.generateRequests.single.params.useChatTemplate, isFalse);
   });
 
+  test('--param chat-template=none reaches the engine as typed', () async {
+    final runner = makeRunner();
+
+    expect(
+      await runner.run([
+        'run',
+        '--stub',
+        '--model',
+        '/tmp/demo.gguf',
+        '--prompt',
+        'hi',
+        '--param',
+        'chat-template=none',
+      ]),
+      ExitCodes.ok,
+    );
+
+    expect(engine.loadedParams?.chatTemplate, 'none');
+    expect(engine.loadedParams?.params.containsKey('chat-template'), isFalse);
+    expect(engine.generateRequests.single.params.chatTemplate, 'none');
+  });
+
   test('--file - reads the prompt from the injected stdin', () async {
     final runner = makeRunner(
       stdin: Stream<List<int>>.value(utf8.encode('from stdin')),
@@ -591,4 +613,108 @@ void main() {
     final metrics = event['metrics'] as Map<String, Object?>;
     expect(metrics['generatedTokenCount'], 4);
   }, timeout: const Timeout(Duration(seconds: 30)));
+
+  group('--param', () {
+    test('writes typed owners and keeps map values', () async {
+      final runner = makeRunner();
+
+      expect(
+        await runner.run([
+          'run',
+          '--stub',
+          '--json',
+          '--model',
+          '/tmp/demo.gguf',
+          '--prompt',
+          'hi',
+          '--param',
+          'temp=0.2',
+          '--param',
+          'seed=42',
+          '--param',
+          'min-p=0.1',
+        ]),
+        ExitCodes.ok,
+      );
+
+      final params = engine.loadedParams;
+      expect(params?.temperature, 0.2);
+      expect(params?.params['seed'], '42');
+      expect(params?.params['min-p'], '0.1');
+      expect(params?.params.containsKey('temp'), isFalse);
+      expect(engine.generateRequests.single.params, params);
+    });
+
+    test('rejects an unknown id before any engine work', () async {
+      final runner = makeRunner();
+
+      expect(
+        await runner.run([
+          'run',
+          '--stub',
+          '--model',
+          '/tmp/demo.gguf',
+          '--prompt',
+          'hi',
+          '--param',
+          'nope=1',
+        ]),
+        ExitCodes.usage,
+      );
+
+      expect(err.toString(), contains("unknown parameter 'nope'"));
+      expect(engine.loadCalls, 0);
+      expect(engine.generateCalls, 0);
+    });
+
+    test('rejects a server-only id before any engine work', () async {
+      final runner = makeRunner();
+
+      expect(
+        await runner.run([
+          'run',
+          '--stub',
+          '--model',
+          '/tmp/demo.gguf',
+          '--prompt',
+          'hi',
+          '--param',
+          'cont-batching=true',
+        ]),
+        ExitCodes.usage,
+      );
+
+      expect(
+        err.toString(),
+        contains("'cont-batching' is not available for embedded"),
+      );
+      expect(engine.loadCalls, 0);
+    });
+
+    test('rejects a value that disagrees with a typed flag', () async {
+      final runner = makeRunner();
+
+      expect(
+        await runner.run([
+          'run',
+          '--stub',
+          '--model',
+          '/tmp/demo.gguf',
+          '--prompt',
+          'hi',
+          '--temperature',
+          '0.5',
+          '--param',
+          'temp=0.7',
+        ]),
+        ExitCodes.usage,
+      );
+
+      expect(
+        err.toString(),
+        contains('--temperature and --param temp disagree (0.5 vs 0.7)'),
+      );
+      expect(engine.loadCalls, 0);
+    });
+  });
 }
