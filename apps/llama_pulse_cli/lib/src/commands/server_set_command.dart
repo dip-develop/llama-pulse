@@ -2,6 +2,7 @@ import 'package:llama_pulse_core/llama_pulse_core.dart';
 
 import '../command_runner.dart';
 import '../exit_codes.dart';
+import '../output.dart';
 import '../server/server_options.dart';
 import '../server/server_output.dart';
 
@@ -26,13 +27,14 @@ final class ServerSetCommand extends LlamaPulseCommand {
   @override
   Future<int> run() async {
     final parsed = parseServerOptions(parsedArgs, includeReset: true);
-    if (parsed.errors.isNotEmpty) {
-      for (final message in parsed.errors) {
+    final parseErrors = [...parsed.errors, ...parsed.paramErrors];
+    if (parseErrors.isNotEmpty) {
+      for (final message in parseErrors) {
         services.err.writeln('error: $message');
       }
       return ExitCodes.usage;
     }
-    if (parsed.reset && parsed.overrides.hasAny) {
+    if (parsed.reset && (parsed.overrides.hasAny || parsed.hasParamOverrides)) {
       services.err.writeln(
         'error: --reset cannot be combined with other server options',
       );
@@ -40,10 +42,22 @@ final class ServerSetCommand extends LlamaPulseCommand {
     }
 
     final repository = services.serverConfigRepository;
-    var config = parsed.reset
+    final stored = parsed.reset
         ? ServerConfig.defaults()
         : await repository.load();
-    config = parsed.overrides.applyTo(config);
+    final resolved = resolveServerConfig(
+      config: stored,
+      overrides: parsed.overrides,
+      paramOverrides: parsed.paramOverrides,
+      forStart: false,
+    );
+    if (resolved.errors.isNotEmpty) {
+      for (final message in resolved.errors) {
+        services.err.writeln('error: $message');
+      }
+      return ExitCodes.usage;
+    }
+    final config = resolved.config;
 
     final violations = const ServerConfigValidator().validate(config);
     if (violations.isNotEmpty) {
@@ -62,11 +76,15 @@ final class ServerSetCommand extends LlamaPulseCommand {
       return ExitCodes.usage;
     }
 
-    writeServerDocument(
-      services.out,
-      repository.toDocument(config),
-      json: parsed.json,
-    );
+    final document = repository.toDocument(config);
+    if (parsed.json) {
+      writeJsonLine(
+        services.out,
+        encodeServerDocument(document: document, config: config),
+      );
+    } else {
+      writeServerDocument(services.out, document, json: false);
+    }
     return ExitCodes.ok;
   }
 }

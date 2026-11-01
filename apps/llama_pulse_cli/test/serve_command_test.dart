@@ -535,4 +535,54 @@ void main() {
     expect(metrics['metrics'], isA<Map<String, Object?>>());
     expect(out.toString(), isNot(contains('supervisor line')));
   });
+
+  test('serve --param applies an in-memory override and never saves', () async {
+    final code = await runWithSignal([
+      ...serveArgs(),
+      '--param',
+      'min-p=0.05',
+      '--param',
+      'threads=6',
+    ], ProcessSignal.sigint);
+
+    expect(code, ExitCodes.interrupted);
+    expect(controller.startCalls, 1);
+    final config = controller.startConfig!;
+    expect(config.params['min-p'], '0.05');
+    expect(config.threads, 6);
+    // The override exists only for this run: no server.yaml was written.
+    expect(await store.read('server'), isNull);
+  });
+
+  test('serve --param rejects an unknown id with exit 2', () async {
+    final code = await runner.run([...serveArgs(), '--param', 'nope=1']);
+
+    expect(code, ExitCodes.usage);
+    expect(controller.startCalls, 0);
+    final failure =
+        _lines(out.toString()).single['failure']! as Map<String, Object?>;
+    expect(failure['code'], 'invalidConfig');
+    expect(failure['details'], contains("unknown parameter 'nope'"));
+    expect(await store.read('server'), isNull);
+  });
+
+  test('serve --param rejects a conflict with a typed flag', () async {
+    final code = await runner.run([
+      ...serveArgs(),
+      '--threads',
+      '4',
+      '--param',
+      'threads=8',
+    ]);
+
+    expect(code, ExitCodes.usage);
+    expect(controller.startCalls, 0);
+    final failure =
+        _lines(out.toString()).single['failure']! as Map<String, Object?>;
+    expect(
+      failure['details'],
+      contains('--threads and --param threads disagree (4 vs 8)'),
+    );
+    expect(await store.read('server'), isNull);
+  });
 }

@@ -42,6 +42,13 @@ void main() {
     return server as Map<String, Object?>;
   }
 
+  Future<Map<String, Object?>> storedParams() async {
+    final server = await storedServer();
+    final params = server['params'] ?? <String, Object?>{};
+    expect(params, isA<Map<String, Object?>>());
+    return params as Map<String, Object?>;
+  }
+
   test('server get prints the default document without writing', () async {
     expect(await runner.run(['server', 'get']), ExitCodes.ok);
 
@@ -250,5 +257,264 @@ void main() {
       ExitCodes.ok,
     );
     expect((await storedServer())['modelPath'], '/models/alias.gguf');
+  });
+
+  test('server set --param stores typed canonical values', () async {
+    final code = await runner.run([
+      'server',
+      'set',
+      '--param',
+      'top-k=33',
+      '--param',
+      'cont-batching',
+      '--param',
+      'cont-batching=true',
+      '--param',
+      'cache-type-k=q8_0',
+      '--param',
+      'grammar-file=/tmp/grammar.gbnf',
+    ]);
+
+    expect(code, ExitCodes.ok);
+    final params = await storedParams();
+    expect(params['top-k'], '33');
+    expect(params['cont-batching'], 'true');
+    expect(params['cache-type-k'], 'q8_0');
+    expect(params['grammar-file'], '/tmp/grammar.gbnf');
+    expect(err.toString(), isEmpty);
+  });
+
+  test('server set --param sets a boolean false', () async {
+    expect(
+      await runner.run(['server', 'set', '--param', 'cont-batching=false']),
+      ExitCodes.ok,
+    );
+    expect((await storedParams())['cont-batching'], 'false');
+  });
+
+  test(
+    'server set --param accepts a comma list and appends repeatables',
+    () async {
+      expect(
+        await runner.run([
+          'server',
+          'set',
+          '--param',
+          'dry-sequence-breaker=a,b',
+          '--param',
+          'logit-bias=1=+2',
+          '--param',
+          'logit-bias=3=-4',
+        ]),
+        ExitCodes.ok,
+      );
+
+      final params = await storedParams();
+      expect(params['dry-sequence-breaker'], 'a,b');
+      expect(params['logit-bias'], '1=+2\n3=-4');
+    },
+  );
+
+  test(
+    'server set --param with an empty value removes the stored id',
+    () async {
+      expect(
+        await runner.run(['server', 'set', '--param', 'top-k=33']),
+        ExitCodes.ok,
+      );
+      expect(await storedParams(), containsPair('top-k', '33'));
+
+      out.clear();
+      expect(
+        await runner.run(['server', 'set', '--param', 'top-k=']),
+        ExitCodes.ok,
+      );
+      expect((await storedServer())['params'], anyOf(isNull, isEmpty));
+    },
+  );
+
+  test('server set --param writes an owned id into the typed field', () async {
+    expect(
+      await runner.run(['server', 'set', '--param', 'threads=8']),
+      ExitCodes.ok,
+    );
+
+    final server = await storedServer();
+    expect(server['threads'], 8);
+    // The value is never duplicated in the params map, which is omitted when
+    // it is empty.
+    expect(server['params'], isNull);
+    expect(out.toString(), contains('threads: 8'));
+    expect(out.toString(), isNot(contains('params:')));
+  });
+
+  test(
+    'server set --param rejects an owned id that disagrees with the flag',
+    () async {
+      expect(
+        await runner.run([
+          'server',
+          'set',
+          '--threads',
+          '4',
+          '--param',
+          'threads=8',
+        ]),
+        ExitCodes.usage,
+      );
+
+      expect(
+        err.toString(),
+        contains('error: --threads and --param threads disagree (4 vs 8)'),
+      );
+      expect(await storedDocument(), isNull);
+    },
+  );
+
+  test('server set --param accepts an owned id equal to the flag', () async {
+    expect(
+      await runner.run([
+        'server',
+        'set',
+        '--threads',
+        '8',
+        '--param',
+        'threads=8',
+      ]),
+      ExitCodes.ok,
+    );
+
+    final server = await storedServer();
+    expect(server['threads'], 8);
+    expect(server['params'], isNull);
+  });
+
+  test('server set --param rejects a managed id without writing', () async {
+    expect(
+      await runner.run(['server', 'set', '--param', 'metrics=true']),
+      ExitCodes.usage,
+    );
+
+    expect(
+      err.toString(),
+      contains("error: 'metrics' is managed by LlamaPulse supervisor"),
+    );
+    expect(await storedDocument(), isNull);
+  });
+
+  test(
+    'server set --param rejects an unsupported id without writing',
+    () async {
+      expect(
+        await runner.run([
+          'server',
+          'set',
+          '--param',
+          'server-base=http://localhost:9931',
+        ]),
+        ExitCodes.usage,
+      );
+
+      expect(err.toString(), contains("error: 'server-base' is not supported"));
+      expect(await storedDocument(), isNull);
+    },
+  );
+
+  test('server set --param rejects an unknown id without writing', () async {
+    expect(
+      await runner.run(['server', 'set', '--param', 'nope=1']),
+      ExitCodes.usage,
+    );
+
+    expect(
+      err.toString(),
+      contains(
+        "error: unknown parameter 'nope' (run `llamapulse params catalog`)",
+      ),
+    );
+    expect(await storedDocument(), isNull);
+    expect(out.toString(), isEmpty);
+  });
+
+  test('server set --param rejects a bare id for a non-boolean', () async {
+    expect(
+      await runner.run(['server', 'set', '--param', 'top-k']),
+      ExitCodes.usage,
+    );
+
+    expect(
+      err.toString(),
+      contains("invalid value for --param: 'top-k' is not a boolean"),
+    );
+    expect(await storedDocument(), isNull);
+  });
+
+  test('server set rejects --reset combined with --param', () async {
+    expect(
+      await runner.run(['server', 'set', '--reset', '--param', 'top-k=33']),
+      ExitCodes.usage,
+    );
+
+    expect(err.toString(), contains('--reset cannot be combined'));
+    expect(await storedDocument(), isNull);
+  });
+
+  test('server get --show-modified prints only changed ids', () async {
+    expect(
+      await runner.run([
+        'server',
+        'set',
+        '--param',
+        'top-k=40',
+        '--param',
+        'cont-batching=false',
+        '--param',
+        'threads=8',
+      ]),
+      ExitCodes.ok,
+    );
+
+    out.clear();
+    expect(
+      await runner.run(['server', 'get', '--show-modified']),
+      ExitCodes.ok,
+    );
+
+    final text = out.toString();
+    expect(text, contains('threads: 8'));
+    expect(text, contains('cont-batching: false'));
+    // top-k=40 is the catalog default, so the effective value is unchanged.
+    expect(text, isNot(contains('top-k')));
+    expect(text, isNot(contains('modelPath')));
+    expect(
+      text.split('\n').where((line) => line.isNotEmpty),
+      everyElement(matches(RegExp(r'^[a-z0-9-]+: .+$'))),
+    );
+  });
+
+  test('server get --json always includes params and modified', () async {
+    expect(
+      await runner.run(['server', 'set', '--param', 'threads=8']),
+      ExitCodes.ok,
+    );
+
+    out.clear();
+    expect(await runner.run(['server', 'get', '--json']), ExitCodes.ok);
+
+    final object = jsonDecode(out.toString().trim()) as Map<String, Object?>;
+    expect(object['schemaVersion'], 1);
+    expect(object['params'], isA<Map<String, Object?>>());
+    expect(object['modified'], contains('threads'));
+    final server = object['server']! as Map<String, Object?>;
+    expect(server['threads'], 8);
+  });
+
+  test('server help takes typed flag text and the --param pointer from '
+      'the catalog', () {
+    final usage =
+        runner.commands['server']!.subcommands['set']!.argParser.usage;
+    expect(usage, contains('TCP port llama-server listens on.'));
+    expect(usage, contains('params catalog'));
+    expect(usage, contains('params describe'));
   });
 }

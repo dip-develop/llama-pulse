@@ -262,4 +262,66 @@ void main() {
       'forced',
     ]);
   });
+
+  test('encodeParameter and encodeCatalog use the documented key sets', () {
+    final catalog = ParameterCatalog.v080;
+    final topK = catalog.byId('top-k')!;
+    expect(encodeParameter(topK).keys, [
+      'id',
+      'displayName',
+      'flags',
+      'negatedFlag',
+      'type',
+      'arity',
+      'defaultValue',
+      'min',
+      'max',
+      'allowed',
+      'itemType',
+      'repeatable',
+      'group',
+      'surfaces',
+      'exposure',
+      'owner',
+      'managedBy',
+      'envVar',
+      'advanced',
+      'deprecated',
+      'replacement',
+      'requiresExistingPath',
+      'warning',
+      'summary',
+      'description',
+      'reason',
+    ]);
+
+    final encoded = encodeCatalog(
+      catalog: catalog,
+      surface: 'server',
+      parameters: [topK],
+      groups: catalog.groups,
+    );
+    expect(encoded.keys, [
+      'schemaVersion',
+      'type',
+      'surface',
+      'upstreamTag',
+      'count',
+      'groups',
+      'parameters',
+    ]);
+    expect(encoded['count'], 1);
+    expect(encoded['parameters'], [encodeParameter(topK)]);
+  });
+
+  test('modifiedServerParameterIds compares typed fields and map values', () {
+    final defaults = ServerConfig.defaults();
+    expect(modifiedServerParameterIds(defaults), isEmpty);
+
+    final config = defaults.copyWith(
+      threads: 8,
+      params: ParameterValues.set(defaults.params, 'top-k', '33'),
+    );
+    expect(modifiedServerParameterIds(config), ['threads', 'top-k']);
+  });
 }

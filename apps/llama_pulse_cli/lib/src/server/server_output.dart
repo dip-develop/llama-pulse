@@ -6,6 +6,111 @@ import 'server_status_reader.dart';
 /// Version of the server command output schema.
 const int serverOutputSchemaVersion = 1;
 
+/// Encodes one catalog parameter with the documented field set.
+///
+/// The key order is part of the contract: `params catalog --json` and
+/// `params describe --json` both use it, so consumers see the same object.
+Map<String, Object?> encodeParameter(ParameterSpec spec) => {
+  'id': spec.id,
+  'displayName': spec.displayName,
+  'flags': spec.flags,
+  'negatedFlag': spec.negatedFlag,
+  'type': spec.type.wireName,
+  'arity': spec.arity,
+  'defaultValue': spec.defaultValue,
+  'min': spec.min,
+  'max': spec.max,
+  'allowed': spec.allowed,
+  'itemType': spec.itemType?.wireName,
+  'repeatable': spec.repeatable,
+  'group': spec.group,
+  'surfaces': [for (final surface in spec.surfaces) surface.wireName],
+  'exposure': spec.exposure.wireName,
+  'owner': spec.owner,
+  'managedBy': spec.managedBy,
+  'envVar': spec.envVar,
+  'advanced': spec.advanced,
+  'deprecated': spec.deprecated,
+  'replacement': spec.replacement,
+  'requiresExistingPath': spec.requiresExistingPath,
+  'warning': spec.warning,
+  'summary': spec.summary,
+  'description': spec.description,
+  'reason': spec.reason,
+};
+
+/// Encodes the object printed by `params catalog --json`.
+///
+/// [surface] is the requested filter (`all`, `server` or `embedded`), while
+/// [parameters] and [groups] are the entries that survived it.
+Map<String, Object?> encodeCatalog({
+  required ParameterCatalog catalog,
+  required String surface,
+  required List<ParameterSpec> parameters,
+  required List<ParameterGroupSpec> groups,
+}) => {
+  'schemaVersion': serverOutputSchemaVersion,
+  'type': 'parameterCatalog',
+  'surface': surface,
+  'upstreamTag': catalog.upstreamTag,
+  'count': parameters.length,
+  'groups': [
+    for (final group in groups)
+      {
+        'id': group.id,
+        'name': group.name,
+        'order': group.order,
+        'defaultOpen': group.defaultOpen,
+      },
+  ],
+  'parameters': [for (final spec in parameters) encodeParameter(spec)],
+};
+
+/// Returns the ids whose effective value differs from the default for
+/// [config], in catalog order, with unknown stored ids last.
+///
+/// Typed fields are compared with the value of the same field on
+/// [ServerConfig.defaults], so `threads: 8` is reported even though the
+/// catalog default for `threads` is dynamic. Map-backed values use
+/// [ParameterValueCodec.isDefault].
+List<String> modifiedServerParameterIds(ServerConfig config) {
+  final catalog = ParameterCatalog.v080;
+  final defaults = ServerConfig.defaults();
+  final ids = <String>[];
+  final known = <String>{};
+  for (final spec in catalog.parameters) {
+    known.add(spec.id);
+    if (!spec.appliesTo(ParamSurface.server)) {
+      continue;
+    }
+    final value = ParameterValues.valueFor(config, spec.id);
+    if (value == null || value.isEmpty) {
+      continue;
+    }
+    final isDefault = spec.owner != null
+        ? value == ParameterValues.valueFor(defaults, spec.id)
+        : ParameterValueCodec.isDefault(spec, value);
+    if (!isDefault) {
+      ids.add(spec.id);
+    }
+  }
+  final unknown = [
+    for (final id in config.params.keys)
+      if (!known.contains(id)) id,
+  ]..sort();
+  return [...ids, ...unknown];
+}
+
+/// Extends a `server.yaml` document with the additive `--json` keys.
+Map<String, Object?> encodeServerDocument({
+  required Map<String, Object?> document,
+  required ServerConfig config,
+}) => {
+  ...document,
+  'params': {for (final entry in config.params.entries) entry.key: entry.value},
+  'modified': modifiedServerParameterIds(config),
+};
+
 /// Encodes [failure] as the nested failure object.
 Map<String, Object?> encodeServerFailure(ServerFailure failure) => {
   'code': failure.code.name,
