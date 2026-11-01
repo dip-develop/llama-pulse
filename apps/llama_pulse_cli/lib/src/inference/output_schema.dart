@@ -83,3 +83,12 @@ Map<String, Object?> encodeFailureObject(InferenceFailure failure) => {
   'message': failure.message,
   'details': failure.details,
 };
+
+/// Builds the pre-start failure for a [modelPath] that is not a readable
+/// `.gguf` file.
+InferenceFailure missingModelFailure(String modelPath) => InferenceFailure(
+  (b) => b
+    ..code = InferenceFailureCode.modelNotFound
+    ..message = 'model file not found'
+    ..details = modelPath,
+);

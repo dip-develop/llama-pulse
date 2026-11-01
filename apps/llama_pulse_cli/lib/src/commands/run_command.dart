@@ -12,8 +12,9 @@ import '../inference/run_session.dart';
 
 /// Runs one prompt through the inference engine.
 ///
-/// The native session is unavailable, so this command requires `--stub`.
-/// In stub mode the model path is echoed into the request but never read.
+/// Without `--stub` the worker runs the native session named by `--lib` or
+/// resolved by the worker. In stub mode the model path is echoed into the
+/// request but never read.
 final class RunCommand extends LlamaPulseCommand {
   /// Creates the command.
   RunCommand(super.services) {
@@ -46,8 +47,8 @@ final class RunCommand extends LlamaPulseCommand {
 
   @override
   String get description =>
-      'Run one prompt. Requires --stub: the native session is unavailable, '
-      'so stub mode echoes the model path without reading it.';
+      'Run one prompt through the embedded engine. --stub echoes the model '
+      'path without reading it; --lib selects the native llama.cpp library.';
 
   @override
   bool get takesArguments => false;
@@ -75,10 +76,6 @@ final class RunCommand extends LlamaPulseCommand {
       return ExitCodes.usage;
     }
 
-    if (!args.flag('stub')) {
-      return _engineUnavailable(mode);
-    }
-
     final stored = await services.paramsRepository.load();
     final modelPath = resolveModelPath(args.option('model'), stored.modelPath);
     if (modelPath == null) {
@@ -87,6 +84,20 @@ final class RunCommand extends LlamaPulseCommand {
         'params.modelPath',
       );
       return ExitCodes.usage;
+    }
+
+    // The stub echoes the path without opening it, so only the native session
+    // needs a readable `.gguf` file. Checking here keeps a typo from surfacing
+    // later as libraryNotFound.
+    final stub = args.flag('stub');
+    if (!stub && await services.scanner.inspect(modelPath) == null) {
+      services.err.writeln('error: not found: $modelPath');
+      if (mode == RunOutputMode.stream || mode == RunOutputMode.json) {
+        services.out.writeln(
+          jsonEncode(encodeFailed(1, '', missingModelFailure(modelPath))),
+        );
+      }
+      return ExitCodes.notFound;
     }
 
     final params = parsed.overrides
@@ -107,7 +118,10 @@ final class RunCommand extends LlamaPulseCommand {
       return ExitCodes.usage;
     }
 
-    final engine = services.createEngine(useStubSession: true);
+    final engine = services.createEngine(
+      useStubSession: stub,
+      libraryPath: parsed.libraryPath,
+    );
     try {
       try {
         await engine.load(params);
@@ -186,28 +200,19 @@ final class RunCommand extends LlamaPulseCommand {
     }
   }
 
-  int _engineUnavailable(RunOutputMode mode) {
-    const message = 'the native session is unavailable; pass --stub';
-    services.err.writeln('error: engineUnavailable: $message');
-    if (mode == RunOutputMode.stream || mode == RunOutputMode.json) {
-      services.out.writeln(jsonEncode(encodeFailed(0, '', _failure(message))));
-    }
-    return ExitCodes.failure;
-  }
-
   int _reportFailure(InferenceFailure failure, RunOutputMode mode) {
     services.err.writeln('error: ${failure.code.name}: ${failure.message}');
+    final details = failure.details;
+    if (details != null && details.trim().isNotEmpty) {
+      for (final line in details.split('\n')) {
+        services.err.writeln('  $line');
+      }
+    }
     if (mode == RunOutputMode.stream || mode == RunOutputMode.json) {
       services.out.writeln(jsonEncode(encodeFailed(1, '', failure)));
     }
     return ExitCodes.failure;
   }
-
-  InferenceFailure _failure(String message) => InferenceFailure(
-    (b) => b
-      ..code = InferenceFailureCode.engineUnavailable
-      ..message = message,
-  );
 
   RunOutputMode _mode(ArgResults args) {
     if (args.flag('json')) {

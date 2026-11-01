@@ -19,13 +19,20 @@ void main() {
   late StringBuffer err;
   late ScriptedLlamaEngine engine;
   late InMemoryConfigStore store;
+  late Directory modelsDirectory;
+  late File modelFile;
 
   setUp(() {
     out = StringBuffer();
     err = StringBuffer();
     engine = ScriptedLlamaEngine();
     store = InMemoryConfigStore();
+    modelsDirectory = Directory.systemTemp.createTempSync('llamapulse_run');
+    modelFile = File('${modelsDirectory.path}/tiny.gguf')
+      ..writeAsStringSync('');
   });
+
+  tearDown(() => modelsDirectory.deleteSync(recursive: true));
 
   LlamaPulseCommandRunner makeRunner({
     bool useDefaultEngine = false,
@@ -45,37 +52,42 @@ void main() {
     ),
   );
 
-  test('without --stub exits 1 and reports engineUnavailable', () async {
-    final runner = makeRunner();
+  test(
+    'without --stub reports libraryNotFound and the searched paths',
+    () async {
+      final runner = makeRunner(
+        engineFactory: () => WorkerLlamaEngine(libraryPath: ''),
+      );
 
-    final code = await runner.run([
-      'run',
-      '--model',
-      '/tmp/demo.gguf',
-      '--prompt',
-      'hi',
-    ]);
+      final code = await runner.run([
+        'run',
+        '--model',
+        modelFile.path,
+        '--prompt',
+        'hi',
+      ]);
 
-    expect(code, ExitCodes.failure);
-    expect(out.toString(), isEmpty);
-    expect(
-      err.toString(),
-      'error: engineUnavailable: the native session is unavailable; '
-      'pass --stub\n',
-    );
-    expect(engine.loadCalls, 0);
-    expect(engine.generateCalls, 0);
-  });
+      expect(code, ExitCodes.failure);
+      expect(out.toString(), isEmpty);
+      expect(err.toString(), contains('error: libraryNotFound:'));
+      expect(err.toString(), contains('libllama.so'));
+      expect(engine.loadCalls, 0);
+      expect(engine.generateCalls, 0);
+    },
+    timeout: const Timeout(Duration(seconds: 30)),
+  );
 
   test('without --stub emits one failed object in --json mode', () async {
-    final runner = makeRunner();
+    final runner = makeRunner(
+      engineFactory: () => WorkerLlamaEngine(libraryPath: ''),
+    );
 
     expect(
       await runner.run([
         'run',
         '--json',
         '--model',
-        '/tmp/demo.gguf',
+        modelFile.path,
         '--prompt',
         'hi',
       ]),
@@ -84,24 +96,26 @@ void main() {
 
     final event = _lines(out.toString()).single;
     expect(event['type'], 'failed');
-    expect(event['requestId'], 0);
+    expect(event['requestId'], 1);
     expect(event['schemaVersion'], 1);
     expect(event['text'], '');
     final failure = event['failure'] as Map<String, Object?>;
-    expect(failure['code'], 'engineUnavailable');
-    expect(failure['message'], contains('pass --stub'));
-    expect(err.toString(), contains('error: engineUnavailable:'));
-  });
+    expect(failure['code'], 'libraryNotFound');
+    expect(failure['details'], contains('libllama.so'));
+    expect(err.toString(), contains('error: libraryNotFound:'));
+  }, timeout: const Timeout(Duration(seconds: 30)));
 
   test('without --stub emits one failed object in --stream mode', () async {
-    final runner = makeRunner();
+    final runner = makeRunner(
+      engineFactory: () => WorkerLlamaEngine(libraryPath: ''),
+    );
 
     expect(
       await runner.run([
         'run',
         '--stream',
         '--model',
-        '/tmp/demo.gguf',
+        modelFile.path,
         '--prompt',
         'hi',
       ]),
@@ -110,12 +124,32 @@ void main() {
 
     final event = _lines(out.toString()).single;
     expect(event['type'], 'failed');
-    expect(event['requestId'], 0);
+    expect(event['requestId'], 1);
     expect(
       (event['failure'] as Map<String, Object?>)['code'],
-      'engineUnavailable',
+      'libraryNotFound',
     );
-  });
+  }, timeout: const Timeout(Duration(seconds: 30)));
+
+  test('--lib names a missing library in the failure', () async {
+    final runner = makeRunner(useDefaultEngine: true);
+
+    expect(
+      await runner.run([
+        'run',
+        '--lib',
+        '/nonexistent/libllama.so',
+        '--model',
+        modelFile.path,
+        '--prompt',
+        'hi',
+      ]),
+      ExitCodes.failure,
+    );
+
+    expect(err.toString(), contains('error: libraryNotFound:'));
+    expect(err.toString(), contains('/nonexistent/libllama.so'));
+  }, timeout: const Timeout(Duration(seconds: 30)));
 
   test('--stub streams text to stdout and a summary to stderr', () async {
     final runner = makeRunner();
@@ -262,24 +296,6 @@ void main() {
     expect(err.toString(), contains('cannot be combined'));
   });
 
-  test('--file - is never read for an invocation without --stub', () async {
-    final stdin = StreamController<List<int>>();
-    addTearDown(() {
-      stdin.close();
-    });
-    final runner = makeRunner(stdin: stdin.stream);
-
-    expect(
-      await runner
-          .run(['run', '--model', '/tmp/demo.gguf', '--file', '-'])
-          .timeout(const Duration(seconds: 2)),
-      ExitCodes.failure,
-    );
-
-    expect(stdin.hasListener, isFalse);
-    expect(err.toString(), contains('native session is unavailable'));
-  });
-
   test('--file - is never read when the model path is missing', () async {
     final stdin = StreamController<List<int>>();
     addTearDown(() {
@@ -352,6 +368,65 @@ void main() {
 
     expect(err.toString(), contains('model path is required'));
     expect(engine.loadCalls, 0);
+  });
+
+  test('a missing model without --stub exits 3 with a failed object', () async {
+    final runner = makeRunner();
+
+    expect(
+      await runner.run([
+        'run',
+        '--json',
+        '--model',
+        '/tmp/missing.gguf',
+        '--prompt',
+        'hi',
+      ]),
+      ExitCodes.notFound,
+    );
+
+    final event = _lines(out.toString()).single;
+    expect(event['type'], 'failed');
+    expect(event['requestId'], 1);
+    expect(event['schemaVersion'], 1);
+    expect(event['text'], '');
+    expect((event['failure'] as Map<String, Object?>)['code'], 'modelNotFound');
+    expect(err.toString(), contains('error: not found: /tmp/missing.gguf'));
+    expect(engine.loadCalls, 0);
+    expect(engine.generateCalls, 0);
+  });
+
+  test('a non-.gguf file without --stub exits 3', () async {
+    final file = File('${modelsDirectory.path}/tiny.bin')
+      ..writeAsStringSync('not a model');
+    final runner = makeRunner();
+
+    expect(
+      await runner.run(['run', '--model', file.path, '--prompt', 'hi']),
+      ExitCodes.notFound,
+    );
+
+    expect(err.toString(), contains('error: not found: ${file.path}'));
+    expect(engine.loadCalls, 0);
+  });
+
+  test('--stub accepts a missing model path', () async {
+    final runner = makeRunner();
+
+    expect(
+      await runner.run([
+        'run',
+        '--stub',
+        '--model',
+        '/tmp/missing.gguf',
+        '--prompt',
+        'hi',
+      ]),
+      ExitCodes.ok,
+    );
+
+    expect(out.toString(), 'Hello world\n');
+    expect(engine.loadedParams?.modelPath, '/tmp/missing.gguf');
   });
 
   test('--file - reads the prompt from the injected stdin', () async {

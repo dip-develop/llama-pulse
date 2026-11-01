@@ -24,7 +24,9 @@ const bool _stubServerEnabled = bool.fromEnvironment('LLAMAPULSE_STUB_SERVER');
 /// package, while `llama_pulse_core` deliberately stays DI-framework free.
 ///
 /// An explicit [engine] always wins; otherwise [useStubEngine] (or the
-/// compile-time flag) selects the synthetic [WorkerLlamaEngine].
+/// compile-time flag) selects the synthetic [WorkerLlamaEngine], and the native
+/// session is the default. Both engine variants spawn their isolate lazily on
+/// the first call, so registration has no side effect.
 ///
 /// Likewise an explicit [serverController] wins; otherwise [useStubServer] (or
 /// the compile-time flag) selects [StubServerController], and a production
@@ -94,6 +96,8 @@ Future<void> configureDependencies({
     getIt.registerLazySingleton<LlamaEngine>(
       () => WorkerLlamaEngine(useStubSession: true),
     );
+  } else {
+    getIt.registerLazySingleton<LlamaEngine>(WorkerLlamaEngine.new);
   }
   if (serverController != null) {
     getIt.registerLazySingleton<ServerController>(() => serverController);

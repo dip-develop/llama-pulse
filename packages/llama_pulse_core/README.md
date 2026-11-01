@@ -17,7 +17,9 @@ and worker layer.
   `ServerBinaryLocator`, `ServerHttpClient`, `ServerProcess`, `PortProbe`,
   `ProcessSignaller` and `ProcessExecutor`.
 - The worker-isolate inference layer: `WorkerTransport`, `WorkerLlamaEngine`,
-  `WorkerLoop`, `StubLlamaSession` and the `llamaWorkerMain` entrypoint.
+  `WorkerLoop`, `StubLlamaSession`, the native `NativeLlamaSession` with
+  `LlamaLibrary`, `LlamaBindings`, `LlamaVersionPin` and `LlamaLibraryLocator`,
+  and the `llamaWorkerMain` entrypoint.
 - Use cases: `LoadModelParams`, `SaveModelParams`, `ListModels`,
   `InspectModel`.
 - The YAML configuration layer: `AppPaths`, `YamlEncoder`, `YamlDecoder`,
@@ -33,8 +35,10 @@ and worker layer.
 
 It has no Flutter imports and no DI annotations. The import rules are enforced
 by `test/architecture/core_imports_test.dart`. `dart:ffi` is allowed here
-because native code will only run inside the worker isolate; no FFI code exists
-yet.
+because native code only runs inside the worker isolate. The native session,
+its bindings and its loader live only under `lib/src/data/inference/native/`
+and are not exported by the public barrel: import them by path, and only from
+`data/inference/`.
 
 The public entrypoint is:
 
@@ -203,15 +207,52 @@ Guarantees the worker loop provides:
 - Load failures throw `InferenceFailureException`; every other engine failure
   surfaces as an `InferenceFailure` value.
 
-The native embedded session is **not** included yet. `WorkerConfig.useStubSession`
-selects the session inside the worker: `true` runs `StubLlamaSession`, which
-produces deterministic text and respects the token cap; the default runs
-`UnavailableLlamaSession`, whose `load` fails with `engineUnavailable` so a
-normal build can never emit synthetic output silently. The selection is always
-explicit: `--stub` in the CLI, `LLAMAPULSE_STUB_ENGINE` (or an injected engine)
-in the app, never a runtime fallback. The native session will pin an upstream
-llama.cpp tag, implement the same `LlamaSession` interface and gate the loaded
-library on `llama_version()`, without changing `LlamaEngine` or its callers.
+`WorkerConfig.useStubSession` selects the session inside the worker: `true` runs
+`StubLlamaSession`, which produces deterministic text and respects the token
+cap; the default runs `NativeLlamaSession`. A missing library fails `load` with
+`libraryNotFound` and every searched path in `details`, so a normal build can
+never emit synthetic output silently. The selection is always explicit:
+`--stub` in the CLI, `LLAMAPULSE_STUB_ENGINE` (or an injected engine) in the
+app, never a runtime fallback.
+
+### Native layer
+
+`NativeLlamaSession` implements the same `LlamaSession` interface and runs in
+the worker. `LlamaLibrary` opens the shared library with
+`DynamicLibrary.open`, resolves every symbol with `lookupFunction` (no
+`@Native`), pre-opens sibling `libggml*` libraries best-effort and calls
+`llama_backend_init` once per process. The bindings in
+`native/llama_bindings.dart` are hand-written from the vendored
+`llama.cpp v0.8.0` headers.
+
+- **Pin:** `LlamaVersionPin.version` is `0.8.0` (tag `v0.8.0`, commit
+  `8642541b255bfb5dc39cd351a178be09013a55d6`). `LlamaLibrary.open` calls
+  `llama_version()` and rejects anything else with
+  `libraryVersionMismatch`; a default dev build reports `0.8.0-dev` and is
+  rejected. Build the matching library with
+  [`third_party/llama_cpp/v0.8.0/BUILD.md`](../../third_party/llama_cpp/v0.8.0/BUILD.md)
+  (`-DBUILD_SHARED_LIBS=ON -DLLAMA_BUILD_IS_DEV=OFF …`).
+- **Resolution order:** explicit path (`--lib` or `WorkerConfig.libraryPath`) →
+  `LLAMA_PULSE_LIB` → `<exeDir>/lib` → `<exeDir>` → `<exeDir>/../Frameworks` →
+  `<config>/lib` → bare `libllama.so`/`llama.dll`/`libllama.dylib`. When none
+  works, `LlamaLibraryLocator.notFoundFailure()` returns `libraryNotFound` with
+  all candidates newline-joined in `details`.
+- **Generation:** left-truncate the prompt to `n_ctx - maxTokens`, prefill in
+  `n_batch` chunks with logits only on the last prompt token, then sample
+  top-k → top-p → min-p (0.05) → temperature → distribution. Decode each token
+  before the next sample, stop on EOG, reassemble split UTF-8 with
+  `Utf8TokenAccumulator`, check cancellation at every step, and take timings
+  from `llama_perf_context`.
+- **ABI:** `test/data/inference/native/abi_layout_test.dart` compiles
+  `third_party/llama_cpp/v0.8.0/abi_check.c` with clang and compares every
+  struct size and field offset; `sha256sum -c` verifies the vendored headers
+  against the pin. The headers are never compiled by the Flutter build.
+- 64-bit desktop only (structs are returned by value) and one engine per
+  process (`llama_backend_init` is global).
+
+Tests run against a C shim compiled from `test/support/native/fake_llama.c`;
+they skip when clang is missing. `native_integration_test.dart` is additionally
+gated on `LLAMA_PULSE_LIB` and `LLAMA_PULSE_MODEL`.
 
 ## Chat configuration
 

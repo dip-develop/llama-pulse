@@ -39,6 +39,9 @@ Future<void> pumpLlamaPulse(
     'llama_pulse_widget_test',
   );
   addTearDown(() async {
+    if (getIt.isRegistered<LlamaEngine>()) {
+      await getIt<LlamaEngine>().dispose();
+    }
     await getIt.reset();
     if (tempDir.existsSync()) {
       tempDir.deleteSync(recursive: true);

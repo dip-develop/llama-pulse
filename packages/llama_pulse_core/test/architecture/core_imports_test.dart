@@ -17,15 +17,36 @@ const _forbiddenImports = [
 
 const String _jsonDecodeAllowedPath = 'lib/src/data/server/';
 
+/// `dart:ffi` is only allowed in the llama.cpp bridge.
+const _ffiAllowedPrefix = 'lib/src/data/inference/native/';
+
 final _directive = RegExp('''^\\s*(?:import|export)\\s+['"]([^'"]+)['"]''');
 final _jsonEncode = RegExp(r'\bjsonEncode\s*\(');
 final _jsonDecode = RegExp(r'\bjsonDecode\s*\(');
+final _ffiDirective = RegExp('''^\\s*import\\s+['"]dart:ffi['"]''');
+final _exportDirective = RegExp('''^\\s*export\\s+['"]([^'"]+)['"]''');
+
+String _normalized(String path) => path.replaceAll(r'\', '/');
 
 bool _allowsJsonDecode(String path) {
-  final normalized = path.replaceAll(r'\', '/');
+  final normalized = _normalized(path);
   return normalized.startsWith(_jsonDecodeAllowedPath) ||
       normalized.contains('/$_jsonDecodeAllowedPath');
 }
+
+bool _allowsFfi(String path) {
+  final normalized = _normalized(path);
+  return normalized.startsWith(_ffiAllowedPrefix) ||
+      normalized.contains('/$_ffiAllowedPrefix');
+}
+
+List<File> _libFiles() =>
+    Directory('lib')
+        .listSync(recursive: true)
+        .whereType<File>()
+        .where((file) => file.path.endsWith('.dart'))
+        .where((file) => !file.path.endsWith('.g.dart'))
+        .toList();
 
 List<String> _scan(Iterable<File> files) {
   final violations = <String>[];
@@ -59,6 +80,19 @@ List<String> _scan(Iterable<File> files) {
           '$_jsonDecodeAllowedPath',
         );
       }
+      if (_ffiDirective.hasMatch(line) && !_allowsFfi(file.path)) {
+        violations.add(
+          '${file.path}:${index + 1}: dart:ffi is only allowed under '
+          '$_ffiAllowedPrefix',
+        );
+      }
+      final export = _exportDirective.firstMatch(line);
+      if (export != null && export.group(1)!.contains('native/')) {
+        violations.add(
+          "${file.path}:${index + 1}: exports '${export.group(1)}'; the FFI "
+          'bridge stays internal',
+        );
+      }
     }
   }
   return violations;
@@ -66,12 +100,7 @@ List<String> _scan(Iterable<File> files) {
 
 void main() {
   test('core has no UI, state, storage or JSON encoding dependencies', () {
-    final files = Directory('lib')
-        .listSync(recursive: true)
-        .whereType<File>()
-        .toList();
-
-    final violations = _scan(files);
+    final violations = _scan(_libFiles());
 
     // dart:ffi is deliberately allowed: the bridge lives in core and only
     // runs inside the worker isolate.
@@ -107,5 +136,30 @@ void main() {
     expect(violations, hasLength(1));
     expect(violations.single, contains('encoder.dart:1'));
     expect(violations.single, contains('jsonEncode'));
+  });
+
+  test('dart:ffi only appears in the native bridge directory', () {
+    final directory = Directory.systemTemp.createTempSync('llama_pulse_arch_');
+    addTearDown(() => directory.deleteSync(recursive: true));
+    final allowed = File('${directory.path}/$_ffiAllowedPrefix/bridge.dart')
+      ..createSync(recursive: true)
+      ..writeAsStringSync("import 'dart:ffi';\n");
+    final forbidden = File('${directory.path}/lib/src/domain/loader.dart')
+      ..createSync(recursive: true)
+      ..writeAsStringSync("import 'dart:ffi';\n");
+
+    final violations = _scan([allowed, forbidden]);
+
+    expect(violations, hasLength(1));
+    expect(violations.single, contains('loader.dart:1'));
+    expect(violations.single, contains('dart:ffi'));
+  });
+
+  test('the public library does not export the native bridge', () {
+    final barrel = File('lib/llama_pulse_core.dart');
+
+    final violations = _scan([barrel]);
+
+    expect(violations, isEmpty, reason: violations.join('\n'));
   });
 }

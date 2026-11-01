@@ -24,6 +24,11 @@ const InferenceFailureCode _$cancelled = const InferenceFailureCode._(
 const InferenceFailureCode _$nativeError = const InferenceFailureCode._(
   'nativeError',
 );
+const InferenceFailureCode _$libraryNotFound = const InferenceFailureCode._(
+  'libraryNotFound',
+);
+const InferenceFailureCode _$libraryVersionMismatch =
+    const InferenceFailureCode._('libraryVersionMismatch');
 const InferenceFailureCode _$unknown = const InferenceFailureCode._('unknown');
 
 InferenceFailureCode _$valueOf(String name) {
@@ -40,6 +45,10 @@ InferenceFailureCode _$valueOf(String name) {
       return _$cancelled;
     case 'nativeError':
       return _$nativeError;
+    case 'libraryNotFound':
+      return _$libraryNotFound;
+    case 'libraryVersionMismatch':
+      return _$libraryVersionMismatch;
     case 'unknown':
       return _$unknown;
     default:
@@ -55,6 +64,8 @@ final BuiltSet<InferenceFailureCode> _$values = BuiltSet<InferenceFailureCode>(
     _$engineBusy,
     _$cancelled,
     _$nativeError,
+    _$libraryNotFound,
+    _$libraryVersionMismatch,
     _$unknown,
   ],
 );

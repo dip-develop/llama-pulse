@@ -19,11 +19,13 @@ final class WorkerTransport {
   /// none is given.
   ///
   /// [useStubSession] is forwarded to the worker in [WorkerConfig] and selects
-  /// the session implementation inside the worker.
+  /// the session implementation inside the worker. [libraryPath] is forwarded
+  /// as the explicit `libllama` path; null lets the worker resolve it.
   WorkerTransport({
     void Function(WorkerConfig)? entryPoint,
     this.handshakeTimeout = const Duration(seconds: 10),
     this.useStubSession = false,
+    this.libraryPath,
   }) : _entryPoint = entryPoint ?? llamaWorkerMain;
 
   /// How long [start] waits for the worker's [WorkerReady] handshake.
@@ -31,6 +33,9 @@ final class WorkerTransport {
 
   /// Whether the worker should run the deterministic stub session.
   final bool useStubSession;
+
+  /// Explicit absolute `libllama` path, or null to let the worker resolve it.
+  final String? libraryPath;
 
   static const _exitGrace = Duration(seconds: 2);
 
@@ -99,7 +104,11 @@ final class WorkerTransport {
     try {
       isolate = await Isolate.spawn(
         _entryPoint,
-        WorkerConfig(mainPort: port.sendPort, useStubSession: useStubSession),
+        WorkerConfig(
+          mainPort: port.sendPort,
+          useStubSession: useStubSession,
+          libraryPath: libraryPath,
+        ),
         debugName: 'llamapulse-worker',
         errorsAreFatal: false,
         onError: port.sendPort,

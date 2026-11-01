@@ -145,16 +145,153 @@ void main() {
     expect(err.toString(), contains('--runs must be an integer in 1..50'));
   });
 
-  test('without --stub exits 1 and reports engineUnavailable', () async {
+  test('without --stub loads a real model through the native engine', () async {
+    final directory = Directory.systemTemp.createTempSync('llamapulse_bench');
+    addTearDown(() => directory.deleteSync(recursive: true));
+    final model = File('${directory.path}/tiny.gguf')..writeAsStringSync('');
     final runner = makeRunner();
 
-    final code = await runner.run(['bench', '--model', '/tmp/demo.gguf']);
+    expect(
+      await runner.run([
+        'bench',
+        '--json',
+        '--runs',
+        '1',
+        '--model',
+        model.path,
+      ]),
+      ExitCodes.ok,
+    );
 
-    expect(code, ExitCodes.failure);
-    expect(out.toString(), isEmpty);
-    expect(err.toString(), contains('error: engineUnavailable:'));
+    expect(engine.loadCalls, 1);
+    expect(engine.loadedParams?.modelPath, model.path);
+    expect(engine.generateCalls, 1);
+  });
+
+  test(
+    'without --stub reports libraryNotFound and the searched paths',
+    () async {
+      final directory = Directory.systemTemp.createTempSync('llamapulse_bench');
+      addTearDown(() => directory.deleteSync(recursive: true));
+      final model = File('${directory.path}/tiny.gguf')..writeAsStringSync('');
+      final runner = LlamaPulseCommandRunner(
+        CliServices(
+          paths: const AppPaths(configDirectory: '/config/llamapulse'),
+          configStore: store,
+          out: out,
+          err: err,
+          engineFactory: () => WorkerLlamaEngine(libraryPath: ''),
+        ),
+      );
+
+      final code = await runner.run([
+        'bench',
+        '--runs',
+        '1',
+        '--model',
+        model.path,
+      ]);
+
+      expect(code, ExitCodes.failure);
+      expect(out.toString(), isEmpty);
+      expect(err.toString(), contains('error: libraryNotFound:'));
+      expect(err.toString(), contains('libllama.so'));
+    },
+    timeout: const Timeout(Duration(seconds: 30)),
+  );
+
+  test('without --stub a blank model path is a usage error', () async {
+    final runner = makeRunner();
+
+    expect(
+      await runner.run(['bench', '--model', '   ', '--runs', '1']),
+      ExitCodes.usage,
+    );
+
+    expect(err.toString(), contains('model path is required'));
     expect(engine.loadCalls, 0);
   });
+
+  test('without --stub a missing model is notFound', () async {
+    final runner = makeRunner();
+
+    expect(
+      await runner.run(['bench', '--model', '/tmp/missing.gguf']),
+      ExitCodes.notFound,
+    );
+
+    expect(err.toString(), contains('not found: /tmp/missing.gguf'));
+    expect(engine.loadCalls, 0);
+  });
+
+  test('a missing model with --json emits one failed object', () async {
+    final runner = makeRunner();
+
+    expect(
+      await runner.run(['bench', '--json', '--model', '/tmp/missing.gguf']),
+      ExitCodes.notFound,
+    );
+
+    final event = _lines(out.toString()).single;
+    expect(event['type'], 'failed');
+    expect(event['requestId'], 1);
+    expect(event['schemaVersion'], 1);
+    expect(event['text'], '');
+    expect((event['failure'] as Map<String, Object?>)['code'], 'modelNotFound');
+    expect(err.toString(), contains('error: not found: /tmp/missing.gguf'));
+    expect(engine.loadCalls, 0);
+  });
+
+  test('--runs 3 works with a broadcast interrupt stream', () async {
+    final signals = StreamController<ProcessSignal>.broadcast();
+    addTearDown(signals.close);
+    final runner = makeRunner(interrupts: signals.stream);
+
+    expect(
+      await runner.run([
+        'bench',
+        '--stub',
+        '--json',
+        '--runs',
+        '3',
+        '--model',
+        '/tmp/demo.gguf',
+      ]),
+      ExitCodes.ok,
+    );
+
+    final result = _lines(out.toString()).single;
+    expect((result['perRun'] as List<Object?>).length, 3);
+    expect(engine.generateCalls, 3);
+    expect(err.toString(), isNot(contains('already been listened')));
+  });
+
+  test(
+    '--runs 3 subscribes to a single-subscription source only once',
+    () async {
+      final signals = StreamController<ProcessSignal>();
+      addTearDown(signals.close);
+      final runner = makeRunner(interrupts: signals.stream);
+
+      expect(
+        await runner.run([
+          'bench',
+          '--stub',
+          '--json',
+          '--runs',
+          '3',
+          '--model',
+          '/tmp/demo.gguf',
+        ]),
+        ExitCodes.ok,
+      );
+
+      final result = _lines(out.toString()).single;
+      expect((result['perRun'] as List<Object?>).length, 3);
+      expect(engine.generateCalls, 3);
+      expect(err.toString(), isNot(contains('already been listened')));
+    },
+  );
 
   test('a failed run keeps the partial text in --json output', () async {
     engine = ScriptedLlamaEngine(

@@ -50,13 +50,20 @@ final class InferenceOverrides {
 /// The parsed shared inference flags.
 final class ParsedInferenceOptions {
   /// Creates a parse result; [errors] is empty when every value parsed.
-  const ParsedInferenceOptions({required this.overrides, required this.errors});
+  const ParsedInferenceOptions({
+    required this.overrides,
+    required this.errors,
+    this.libraryPath,
+  });
 
   /// The accepted overrides.
   final InferenceOverrides overrides;
 
   /// One message per flag whose value was not a number.
   final List<String> errors;
+
+  /// The `--lib` path, or null to let the worker resolve the library.
+  final String? libraryPath;
 }
 
 /// Registers the flags shared by `run` and `bench` on [parser].
@@ -66,6 +73,7 @@ final class ParsedInferenceOptions {
 void addInferenceOptions(ArgParser parser, {String? maxTokensDefault}) {
   parser
     ..addOption('model', help: 'Path to the .gguf model file.')
+    ..addOption('lib', help: 'Absolute path to the libllama shared library.')
     ..addOption('threads', help: 'Worker threads used for evaluation.')
     ..addOption('temperature', help: 'Sampling temperature.')
     ..addOption('top-p', help: 'Nucleus sampling probability mass.')
@@ -121,6 +129,7 @@ ParsedInferenceOptions parseInferenceOptions(ArgResults args) {
       contextSize: readInt('context-size'),
     ),
     errors: errors,
+    libraryPath: args.option('lib'),
   );
 }
 

@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:llama_pulse_core/llama_pulse_core.dart';
 
@@ -19,8 +21,8 @@ const String _stubOnlyModelPath = '<stub>';
 
 /// Runs the same prompt several times and reports aggregate throughput.
 ///
-/// The native session is unavailable, so this command requires `--stub`.
-/// The fixed prompt is [benchPrompt].
+/// Without `--stub` the worker runs the native session and the model must be a
+/// real `.gguf` file. The fixed prompt is [benchPrompt].
 final class BenchCommand extends LlamaPulseCommand {
   /// Creates the command.
   BenchCommand(super.services) {
@@ -48,9 +50,9 @@ final class BenchCommand extends LlamaPulseCommand {
 
   @override
   String get description =>
-      'Benchmark repeated runs of "$benchPrompt". Requires --stub: the native '
-      'session is unavailable, and stub mode without a configured model uses '
-      'the $_stubOnlyModelPath placeholder.';
+      'Benchmark repeated runs of "$benchPrompt" through the embedded engine. '
+      'Stub mode without a configured model uses the $_stubOnlyModelPath '
+      'placeholder.';
 
   @override
   bool get takesArguments => false;
@@ -77,17 +79,34 @@ final class BenchCommand extends LlamaPulseCommand {
 
     final json = args.flag('json');
     final stub = args.flag('stub');
-    if (!stub) {
-      return _engineUnavailable(json);
-    }
 
     final stored = await services.paramsRepository.load();
     final configuredPath = resolveModelPath(
       args.option('model'),
       stored.modelPath,
     );
-    // A benchmark without a configured model still exercises the stub; the
-    // native engine branch above never reaches this point.
+    if (!stub) {
+      if (configuredPath == null) {
+        services.err.writeln(
+          'error: model path is required: pass --model or set '
+          'params.modelPath',
+        );
+        return ExitCodes.usage;
+      }
+      if (await services.scanner.inspect(configuredPath) == null) {
+        services.err.writeln('error: not found: $configuredPath');
+        if (json) {
+          services.out.writeln(
+            jsonEncode(
+              encodeFailed(1, '', missingModelFailure(configuredPath)),
+            ),
+          );
+        }
+        return ExitCodes.notFound;
+      }
+    }
+    // A stub benchmark without a configured model still runs; the native
+    // branch above requires a real file.
     final modelPath = configuredPath ?? _stubOnlyModelPath;
 
     final params = parsed.overrides
@@ -101,7 +120,20 @@ final class BenchCommand extends LlamaPulseCommand {
       return ExitCodes.usage;
     }
 
-    final engine = services.createEngine(useStubSession: true);
+    // Subscribe to the signal source once for the whole command: the injected
+    // source may be single-subscription, while every runSession call listens.
+    // A per-command broadcast controller forwards each signal to the run that
+    // is currently generating.
+    final runSignals = StreamController<ProcessSignal>.broadcast();
+    final interruptSubscription = services.interrupts?.listen(
+      runSignals.add,
+      onError: runSignals.addError,
+    );
+
+    final engine = services.createEngine(
+      useStubSession: stub,
+      libraryPath: parsed.libraryPath,
+    );
     var loaded = false;
     try {
       try {
@@ -128,7 +160,7 @@ final class BenchCommand extends LlamaPulseCommand {
           out: services.out,
           err: services.err,
           mode: RunOutputMode.quiet,
-          interrupts: services.interrupts,
+          interrupts: runSignals.stream,
         );
         if (result.status == SessionStatus.cancelled) {
           if (json) {
@@ -208,6 +240,8 @@ final class BenchCommand extends LlamaPulseCommand {
       }
       return ExitCodes.ok;
     } finally {
+      await interruptSubscription?.cancel();
+      await runSignals.close();
       if (loaded) {
         try {
           await engine.unload();
@@ -223,27 +257,6 @@ final class BenchCommand extends LlamaPulseCommand {
     }
   }
 
-  int _engineUnavailable(bool json) {
-    const message = 'the native session is unavailable; pass --stub';
-    services.err.writeln('error: engineUnavailable: $message');
-    if (json) {
-      services.out.writeln(
-        jsonEncode(
-          encodeFailed(
-            0,
-            '',
-            InferenceFailure(
-              (b) => b
-                ..code = InferenceFailureCode.engineUnavailable
-                ..message = message,
-            ),
-          ),
-        ),
-      );
-    }
-    return ExitCodes.failure;
-  }
-
   int _reportFailure(
     InferenceFailure failure,
     int requestId,
@@ -251,6 +264,12 @@ final class BenchCommand extends LlamaPulseCommand {
     String text = '',
   }) {
     services.err.writeln('error: ${failure.code.name}: ${failure.message}');
+    final details = failure.details;
+    if (details != null && details.trim().isNotEmpty) {
+      for (final line in details.split('\n')) {
+        services.err.writeln('  $line');
+      }
+    }
     if (json) {
       services.out.writeln(jsonEncode(encodeFailed(requestId, text, failure)));
     } else if (text.isNotEmpty) {

@@ -8,16 +8,16 @@ desktop GUI (`apps/llama_pulse`), a command-line companion
 The product is server-first: LlamaPulse launches and supervises a local
 `llama-server` and exposes it as an OpenAI-compatible endpoint for OpenCode,
 IDEs and scripts. The primary screen is the server dashboard; the embedded Chat
-tab is an optional, experimental path that still runs the existing
-stub/embedded engine.
+tab is an optional, experimental path that runs a native llama.cpp session.
 
 Today the supervisor, the dashboard and the server CLI work end to end: a
 configured `llama-server` is started, waited on through `/health`, sampled
-through `/metrics` and `/slots`, and stopped gracefully. The embedded chat path
-still ships no native engine: a plain build reports `engineUnavailable`, and
-the opt-in `melos run app:stub` demo runs the stub behind a banner. `run` and
-`bench` in the CLI are also embedded/experimental and require `--stub`. The
-native embedded session is deferred.
+through `/metrics` and `/slots`, and stopped gracefully. The embedded path ships
+a real engine: `NativeLlamaSession` behind the worker isolate loads a pinned
+llama.cpp shared library, and `run`/`bench` in the CLI select it by default.
+`--stub` runs the deterministic stub behind a banner (`melos run app:stub`), and
+a build with no resolvable library reports `libraryNotFound` with the searched
+paths instead of producing synthetic output.
 
 MVP:
 
@@ -27,7 +27,7 @@ MVP:
 - Server configuration in `server.yaml`; CLI parity for headless use.
 - Cross-platform: Linux, Windows, macOS.
 - No native inference on the UI isolate; the embedded engine stays in its
-  worker isolate when it lands.
+  worker isolate.
 
 Out of scope for now: binary downloader/updater, Hugging Face CLI, model file
 manager. The architecture leaves room for all three; section 15 says where.
@@ -76,7 +76,7 @@ Pins are deliberate; do not loosen them without reproducing the resolution:
 | `injectable_generator` | `3.1.3` | exact; paired with `injectable ^3.0.0` |
 | `get_it` | `^9.3.0` | DI container in the app |
 | `injectable` | `^3.0.0` | annotations for app-owned registrations |
-| `ffi` | `^2.2.0` | `Utf8`, `calloc`, native helpers; arrives with the FFI milestone, nothing declares it yet |
+| `ffi` | `^2.2.0` | native bindings; `Utf8`, `calloc`, dynamic symbol lookup |
 | `path` | `^1.9.1` | cross-platform paths |
 | `melos` (dev) | `^8.10.0` | workspace scripts and task runner |
 | `yaml` | `^3.1.4` | YAML decoding in core |
@@ -126,6 +126,8 @@ packages/llama_pulse_core/
   lib/src/domain/   entities/ (server_*), exceptions/, gateways/ (server_*),
                     usecases/, text/, server_config_validator.dart
   lib/src/data/     config/, inference/, models/, server/, serialization/
+  lib/src/data/inference/native/  llama_bindings.dart, llama_library.dart,
+                    native_llama_session.dart
   test/             architecture/, data/, domain/
 ```
 
@@ -142,7 +144,9 @@ Dependency rule:
 `packages/llama_pulse_core` must stay Flutter-free. The import rules are enforced
 by `packages/llama_pulse_core/test/architecture/core_imports_test.dart`.
 `dart:ffi` **is** allowed in core because it only runs inside the worker isolate;
-Flutter-specific code stays in the app.
+Flutter-specific code stays in the app. The native session, bindings and loader
+live only under `lib/src/data/inference/native/`, and the public barrel
+`llama_pulse_core.dart` does not export them.
 
 Core is organised as `domain/{entities,exceptions,gateways,usecases,text}` and
 `data/{config,inference,models,server,serialization}`. The `inference/` and
@@ -220,13 +224,14 @@ the YAML round-trip test, the CLI flags and the dashboard form.
 
 A worker isolate exists. Core's `data/inference/` holds the protocol
 (`WorkerRequest`/`WorkerResponse` and their kinds), `WorkerTransport`,
-`WorkerLlamaEngine`, `WorkerLoop`, `StubLlamaSession`, the
-`UnavailableLlamaSession` placeholder and the `@pragma('vm:entry-point')`
-`llamaWorkerMain` entrypoint. There is no `dart:ffi` code yet;
-`--stub` and `LLAMAPULSE_STUB_ENGINE` set `WorkerConfig.useStubSession`
-explicitly. The default session is `UnavailableLlamaSession`, whose `load`
-fails with `engineUnavailable` ("the native llama.cpp session is not implemented
-yet"), so a plain build has no engine.
+`WorkerLlamaEngine`, `WorkerLoop`, `StubLlamaSession`, `NativeLlamaSession`
+(under `native/`), `LlamaLibraryLocator` and the `@pragma('vm:entry-point')`
+`llamaWorkerMain` entrypoint. `--stub` and `LLAMAPULSE_STUB_ENGINE` set
+`WorkerConfig.useStubSession` explicitly, and `WorkerConfig.libraryPath` carries
+an explicit library path from `--lib`. The default session is
+`NativeLlamaSession`; when no library resolves, `load` fails with
+`libraryNotFound` and the searched paths in `details` instead of producing
+synthetic output.
 
 - One long-lived worker isolate per engine, spawned lazily on the first
   `load`/`unload`/`generate`. A failed start is retried on the next call. No
@@ -257,18 +262,56 @@ yet"), so a plain build has no engine.
 - Failures cross the port as `InferenceFailure` values, never as thrown
   exceptions. Load failures throw `InferenceFailureException` on the caller
   side.
-- Never `dart:ffi` on the UI isolate — not even to probe a symbol. Symbols, once
-  native code exists, come from `DynamicLibrary.open` + `lookupFunction`, never
-  `@Native`; the app must start with no native library present.
-- `NativeLlamaSession` (deferred) implements core's `LlamaSession` and runs in
-  the worker, pinned to an upstream llama.cpp tag. Native-PR contract:
-  `LLAMA_PULSE_LIB` is the absolute path to the shared library, read only inside
-  the worker. Resolution order is explicit path → env → bundle → exe-adjacent →
-  data dir → bare soname. A runtime `llama_version()` gate must reject a
-  mismatched library with a `libraryVersionMismatch` failure code. The build,
-  tests and library startup must work with no llama.cpp binary installed.
+- Never `dart:ffi` on the UI isolate — not even to probe a symbol. Symbols come
+  from `DynamicLibrary.open` + `lookupFunction`, never `@Native`; the app must
+  start with no native library present.
 - UTF-8 is accumulated by `Utf8TokenAccumulator`, because
   `llama_token_to_piece` can split a code point across tokens.
+
+Native session rules:
+
+- **Pin.** Bind only llama.cpp `v0.8.0`
+  (commit `8642541b255bfb5dc39cd351a178be09013a55d6`). `LlamaVersionPin` holds
+  the version, tag and commit; the vendored headers, `PIN.md`, `SHA256SUMS` and
+  `abi_check.c` live in `third_party/llama_cpp/v0.8.0/`, and
+  `sha256sum -c third_party/llama_cpp/v0.8.0/SHA256SUMS` verifies them.
+- **Gate.** `LlamaLibrary.open` calls `llama_version()` and accepts exactly
+  `0.8.0`; anything else, including the `0.8.0-dev` a default dev build
+  reports, fails with `libraryVersionMismatch` and the reported version. A local
+  `/opt/llama.cpp-rocm` Unsloth fork reports `0.7.0-dev` and is rejected; that
+  is the gate working, not a bug. The build recipe is
+  `third_party/llama_cpp/v0.8.0/BUILD.md` (`-DBUILD_SHARED_LIBS=ON
+  -DLLAMA_BUILD_IS_DEV=OFF ...`).
+- **Bindings.** Hand-written in `native/llama_bindings.dart` from the pinned
+  headers. No `@Native`, no FFI codegen, and `dart:ffi` is imported only under
+  `data/inference/native/`; the `llama_pulse_core.dart` barrel does not export
+  the native layer.
+- **ABI test.** `test/data/inference/native/abi_layout_test.dart` compiles
+  `abi_check.c` with clang and compares every struct size, field offset and
+  field width against the Dart classes. `dart:ffi` has no `offsetOf`, so offsets
+  are probed from the compiled C output; a red test means the binding, not the
+  test.
+- **Loading.** Best-effort sibling `libggml*` preload, then
+  `DynamicLibrary.open`. `llama_backend_init` runs once per process, so there is
+  one engine per process. No `dlclose` exists in `dart:ffi`; a library stays
+  mapped for the process lifetime.
+- **Resolution order.** explicit `--lib`/engine path → `LLAMA_PULSE_LIB` →
+  `<exeDir>/lib` → `<exeDir>` → `<exeDir>/../Frameworks` → `<config>/lib` →
+  bare `libllama.so`/`llama.dll`/`libllama.dylib`. No library means
+  `libraryNotFound` with every searched path in `details`; the CLI exits `1` and
+  the app shows the banner. Never fall back to the stub.
+- **Generation.** Tokenize the prompt, truncate on the left to
+  `n_ctx - maxTokens`, prefill in `n_batch` chunks (logits only on the last
+  prompt token), then sample top-k → top-p → min-p (0.05) → temperature →
+  distribution seeded with `LLAMA_DEFAULT_SEED` (`0xFFFFFFFF`), which llama.cpp
+  treats as random, so `bench` runs differ. Decode each token before sampling
+  the next, stop on EOG, and check cancellation at every step and prefill
+  chunk.
+  Metrics come from `llama_perf_context` plus the loop's token counts.
+- **Platform.** 64-bit desktop only: structs are returned by value.
+- **Selection.** `WorkerConfig.useStubSession` chooses
+  `StubLlamaSession` (explicit `--stub` or `LLAMAPULSE_STUB_ENGINE`);
+  `NativeLlamaSession` is the default.
 
 ## 8. DI
 
@@ -286,12 +329,16 @@ Core has no annotations and no `get_it`; it only defines gateways.
   `serverController` wins; otherwise `StubServerController` is used only when
   `useStubServer` is true or `LLAMAPULSE_STUB_SERVER` is set, and
   `LlamaServerSupervisor.production` is the default.
-- `WorkerLlamaEngine` is registered only when an explicit `engine` arrives or
-  `useStubEngine`/`LLAMAPULSE_STUB_ENGINE` is set; with neither, no engine is
-  registered.
+- `WorkerLlamaEngine` is always registered: an explicit `engine` wins,
+  `useStubEngine`/`LLAMAPULSE_STUB_ENGINE` selects
+  `WorkerLlamaEngine(useStubSession: true)`, and the default registers the
+  native engine (`WorkerLlamaEngine.new`). Both spawn their isolate lazily, so
+  registration has no side effect.
 - `InferenceBloc` is a registered factory; its fourth argument is a nullable
   `LlamaEngine`, so the screen still builds when no engine exists and reports
-  `engineUnavailable` instead of throwing. `ServerBloc` is a factory over the
+  `engineUnavailable` instead of throwing. A native engine that cannot find its
+  library fails `load` with `libraryNotFound` and shows the searched paths in the
+  failure banner; `ServerBloc` is a factory over the
   config repository, validator and the DI-owned controller; the controller
   outlives the bloc, so `close` only cancels subscriptions. An
   `AppLifecycleListener` disposes that controller when the window closes, and
@@ -324,18 +371,25 @@ The primary commands are the server group: `server get`, `server set`,
 `params get`, `params set`, `models list`, `models inspect`, `run` and `bench`
 remain. `run` and `bench` are the embedded/experimental path.
 
-- `run` and `bench` require `--stub` until the native engine lands. `--stub`
-  explicitly selects the deterministic `StubLlamaSession` inside the worker; it
-  is not a fallback. Without it, both exit `1` with
-  `engineUnavailable: the native session is unavailable; pass --stub`. The CLI
-  never silently falls back to the stub.
-- `run` flags: `--model`, `--prompt`, `--file` (`-` reads stdin), `--stream`,
-  `--json`, `--threads`, `--temperature`, `--top-p`, `--top-k`, `--max-tokens`
-  and `--context-size`. `--prompt` and `--file` are mutually exclusive; one is
-  required. `--json` and `--stream` cannot be combined.
+- `run` and `bench` run the native session by default. `--stub` explicitly
+  selects the deterministic `StubLlamaSession` inside the worker; it is not a
+  fallback. `--lib <path>` names the libllama shared library; without it the
+  worker resolves `LLAMA_PULSE_LIB`, `<exeDir>/lib`, `<exeDir>`, the macOS
+  `Frameworks` directory, `<config>/lib` and finally the bare soname (section
+  7). The library must report exactly
+  `0.8.0`, or `load` fails with `libraryVersionMismatch`. A missing library
+  exits `1` with `libraryNotFound` and the searched paths on stderr, or in the
+  `failed` JSON object's `details`. The CLI never silently falls back to the
+  stub.
+- `bench` without `--stub` requires a readable `.gguf` model: a blank path is a
+  usage error (`2`) and a missing, non-`.gguf` or unreadable file exits `3`.
+- `run` flags: `--model`, `--lib`, `--prompt`, `--file` (`-` reads stdin),
+  `--stream`, `--json`, `--threads`, `--temperature`, `--top-p`, `--top-k`,
+  `--max-tokens` and `--context-size`. `--prompt` and `--file` are mutually
+  exclusive; one is required. `--json` and `--stream` cannot be combined.
 - `bench` flags: `--runs` (1..50, default 3), `--json`, `--max-tokens`
-  (default 32), plus the shared `--model` and sampling overrides. It runs the
-  fixed `benchPrompt` repeatedly and reports aggregate throughput.
+  (default 32), plus the shared `--model`, `--lib` and sampling overrides. It
+  runs the fixed `benchPrompt` repeatedly and reports aggregate throughput.
 - Schema-v1 NDJSON covers `started`, `token`, `metrics`, `completed`,
   `cancelled` and `failed`, each line carrying `schemaVersion` and `type`.
   `metrics` and `failure` are nested objects. `bench --json` emits one
@@ -347,9 +401,9 @@ remain. `run` and `bench` are the embedded/experimental path.
   `params`, `models` and `server` groups are not invocable. Configuration files
   on disk stay YAML.
 - Exit codes: `0` success (including `stop` when nothing was running), `1`
-  unexpected failure (including `engineUnavailable` and any non-running
-  `status`), `2` invalid arguments or validation failure, `3` requested model
-  not found or not a readable `.gguf` file, `130` interrupted by SIGINT.
+  unexpected failure (including `libraryNotFound` and any non-running `status`),
+  `2` invalid arguments or validation failure, `3` requested model not found or
+  not a readable `.gguf` file, `130` interrupted by SIGINT.
 - The `params get`, `params set`, `server get`, `server set` and `logs` leaf
   commands include the active file path in their help, because the platform
   directory varies.
@@ -507,7 +561,8 @@ APIs, no `!` on nullable values, no empty `catch` blocks.
 
 From the root, `dart run melos test`. Melos picks `flutter test` for the app and
 `dart test` for core and CLI. Test the critical seams, not every line. Coverage
-is not a target. The suites hold 596 tests today: 388 core, 121 CLI, 87 app.
+is not a target. The suites hold 678 tests today: 458 core (plus one
+env-gated skip), 133 CLI, 87 app.
 
 Must test today:
 
@@ -521,6 +576,19 @@ Must test today:
   flags, options and the model before reading stdin, and invalid UTF-8 from
   `--file` is a usage error (exit 2). A stream that ends without a terminal is
   reported as `failed(unknown, 'the engine stream ended without a result')`.
+- The native layer, with a C shim rather than a real llama.cpp build:
+  `test/support/native/fake_llama.c` is compiled with clang by
+  `FakeLlamaBuilder`, so the binding lookups and behaviour run end to end.
+  Cover the ABI layout (`abi_layout_test.dart` compiles `abi_check.c` and
+  compares every struct size, field offset and the 72-entry field-width table),
+  the exact `0.8.0` version gate
+  (`libraryVersionMismatch` for anything else), the locator order and
+  `libraryNotFound` details, library open and model load, generation
+  (prefill, truncation, sampler chain, EOG, UTF-8 split tokens), metrics and
+  cooperative cancel. The shim enforces the batch and sampler contract, so the
+  tests catch a wrong `n_seq_id`/`seq_id`, non-monotonic positions, logits on
+  non-final tokens, `idx != -1` and sampling without logits. These tests skip
+  when clang is not installed.
 - The worker layer: `WorkerLoop` responses, `WorkerTransport` through a real
   isolate (handshake timeout and reuse after an aborted start, crash and exit,
   `close()` racing a spawn), and `WorkerLlamaEngine` (lazy spawn, per-request
@@ -563,7 +631,10 @@ tested through the `data/server/` seams; the architecture test keeps
 
 Real-isolate tests run only in the pure-Dart suites: core's `dart test` and the
 CLI's `dart test`; never in `flutter test`. Flutter's test binding and an actual
-isolate handshake do not mix reliably.
+isolate handshake do not mix reliably. `native_integration_test.dart` is the one
+env-gated test: it runs only when both `LLAMA_PULSE_LIB` and
+`LLAMA_PULSE_MODEL` point at a real pinned library and model, and is skipped in
+the normal run (that is the one skipped test in the counts above).
 
 Tests mirror the package layout. Most core fakes are declared inline in the
 test file that uses them; the app keeps shared fakes in `test/support/`. Never
@@ -629,14 +700,6 @@ no imports of another feature's data layer.
 
 Post-MVP landing spots:
 
-- Native embedded llama.cpp session (deferred): add a `LlamaSession`
-  implementation next to `StubLlamaSession` in the worker, pinned to an upstream
-  llama.cpp tag, and gate the loaded library behind a runtime `llama_version()`
-  check. Keep `LLAMA_PULSE_LIB` and the resolution order from section 7. A local
-  install at `/opt/llama.cpp-rocm` is an Unsloth fork (`0.7.0-dev`); do not bind
-  against it. Upstream `v0.8.0` already carries `load_mode`, `lazy_mode`,
-  `load_mtp`, `n_rs_seq`, `outputs_max`, `ctx_type`, `moe_cache_size` and
-  `ctx_other`, so nothing in this plan depends on fork-only struct fields.
 - Binary downloader: `data/downloads/` in an app layer plus a library locator
   strategy; the UI reaches it through a core gateway. It must
   **ask which compute backend to install (CPU/ROCm/CUDA/Vulkan/Metal)** and
@@ -675,15 +738,16 @@ the desktop app binary is `llama_pulse`. From the root,
 the GUI chat tab with `--dart-define=LLAMAPULSE_STUB_ENGINE=true`;
 `melos run app:stub-server` swaps the real supervisor for the synthetic
 controller with `--dart-define=LLAMAPULSE_STUB_SERVER=true`. Plain `melos run
-app` starts the real supervisor and registers no embedded engine.
-`LLAMA_PULSE_LIB` points at a llama.cpp shared library in the future native
-milestone. Never commit `.env` files, secrets or absolute local paths.
+app` starts the real supervisor and registers the native embedded engine.
+`LLAMA_PULSE_LIB` points at the llama.cpp shared library the native session
+loads; `--lib` does the same for the CLI. Never commit `.env` files, secrets or
+absolute local paths.
 
 ## 17. Definition of done for a change
 
 - [ ] The workspace resolves with one lockfile (`flutter pub get` at the root).
 - [ ] `pubspec.lock` stays untracked.
-- [ ] `dart run melos run check` is green (596 tests: 388 core, 121 CLI, 87 app).
+- [ ] `dart run melos run check` is green (678 tests: 458 core, 133 CLI, 87 app).
 - [ ] The server path works end to end: the plain app can start a real
   `llama-server` when a binary is present, and `serve`/`status`/`stop` work from
   the compiled CLI.
@@ -692,10 +756,12 @@ milestone. Never commit `.env` files, secrets or absolute local paths.
   that survives `SIGKILL` stays `failed` with its pid so `stop` can retry it.
 - [ ] `server.yaml` and `server-state.yaml` round-trip through the YAML layer,
   and the state document releases the pids on stop.
-- [ ] The embedded stub path still works from the CLI (`--stub`) and the demo
-  chat (`melos run app:stub`); the plain app reports `engineUnavailable` for
-  chat.
-- [ ] No `dart:ffi` in this batch.
+- [ ] The embedded paths work: `--stub` and `melos run app:stub` still produce
+  the deterministic stub output byte for byte, and the plain app and CLI use the
+  native session, reporting `libraryNotFound` with the searched paths when no
+  library resolves instead of falling back.
+- [ ] The native tests pass (ABI layout, version gate, locator, load,
+  generation/cancel with the C shim) or skip cleanly without clang.
 - [ ] `dart run melos run gen` twice leaves `git status` clean.
 - [ ] Layers respected; no Flutter imports in core, no `dart:ffi` on the UI
   isolate.

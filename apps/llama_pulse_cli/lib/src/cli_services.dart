@@ -79,7 +79,8 @@ final class CliServices {
   /// Delay between liveness checks during `stop`.
   final Duration stopPollInterval;
 
-  Stream<io.ProcessSignal>? _watchedInterrupts;
+  final List<StreamSubscription<io.ProcessSignal>> _interruptSubscriptions = [];
+  StreamController<io.ProcessSignal>? _interruptController;
   YamlModelParamsRepository? _paramsRepository;
   YamlServerConfigRepository? _serverConfigRepository;
   YamlServerStateRepository? _serverStateRepository;
@@ -89,8 +90,10 @@ final class CliServices {
   /// SIGINT and SIGTERM source, created on first read when production
   /// watching is enabled.
   ///
-  /// Both signals are merged into one stream so a command can react to either.
-  /// The production wiring never watches signals on Windows.
+  /// Both signals are merged into one broadcast stream so any number of
+  /// sequential or overlapping listeners can subscribe, and a listener that
+  /// cancels never closes the stream for the others. The production wiring
+  /// never watches signals on Windows.
   Stream<io.ProcessSignal>? get interrupts {
     if (_interrupts != null) {
       return _interrupts;
@@ -98,18 +101,24 @@ final class CliServices {
     if (!_watchInterrupts) {
       return null;
     }
-    return _watchedInterrupts ??= _watchInterruptSignals();
+    return (_interruptController ??= _watchInterruptSignals()).stream;
   }
 
   /// Creates the inference engine.
   ///
   /// An injected factory always wins. Otherwise this builds a
   /// [WorkerLlamaEngine], forwarding [useStubSession] so the caller decides
-  /// whether the worker runs the deterministic stub or the unavailable native
-  /// placeholder.
-  LlamaEngine createEngine({bool useStubSession = false}) =>
+  /// whether the worker runs the deterministic stub or the native session, and
+  /// [libraryPath] as the explicit `libllama` path.
+  LlamaEngine createEngine({
+    bool useStubSession = false,
+    String? libraryPath,
+  }) =>
       _engineFactory?.call() ??
-      WorkerLlamaEngine(useStubSession: useStubSession);
+      WorkerLlamaEngine(
+        useStubSession: useStubSession,
+        libraryPath: libraryPath,
+      );
 
   /// Loads and saves `params.yaml`; built once from [configStore].
   YamlModelParamsRepository get paramsRepository => _paramsRepository ??=
@@ -163,27 +172,45 @@ final class CliServices {
     );
   }
 
-  Stream<io.ProcessSignal> _watchInterruptSignals() {
-    final controller = StreamController<io.ProcessSignal>();
-    final subscriptions = <StreamSubscription<io.ProcessSignal>>[];
+  /// Releases the lazily created signal watchers.
+  ///
+  /// Safe to call more than once. `bin/llamapulse.dart` calls it on exit so
+  /// the process signal subscriptions do not outlive the command.
+  Future<void> dispose() async {
+    final controller = _interruptController;
+    _interruptController = null;
+    await _cancelInterruptSubscriptions();
+    await controller?.close();
+  }
+
+  StreamController<io.ProcessSignal> _watchInterruptSignals() {
+    final controller = StreamController<io.ProcessSignal>.broadcast();
     void listen(io.ProcessSignal signal) {
-      subscriptions.add(
+      _interruptSubscriptions.add(
         signal.watch().listen(controller.add, onError: controller.addError),
       );
     }
 
     controller.onListen = () {
+      // A broadcast controller fires onListen for the first listener of each
+      // wave; onCancel already cleared the previous subscriptions.
+      if (_interruptSubscriptions.isNotEmpty) {
+        return;
+      }
       listen(io.ProcessSignal.sigint);
       if (!io.Platform.isWindows) {
         listen(io.ProcessSignal.sigterm);
       }
     };
-    controller.onCancel = () async {
-      for (final subscription in subscriptions) {
-        await subscription.cancel();
-      }
-      subscriptions.clear();
-    };
-    return controller.stream;
+    controller.onCancel = _cancelInterruptSubscriptions;
+    return controller;
+  }
+
+  Future<void> _cancelInterruptSubscriptions() async {
+    final pending = List.of(_interruptSubscriptions);
+    _interruptSubscriptions.clear();
+    for (final subscription in pending) {
+      await subscription.cancel();
+    }
   }
 }
