@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:built_collection/built_collection.dart';
 import 'package:llama_pulse_core/llama_pulse_core.dart';
 import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
@@ -13,6 +14,67 @@ Future<ServerBinaryInfo> _fakeReader(String path) async => ServerBinaryInfo(
     ..supported = true
     ..rawOutput = 'version: $_version',
 );
+
+/// One installed runtime per backend, newest first in [installedAt].
+RuntimeIndex _index({
+  RuntimeBackend? selected,
+  Map<RuntimeBackend, int> installedAt = const <RuntimeBackend, int>{
+    RuntimeBackend.cpu: 10,
+    RuntimeBackend.cuda13: 20,
+  },
+}) => RuntimeIndex(
+  (b) => b
+    ..selectedTag = selected == null ? '' : 'v0.8.0'
+    ..selectedBackend = selected
+    ..installed = BuiltList<RuntimeInstallRef>(<RuntimeInstallRef>[
+      for (final entry in installedAt.entries)
+        RuntimeInstallRef(
+          (r) => r
+            ..tag = 'v0.8.0'
+            ..backend = entry.key
+            ..platform = RuntimePlatform.linuxX64
+            ..installedAtEpochMs = entry.value
+            ..sizeBytes = 1,
+        ),
+    ]).toBuilder(),
+);
+
+final class _FakeRuntimeStore implements RuntimeStore {
+  RuntimeIndex current = RuntimeIndex.empty();
+
+  @override
+  Future<RuntimeIndex> index() async => current;
+
+  @override
+  Future<List<RuntimeInstallRef>> list() async => current.installed.toList();
+
+  @override
+  Future<RuntimeManifest?> manifest(String tag, RuntimeBackend backend) async =>
+      null;
+
+  @override
+  Future<void> select(String tag, RuntimeBackend backend) async {}
+
+  @override
+  Future<void> remove(String tag, RuntimeBackend backend) async {}
+
+  @override
+  Future<void> commit(
+    RuntimeBackend backend,
+    RuntimeManifest manifest,
+    Directory stagingDir, {
+    bool force = false,
+  }) async {}
+
+  @override
+  Future<void> cleanupOrphans({
+    Duration olderThan = const Duration(days: 1),
+  }) async {}
+
+  @override
+  String installDirectory(String tag, RuntimeBackend backend) =>
+      p.join(tag, backend.id);
+}
 
 void main() {
   late Directory root;
@@ -179,6 +241,91 @@ void main() {
 
     expect(info.path, bundled.path);
     expect(p.basename(info.path), 'llama-server.exe');
+  });
+
+  group('managed runtimes', () {
+    final store = _FakeRuntimeStore();
+
+    ServerBinaryLocatorImpl runtimeLocator() => ServerBinaryLocatorImpl(
+      paths: AppPaths(configDirectory: configDirectory.path),
+      executablePath: p.join(executableDirectory.path, 'llama_pulse'),
+      environment: const {'PATH': ''},
+      operatingSystem: 'linux',
+      versionReader: _fakeReader,
+      runtimeStore: store,
+    );
+
+    test('a selected runtime comes before config/bin and PATH', () async {
+      final selected = await createExecutable(
+        p.join(
+          configDirectory.path,
+          'runtime',
+          'v0.8.0',
+          'cuda13',
+          'llama-server',
+        ),
+      );
+      await createExecutable(
+        p.join(configDirectory.path, 'bin', 'llama-server'),
+      );
+      store.current = _index(selected: RuntimeBackend.cuda13);
+
+      final info = await runtimeLocator().locate(ServerConfig.defaults());
+
+      expect(info.path, selected.path);
+      expect(
+        info.runtimeDirectory,
+        p.join(configDirectory.path, 'runtime', 'v0.8.0', 'cuda13'),
+      );
+    });
+
+    test('without a selection the newest install wins', () async {
+      final older = await createExecutable(
+        p.join(
+          configDirectory.path,
+          'runtime',
+          'v0.8.0',
+          'cpu',
+          'llama-server',
+        ),
+      );
+      final newer = await createExecutable(
+        p.join(
+          configDirectory.path,
+          'runtime',
+          'v0.8.0',
+          'vulkan',
+          'llama-server',
+        ),
+      );
+      store.current = _index(
+        installedAt: <RuntimeBackend, int>{
+          RuntimeBackend.cpu: 10,
+          RuntimeBackend.vulkan: 20,
+        },
+      );
+
+      final info = await runtimeLocator().locate(ServerConfig.defaults());
+
+      expect(info.path, newer.path);
+      expect(info.runtimeDirectory, isNotNull);
+      expect(older.existsSync(), isTrue);
+    });
+
+    test(
+      'falls back to config/bin when the runtime binary is missing',
+      () async {
+        final configured = await createExecutable(
+          p.join(configDirectory.path, 'bin', 'llama-server'),
+        );
+        store.current = _index(selected: RuntimeBackend.cpu);
+
+        final info = await runtimeLocator().locate(ServerConfig.defaults());
+
+        expect(info.path, configured.path);
+        expect(info.runtimeDirectory, isNull);
+      },
+    );
   });
 
   test('throws binaryNotFound and lists every searched path', () async {

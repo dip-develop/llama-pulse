@@ -64,6 +64,14 @@ class _$ServerBinaryInfoSerializer
           serializers.serialize(value, specifiedType: const FullType(String)),
         );
     }
+    value = object.runtimeDirectory;
+    if (value != null) {
+      result
+        ..add('runtimeDirectory')
+        ..add(
+          serializers.serialize(value, specifiedType: const FullType(String)),
+        );
+    }
     return result;
   }
 
@@ -131,6 +139,12 @@ class _$ServerBinaryInfoSerializer
                   )!
                   as String;
           break;
+        case 'runtimeDirectory':
+          result.runtimeDirectory = serializers.deserialize(
+            value,
+            specifiedType: const FullType(String),
+          ) as String?;
+          break;
       }
     }
 
@@ -153,6 +167,8 @@ class _$ServerBinaryInfo extends ServerBinaryInfo {
   final String? warning;
   @override
   final String rawOutput;
+  @override
+  final String? runtimeDirectory;
 
   factory _$ServerBinaryInfo([
     void Function(ServerBinaryInfoBuilder)? updates,
@@ -166,6 +182,7 @@ class _$ServerBinaryInfo extends ServerBinaryInfo {
     required this.supported,
     this.warning,
     required this.rawOutput,
+    this.runtimeDirectory,
   }) : super._();
   @override
   ServerBinaryInfo rebuild(void Function(ServerBinaryInfoBuilder) updates) =>
@@ -185,7 +202,8 @@ class _$ServerBinaryInfo extends ServerBinaryInfo {
         commit == other.commit &&
         supported == other.supported &&
         warning == other.warning &&
-        rawOutput == other.rawOutput;
+        rawOutput == other.rawOutput &&
+        runtimeDirectory == other.runtimeDirectory;
   }
 
   @override
@@ -198,6 +216,7 @@ class _$ServerBinaryInfo extends ServerBinaryInfo {
     _$hash = $jc(_$hash, supported.hashCode);
     _$hash = $jc(_$hash, warning.hashCode);
     _$hash = $jc(_$hash, rawOutput.hashCode);
+    _$hash = $jc(_$hash, runtimeDirectory.hashCode);
     _$hash = $jf(_$hash);
     return _$hash;
   }
@@ -211,7 +230,8 @@ class _$ServerBinaryInfo extends ServerBinaryInfo {
           ..add('commit', commit)
           ..add('supported', supported)
           ..add('warning', warning)
-          ..add('rawOutput', rawOutput))
+          ..add('rawOutput', rawOutput)
+          ..add('runtimeDirectory', runtimeDirectory))
         .toString();
   }
 }
@@ -248,6 +268,11 @@ class ServerBinaryInfoBuilder
   String? get rawOutput => _$this._rawOutput;
   set rawOutput(String? rawOutput) => _$this._rawOutput = rawOutput;
 
+  String? _runtimeDirectory;
+  String? get runtimeDirectory => _$this._runtimeDirectory;
+  set runtimeDirectory(String? runtimeDirectory) =>
+      _$this._runtimeDirectory = runtimeDirectory;
+
   ServerBinaryInfoBuilder();
 
   ServerBinaryInfoBuilder get _$this {
@@ -260,6 +285,7 @@ class ServerBinaryInfoBuilder
       _supported = $v.supported;
       _warning = $v.warning;
       _rawOutput = $v.rawOutput;
+      _runtimeDirectory = $v.runtimeDirectory;
       _$v = null;
     }
     return this;
@@ -305,6 +331,7 @@ class ServerBinaryInfoBuilder
             r'ServerBinaryInfo',
             'rawOutput',
           ),
+          runtimeDirectory: runtimeDirectory,
         );
     replace(_$result);
     return _$result;

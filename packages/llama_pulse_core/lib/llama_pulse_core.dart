@@ -29,6 +29,8 @@ export 'src/data/runtime/archive_extractor.dart';
 export 'src/data/runtime/dart_runtime_probe.dart';
 export 'src/data/runtime/http_runtime_fetcher.dart';
 export 'src/data/runtime/runtime_downloader.dart';
+export 'src/data/runtime/runtime_environment.dart';
+export 'src/data/runtime/runtime_index_file.dart';
 export 'src/data/runtime/yaml_runtime_store.dart';
 export 'src/data/serialization/serializers.dart' show serializers;
 export 'src/data/server/dart_http_client.dart';

@@ -12,6 +12,7 @@ import '../config/app_paths.dart';
 import '../config/yaml_decoder.dart';
 import '../config/yaml_encoder.dart';
 import '../serialization/serializers.dart' as core;
+import 'runtime_index_file.dart';
 
 /// A [RuntimeStore] backed by YAML files under `<config>/runtime/`.
 ///
@@ -69,26 +70,12 @@ final class YamlRuntimeStore implements RuntimeStore {
   }
 
   @override
-  Future<RuntimeIndex> index() async {
-    final file = File(_indexFile);
-    try {
-      if (!await file.exists()) {
-        return RuntimeIndex.empty();
-      }
-      final document = YamlDecoder.decode(await file.readAsString());
-      if (document['schemaVersion'] != RuntimeIndex.schemaVersion) {
-        return RuntimeIndex.empty();
-      }
-      final body = Map<String, Object?>.from(document)..remove('schemaVersion');
-      final parsed = _serializers.deserializeWith(
-        RuntimeIndex.serializer,
-        body,
-      );
-      return parsed ?? RuntimeIndex.empty();
-    } on Object {
-      return RuntimeIndex.empty();
-    }
-  }
+  Future<RuntimeIndex> index() =>
+      RuntimeIndexFile.read(File(_indexFile), _serializers);
+
+  /// Synchronous variant of [index] for the native loader.
+  RuntimeIndex indexSync() =>
+      RuntimeIndexFile.readSync(File(_indexFile), _serializers);
 
   @override
   Future<RuntimeManifest?> manifest(String tag, RuntimeBackend backend) async {

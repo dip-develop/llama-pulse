@@ -26,6 +26,22 @@ abstract class RuntimeIndex
   /// Whether a runtime is selected.
   bool get hasSelection => selectedBackend != null;
 
+  /// Every install in the order a loader must try them.
+  ///
+  /// The selected install comes first, then the remaining installs newest
+  /// first, so a fresh install outranks an older one when nothing is selected.
+  List<RuntimeInstallRef> get resolutionOrder {
+    final selectedInstall = selected;
+    final rest = <RuntimeInstallRef>[
+      for (final install in installed)
+        if (selectedInstall == null ||
+            install.tag != selectedInstall.tag ||
+            install.backend != selectedInstall.backend)
+          install,
+    ]..sort((a, b) => b.installedAtEpochMs.compareTo(a.installedAtEpochMs));
+    return <RuntimeInstallRef>[?selectedInstall, ...rest];
+  }
+
   /// Returns the selected install record, or null when nothing is selected or
   /// the selection is stale.
   RuntimeInstallRef? get selected {
