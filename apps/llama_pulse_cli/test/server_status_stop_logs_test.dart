@@ -14,6 +14,43 @@ List<Map<String, Object?>> _lines(String text) => text
     .map((line) => jsonDecode(line) as Map<String, Object?>)
     .toList();
 
+/// A signaller that never accepts a signal and reports the attempt.
+final class _RefusingSignaller implements ProcessSignaller {
+  final List<(int, ServerKillMode)> calls = <(int, ServerKillMode)>[];
+
+  @override
+  bool send(int pid, ServerKillMode mode) {
+    calls.add((pid, mode));
+    return false;
+  }
+}
+
+/// A store whose server-state document disappears after the first read.
+final class _VanishingConfigStore implements ConfigStore {
+  _VanishingConfigStore(this.inner);
+
+  final ConfigStore inner;
+  int stateReads = 0;
+
+  @override
+  Future<Map<String, Object?>?> read(String name) async {
+    if (name == ConfigNames.serverState) {
+      stateReads++;
+      if (stateReads > 1) {
+        return null;
+      }
+    }
+    return inner.read(name);
+  }
+
+  @override
+  Future<void> write(String name, Map<String, Object?> data) =>
+      inner.write(name, data);
+
+  @override
+  Future<void> delete(String name) => inner.delete(name);
+}
+
 final class _RecordingSignaller implements ProcessSignaller {
   _RecordingSignaller({this.onSend, Set<int>? deadPids})
     : deadPids = deadPids ?? <int>{};
@@ -59,9 +96,10 @@ void main() {
     ProcessSignaller? signaller,
     Stream<ProcessSignal>? interrupts,
     Duration stopTimeout = const Duration(milliseconds: 30),
+    ConfigStore? configStore,
   }) => CliServices(
     paths: AppPaths(configDirectory: tempDirectory.path),
-    configStore: store,
+    configStore: configStore ?? store,
     out: out,
     err: err,
     interrupts: interrupts,
@@ -368,6 +406,31 @@ void main() {
       expect(result['forced'], isTrue);
     },
   );
+
+  test('stop does not report a force when the run ended on its own', () async {
+    // Nothing accepts the graceful signal, and the recorded run disappears
+    // before the command can escalate. That is a stop, not a forced stop.
+    final signaller = _RefusingSignaller();
+    final vanishing = _VanishingConfigStore(store);
+    final servicesUnderTest = services(
+      signaller: signaller,
+      configStore: vanishing,
+    );
+    await servicesUnderTest.serverStateRepository.save(runningState());
+    final runner = LlamaPulseCommandRunner(servicesUnderTest);
+
+    expect(await runner.run(['stop', '--json']), ExitCodes.ok);
+
+    expect(
+      signaller.calls.where((call) => call.$2 == ServerKillMode.force),
+      isEmpty,
+    );
+    final result = _lines(out.toString()).single;
+    expect(result['stopped'], isTrue);
+    expect(result['forced'], isFalse);
+    // The last target tried: the supervisor refused, so the child was next.
+    expect(result['pid'], 124);
+  });
 
   test('stop keeps the state when nothing accepts the signal', () async {
     final signaller = _RecordingSignaller()..result = false;
