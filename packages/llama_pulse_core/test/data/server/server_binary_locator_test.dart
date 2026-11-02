@@ -112,7 +112,11 @@ void main() {
     final file = File(path);
     await file.parent.create(recursive: true);
     await file.writeAsString('#!/bin/sh\n');
-    await Process.run('chmod', ['755', path]);
+    // Windows has no chmod and `_isExecutable` already treats every file as
+    // executable there.
+    if (!Platform.isWindows) {
+      await Process.run('chmod', ['755', path]);
+    }
     return file;
   }
 
@@ -120,7 +124,9 @@ void main() {
     final file = File(path);
     await file.parent.create(recursive: true);
     await file.writeAsString('not executable');
-    await Process.run('chmod', ['644', path]);
+    if (!Platform.isWindows) {
+      await Process.run('chmod', ['644', path]);
+    }
     return file;
   }
 

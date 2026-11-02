@@ -73,9 +73,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Windows joins once issue #23 lands; its job below covers analyze and
-        # the CLI compile until then.
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
       - name: Check out
         uses: actions/checkout@v4
@@ -93,7 +91,7 @@ jobs:
         run: dart run melos test
 
   windows:
-    name: Analyze and compile (Windows)
+    name: Compile the CLI (Windows)
     runs-on: windows-latest
     timeout-minutes: 30
     steps:
@@ -107,13 +105,6 @@ jobs:
           cache: true
       - name: Resolve the workspace
         run: flutter pub get
-      - name: Analyze
-        run: dart run melos analyze
       - name: Compile the CLI
-        # `dart compile exe` does not create its output directory; `mkdir -p`
-        # in the Melos script is not valid PowerShell, so create it here.
         working-directory: apps/llama_pulse_cli
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force -Path build | Out-Null
-          dart compile exe bin/llamapulse.dart -o build/llamapulse.exe
+        run: dart run tool/build_cli.dart
