@@ -41,6 +41,7 @@ dart run melos run app:stub              # synthetic embedded engine
 dart run melos run app:stub-server       # synthetic server controller
 dart run melos run build:cli             # native `llamapulse` executable
 tool/build_llama_cpp.sh [tag]            # build the pinned shared library (v0.8.0)
+tool/package_linux.sh [--runtime <tag> <backend>]  # Linux app bundle in dist/
 ```
 
 ## Where things live
@@ -53,8 +54,9 @@ tool/build_llama_cpp.sh [tag]            # build the pinned shared library (v0.8
   `logs`, `server`, `runtime`, `params`, `models`, `run`, `bench`.
 - `docs/parameters.md` — the generated parameter catalog, its provenance and
   the regeneration/override policy. `docs/runtime.md` — managed runtimes, the
-  resolution order, backend loading and the version gate. `docs/status.md` —
-  the current checkpoint.
+  resolution order, backend loading and the version gate. `docs/packaging.md` —
+  the Linux bundle and bundled-runtime resolution. `docs/status.md` — the
+  current checkpoint.
 - `third_party/llama_cpp/v0.8.0/` — `PIN.md` (exact pin and checksums),
   `BUILD.md` (build recipe and real-model verification) and `RUNTIME_ASSETS.md`
   (the pinned prebuilt archives).

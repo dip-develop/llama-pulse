@@ -6,6 +6,7 @@ import '../../domain/entities/inference_failure.dart';
 import '../../domain/entities/inference_failure_code.dart';
 import '../../domain/entities/runtime_install_ref.dart';
 import '../config/app_paths.dart';
+import '../runtime/bundled_runtimes.dart';
 import '../runtime/runtime_index_file.dart';
 import '../serialization/serializers.dart' as core;
 
@@ -45,8 +46,11 @@ final class LlamaLibraryLocator {
   ///
   /// Installed runtimes under `<config>/runtime/<tag>/<backend>` come before
   /// `<config>/lib`, with the selected runtime first and the others newest
-  /// first. The last entry is the bare file name: it is never checked for
-  /// existence here because `dlopen` may still resolve it through the loader.
+  /// first. A runtime shipped beside the executable
+  /// (`<exeDir>/runtime/<tag>/<backend>`) is the fallback after those and
+  /// before `<config>/lib`. The last entry is the bare file name: it is never
+  /// checked for existence here because `dlopen` may still resolve it through
+  /// the loader.
   List<String> get candidates {
     final seen = <String>{};
     final found = <String>[];
@@ -91,7 +95,18 @@ final class LlamaLibraryLocator {
           ),
         );
       }
-      add(p.join(absoluteConfig, 'lib', libraryFileName));
+    }
+
+    if (executableDirectory != null) {
+      for (final directory in BundledRuntimes.directories(
+        executableDirectory,
+      )) {
+        add(p.join(directory, libraryFileName));
+      }
+    }
+
+    if (configDirectory != null) {
+      add(p.join(_absolute(configDirectory), 'lib', libraryFileName));
     }
 
     add(libraryFileName);

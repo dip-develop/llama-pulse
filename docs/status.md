@@ -5,11 +5,11 @@ named here, not copied from memory. The rules live in `AGENT.md`; this file is
 a snapshot and goes stale, so check `git branch -a`, `gh pr list` and
 `gh issue list` before trusting it. Its GitHub mirror is the pinned issue #16.
 
-- Baseline: `origin/main` = `1f03e04` ("Merge pull request #21 from
-  dip-develop/feature/runtime-downloader", 2026-11-02).
+- Baseline: `origin/main` = `8d32634` ("Merge pull request #26 from
+  dip-develop/fix/stop-json-forced", 2026-11-02).
 - Suite on `main`, measured 2026-11-02 in a clean checkout after
-  `flutter pub get` and `melos run gen`: `melos test` exit `0`, **1144 tests** —
-  771 core (plus 1 env-gated skip, `native_integration_test`), 225 CLI, 148 app.
+  `flutter pub get` and `melos run gen`: `melos test` exit `0`, **1155 tests** —
+  781 core (plus 1 env-gated skip, `native_integration_test`), 226 CLI, 148 app.
 - `melos run check` and `flutter build linux --debug` are green on this commit.
 
 ## Shipped
@@ -64,6 +64,15 @@ a snapshot and goes stale, so check `git branch -a`, `gh pr list` and
   context 512, two threads): integration test passed in ~5.5 s including a
   reload at 12.8 GB peak RSS; CLI `run` generated 16 tokens at 19.4 tok/s on
   the first run and 23.9–24.3 tok/s on repeats. CPU only, no GPU backend.
+- **CI (PR #24).** `.github/workflows/ci.yml`: a Linux gate job runs
+  `melos run check` (gen, catalog drift, analyze, 1155 tests, format, CLI AOT),
+  fails on generated-file drift, builds the Linux desktop app and packages the
+  bundle; a `test` matrix runs analyze and the suites on Ubuntu and macOS; a
+  Windows job runs analyze and compiles the CLI. Flutter is pinned to `3.47.7`,
+  superseded runs are cancelled and the workflow is read-only.
+- **`stop --json` accuracy (PR #26).** A stop that ends without a kill reports
+  `forced: false`; the command re-reads the state document before escalating
+  and only forces when it still records a live run.
 - **Build helper.** `tool/build_llama_cpp.sh [tag]` (default `v0.8.0`) clones,
   configures with `-DBUILD_SHARED_LIBS=ON -DLLAMA_BUILD_IS_DEV=OFF
   -DLLAMA_BUILD_APP=OFF -DGGML_NATIVE=ON`, builds and prints the
@@ -71,18 +80,20 @@ a snapshot and goes stale, so check `git branch -a`, `gh pr list` and
 
 ## In flight
 
-- **CI (issue #22).** `.github/workflows/ci.yml`: a Linux gate job
-  (`melos run check`, generated-files-clean check, `flutter build linux
-  --debug`), a `test` matrix on `ubuntu-latest` and `macos-latest`, and a
-  Windows job that analyzes and compiles the CLI. Windows tests are blocked on
-  issue #23 (POSIX assumptions in the test suite).
+- **Packaging v1 (issue #27).** A relocatable Linux bundle from
+  `tool/package_linux.sh`, with an optional managed runtime copied to
+  `<bundle>/runtime/<tag>/<backend>/`; both locators resolve that directory
+  after a user-selected runtime and before `<config>/bin`/`lib` and `PATH`.
+  Icons, installers and the Windows/macOS bundles stay out of this PR.
+  Windows suites are still blocked on issue #23.
 
 ## Open issues (2026-11-02)
 
-- #22 — CI: run the workspace gate on GitHub Actions (in flight).
+- #27 — packaging: relocatable Linux bundle with an optional managed runtime
+  (in flight).
 - #23 — test: make the workspace suites portable to Windows.
 - #16 — pinned status checkpoint (this file mirrors it).
-- #15 (runtime) and #13 (catalog) are closed.
+- #22 (CI), #25 (stop `--json`), #15 (runtime) and #13 (catalog) are closed.
 
 ## Decisions already made — do not relitigate
 
@@ -109,19 +120,17 @@ a snapshot and goes stale, so check `git branch -a`, `gh pr list` and
 
 ## Remaining plan, in order
 
-1. **CI** (issue #22): land the workflow, then watch the known supervisor flake
-   on a few runs before trusting the suite under parallel load.
-2. **Packaging and bundling**: ship the app with a managed runtime directory,
-   icons, installers.
-3. **Windows and macOS validation** of the supervisor and embedded paths, plus
+1. **Packaging** (issue #27): land the Linux bundle, then icons, installers and
+   the Windows/macOS variants.
+2. **Windows and macOS validation** of the supervisor and embedded paths, plus
    issue #23 (test portability) so Windows joins the test matrix.
-4. **Per-message and Jinja chat templates** (embedded path currently renders a
+3. **Per-message and Jinja chat templates** (embedded path currently renders a
    single user message).
-5. **Larger models and GPU backends**: bigger context, CUDA/Vulkan/ROCm/Metal
+4. **Larger models and GPU backends**: bigger context, CUDA/Vulkan/ROCm/Metal
    smoke tests.
-6. **Small fix**: `stop --json` reports `forced` even when the stop was
-   graceful — nit, not yet fixed.
-7. **Out of scope for now**: a server "router mode" (multi-model proxy).
+5. **Watch the CI flake**: the supervisor test that failed once under parallel
+   load now runs on every PR.
+6. **Out of scope for now**: a server "router mode" (multi-model proxy).
 
 ## Open landmines
 
@@ -155,12 +164,12 @@ a snapshot and goes stale, so check `git branch -a`, `gh pr list` and
 
 ```sh
 git fetch origin
-git branch -a                  # in-flight: chore/ci (CI workflow + this refresh)
-gh pr list                     # the CI PR, if it is still open
-gh issue list                  # #22 CI, #23 Windows tests, #16 pinned
+git branch -a                  # in-flight: chore/packaging-linux
+gh pr list                     # the packaging PR, if it is still open
+gh issue list                  # #27 packaging, #23 Windows tests, #16 pinned
 ```
 
 Then read `AGENT.md`, this file and pinned issue #16, and run
 `dart run melos run check` on a fresh branch cut from `origin/main`. The next
-concrete step after CI is packaging: a managed runtime directory, icons and
-installers. The pinned checkpoint mirror is #16.
+concrete step after packaging v1 is icons and installers (or Windows/macOS
+validation). The pinned checkpoint mirror is #16.

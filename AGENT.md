@@ -362,7 +362,8 @@ Native session rules:
 - **Resolution order.** explicit `--lib`/engine path → `LLAMA_PULSE_LIB` →
   `<exeDir>/lib` → `<exeDir>` → `<exeDir>/../Frameworks` → managed runtimes
   under `<config>/runtime/<tag>/<backend>/` in `RuntimeIndex.resolutionOrder`
-  (selected first, then newest first) → `<config>/lib` → bare
+  (selected first, then newest first) → a runtime shipped in the bundle under
+  `<exeDir>/runtime/<tag>/<backend>/` → `<config>/lib` → bare
   `libllama.so`/`llama.dll`/`libllama.dylib`. No library means
   `libraryNotFound` with every searched path in `details`; the CLI exits `1` and
   the app shows the banner. Never fall back to the stub.
@@ -590,6 +591,7 @@ port probing are injected, so the supervisor tests replace them with fakes.
 - Binary discovery order: `binaryPath` → `LLAMA_PULSE_SERVER` → bundled
   `<exeDir>/data/llama-server` → `<exeDir>/llama-server` → managed runtimes
   under `<config>/runtime/<tag>/<backend>/` (selected first, then newest first)
+  → a runtime shipped in the bundle under `<exeDir>/runtime/<tag>/<backend>/`
   → `<config>/bin/llama-server` → `PATH`. A binary from a managed runtime is
   spawned with that directory as its working directory, with
   `LD_LIBRARY_PATH`, `DYLD_LIBRARY_PATH` and `PATH` prefixed by it and
@@ -679,8 +681,8 @@ APIs, no `!` on nullable values, no empty `catch` blocks.
 
 From the root, `dart run melos test`. Melos picks `flutter test` for the app and
 `dart test` for core and CLI. Test the critical seams, not every line. Coverage
-is not a target. The suites hold 1144 tests today: 771 core (plus one
-env-gated skip), 225 CLI, 148 app.
+is not a target. The suites hold 1155 tests today: 781 core (plus one
+env-gated skip), 226 CLI, 148 app.
 
 Must test today:
 
@@ -891,6 +893,11 @@ dart format lib test
 # native llama.cpp shared library (optional; needs git, cmake and ninja)
 tool/build_llama_cpp.sh          # tag defaults to v0.8.0
 tool/build_llama_cpp.sh v0.8.0
+
+# Linux app bundle (release build by default)
+tool/package_linux.sh
+tool/package_linux.sh --runtime v0.8.0 cuda13
+tool/package_linux.sh --skip-build --bundle apps/llama_pulse/build/linux/x64/debug/bundle
 ```
 
 `dart run melos run check` runs gen, analyze, test, the format check and the CLI
@@ -912,7 +919,7 @@ prints both exports. Never commit `.env` files, secrets or absolute local paths.
 
 - [ ] The workspace resolves with one lockfile (`flutter pub get` at the root).
 - [ ] `pubspec.lock` stays untracked.
-- [ ] `dart run melos run check` is green (1144 tests: 771 core, 225 CLI, 148
+- [ ] `dart run melos run check` is green (1155 tests: 781 core, 226 CLI, 148
   app; one core integration test is skipped without a native library).
 - [ ] `dart run melos run gen:catalog:check` is green, and the generated
   `llama_args.v0.8.0.yaml` and `parameter_catalog.generated.dart` are committed
@@ -933,6 +940,8 @@ prints both exports. Never commit `.env` files, secrets or absolute local paths.
   generation/cancel with the C shim) or skip cleanly without clang.
 - [ ] `dart run melos run gen` twice leaves `git status` clean.
 - [ ] The GitHub Actions run for the PR is green.
+- [ ] `tool/package_linux.sh --skip-build` still produces a valid archive (CI
+  runs it; see `docs/packaging.md`).
 - [ ] Layers respected; no Flutter imports in core, no `dart:ffi` on the UI
   isolate.
 - [ ] Immutability rules from section 5 followed.

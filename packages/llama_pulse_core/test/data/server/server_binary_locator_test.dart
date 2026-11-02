@@ -328,6 +328,88 @@ void main() {
     );
   });
 
+  group('bundled runtimes', () {
+    final store = _FakeRuntimeStore();
+
+    ServerBinaryLocatorImpl bundleLocator() => ServerBinaryLocatorImpl(
+      paths: AppPaths(configDirectory: configDirectory.path),
+      executablePath: p.join(executableDirectory.path, 'llama_pulse'),
+      environment: const {'PATH': ''},
+      operatingSystem: 'linux',
+      versionReader: _fakeReader,
+      runtimeStore: store,
+    );
+
+    test('finds a runtime shipped beside the executable', () async {
+      final bundled = await createExecutable(
+        p.join(
+          executableDirectory.path,
+          'runtime',
+          'v0.8.0',
+          'cpu',
+          'llama-server',
+        ),
+      );
+
+      final info = await bundleLocator().locate(ServerConfig.defaults());
+
+      expect(info.path, bundled.path);
+      expect(
+        info.runtimeDirectory,
+        p.join(executableDirectory.path, 'runtime', 'v0.8.0', 'cpu'),
+      );
+    });
+
+    test('a config runtime wins over the bundled one', () async {
+      final configured = await createExecutable(
+        p.join(
+          configDirectory.path,
+          'runtime',
+          'v0.8.0',
+          'cuda13',
+          'llama-server',
+        ),
+      );
+      await createExecutable(
+        p.join(
+          executableDirectory.path,
+          'runtime',
+          'v0.8.0',
+          'cpu',
+          'llama-server',
+        ),
+      );
+      store.current = _index(selected: RuntimeBackend.cuda13);
+
+      final info = await bundleLocator().locate(ServerConfig.defaults());
+
+      expect(info.path, configured.path);
+      expect(
+        info.runtimeDirectory,
+        p.join(configDirectory.path, 'runtime', 'v0.8.0', 'cuda13'),
+      );
+    });
+
+    test('a bundled runtime comes before config/bin', () async {
+      final bundled = await createExecutable(
+        p.join(
+          executableDirectory.path,
+          'runtime',
+          'v0.8.0',
+          'cpu',
+          'llama-server',
+        ),
+      );
+      await createExecutable(
+        p.join(configDirectory.path, 'bin', 'llama-server'),
+      );
+
+      final info = await bundleLocator().locate(ServerConfig.defaults());
+
+      expect(info.path, bundled.path);
+    });
+  });
+
   test('throws binaryNotFound and lists every searched path', () async {
     final error = await capture(
       () => locator().locate(ServerConfig.defaults()),
