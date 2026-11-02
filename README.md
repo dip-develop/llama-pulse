@@ -816,7 +816,10 @@ immutability and configuration rules reviews check.
 - Branch from the current integration branch as `feature/<topic>`, `bugfix/<topic>`
   or `chore/<topic>`. PR base is `main` for now: there is no `develop` branch yet.
 - Before pushing, run `dart run melos run check`; it runs gen, analyze, tests,
-  the format check and the CLI build.
+  the format check and the CLI build. Every PR also runs
+  [`.github/workflows/ci.yml`](.github/workflows/ci.yml): the same gate plus a
+  Linux desktop debug build, tests on Ubuntu and macOS, and analyze plus the CLI
+  compile on Windows.
 - Generated `.g.dart` and `.config.dart` files are committed; re-run gen after a
   model change, and add tests for the seam you touched or explain why not.
 
