@@ -41,8 +41,8 @@ llama-pulse/
 │   ├── lib/src/domain/     entities/, gateways/, usecases/, text/
 │   └── lib/src/data/       config/, inference/, models/, runtime/, server/
 ├── third_party/llama_cpp/  vendored v0.8.0 headers, arg.cpp and build recipe
-├── docs/                   parameter catalog, runtimes and workflow documentation
-├── tool/                   developer scripts, e.g. build_llama_cpp.sh
+├── docs/                   parameter catalog, runtimes, packaging and workflow docs
+├── tool/                   developer scripts: build_llama_cpp.sh, package_linux.sh
 ├── AGENT.md                contributor and agent rules
 └── LICENSE                 MIT
 ```
@@ -116,7 +116,7 @@ Naming: app `llama_pulse`, CLI `llamapulse`, package `llama_pulse_core`.
   `PATH` are tried in that order. Builds below `b4000` warn, and an unknown or unreadable
   `llama-server --version` reports `supported: true` with a warning; nothing
   blocks a start on the version.
-- **1144 tests** across the three packages (771 core, 225 CLI, 148 app); one
+- **1155 tests** across the three packages (781 core, 226 CLI, 148 app); one
   further core integration test is skipped unless a native library and model are
   set.
 
@@ -166,8 +166,9 @@ Resolution order for the library:
 5. `<exeDir>/../Frameworks` (macOS bundles)
 6. installed runtimes under `<config>/runtime/<tag>/<backend>/`, selected first
    and then the others newest first
-7. `<config>/lib`
-8. the bare soname (`libllama.so`, `llama.dll`, `libllama.dylib`)
+7. a runtime shipped in the app bundle, `<exeDir>/runtime/<tag>/<backend>/`
+8. `<config>/lib`
+9. the bare soname (`libllama.so`, `llama.dll`, `libllama.dylib`)
 
 A path that does not resolve fails with `libraryNotFound` and **every** searched
 path in `details`; the CLI prints them and exits `1`. Nothing falls back to the
@@ -416,6 +417,20 @@ Build the CLI with `dart run melos run build:cli`. `melos` is a root
 dev-dependency, so `dart run melos` needs no global install. Run `flutter pub
 get` at the root only: the workspace resolves all three members into one
 lockfile.
+
+### Package it
+
+```sh
+tool/package_linux.sh                            # release bundle, no runtime
+tool/package_linux.sh --runtime v0.8.0 cuda13    # copy an installed runtime in
+```
+
+The script builds the Linux release bundle, adds `README.md`/`LICENSE`, copies
+one managed runtime to `<bundle>/runtime/<tag>/<backend>/` when asked, and
+writes `dist/llama-pulse-<version>-linux-x64.tar.gz`. A bundled runtime is a
+fallback: a runtime the user selects under `<config>/runtime/` still wins. See
+[docs/packaging.md](docs/packaging.md). Icons, installers and the Windows/macOS
+bundles are not part of it yet.
 
 ## CLI
 
@@ -801,7 +816,9 @@ domain gateways so the GUI's `RuntimeBloc` never imports the data layer. The
 - [ ] GPU smoke tests on CUDA, Vulkan, ROCm and Metal
 - [ ] Windows and macOS builds
 - [ ] CI for analyze, tests and builds
-- [ ] Packaging (app bundle and CLI archives)
+- [x] Linux app bundle with an optional managed runtime
+  (`tool/package_linux.sh`)
+- [ ] Icons, installers and Windows/macOS bundles
 
 The runtime manager **asks which compute backend to install
 (CPU/ROCm/CUDA/Vulkan/Metal)** and offers the detected default rather than

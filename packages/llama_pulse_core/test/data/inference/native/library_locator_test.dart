@@ -172,45 +172,45 @@ void main() {
     });
   });
 
+  void writeIndex(RuntimeIndex index) {
+    final body =
+        serializers.serializeWith(RuntimeIndex.serializer, index)!
+            as Map<String, Object?>;
+    File(p.join(temp.path, 'config', 'runtime', 'index.yaml'))
+      ..parent.createSync(recursive: true)
+      ..writeAsStringSync(
+        YamlEncoder.encode(<String, Object?>{
+          'schemaVersion': RuntimeIndex.schemaVersion,
+          ...body,
+        }),
+      );
+  }
+
+  RuntimeIndex indexWith({
+    String? selectedTag,
+    RuntimeBackend? selectedBackend,
+    List<(RuntimeBackend, int)> installed = const [
+      (RuntimeBackend.cuda13, 20),
+      (RuntimeBackend.cpu, 30),
+    ],
+  }) => RuntimeIndex(
+    (b) => b
+      ..selectedTag = selectedTag ?? ''
+      ..selectedBackend = selectedBackend
+      ..installed = BuiltList<RuntimeInstallRef>(<RuntimeInstallRef>[
+        for (final (backend, installedAt) in installed)
+          RuntimeInstallRef(
+            (r) => r
+              ..tag = 'v0.8.0'
+              ..backend = backend
+              ..platform = RuntimePlatform.linuxX64
+              ..installedAtEpochMs = installedAt
+              ..sizeBytes = 1,
+          ),
+      ]).toBuilder(),
+  );
+
   group('runtime installs', () {
-    void writeIndex(RuntimeIndex index) {
-      final body =
-          serializers.serializeWith(RuntimeIndex.serializer, index)!
-              as Map<String, Object?>;
-      File(p.join(temp.path, 'config', 'runtime', 'index.yaml'))
-        ..parent.createSync(recursive: true)
-        ..writeAsStringSync(
-          YamlEncoder.encode(<String, Object?>{
-            'schemaVersion': RuntimeIndex.schemaVersion,
-            ...body,
-          }),
-        );
-    }
-
-    RuntimeIndex indexWith({
-      String? selectedTag,
-      RuntimeBackend? selectedBackend,
-      List<(RuntimeBackend, int)> installed = const [
-        (RuntimeBackend.cuda13, 20),
-        (RuntimeBackend.cpu, 30),
-      ],
-    }) => RuntimeIndex(
-      (b) => b
-        ..selectedTag = selectedTag ?? ''
-        ..selectedBackend = selectedBackend
-        ..installed = BuiltList<RuntimeInstallRef>(<RuntimeInstallRef>[
-          for (final (backend, installedAt) in installed)
-            RuntimeInstallRef(
-              (r) => r
-                ..tag = 'v0.8.0'
-                ..backend = backend
-                ..platform = RuntimePlatform.linuxX64
-                ..installedAtEpochMs = installedAt
-                ..sizeBytes = 1,
-            ),
-        ]).toBuilder(),
-    );
-
     test('selected runtime comes before config/lib', () {
       writeIndex(
         indexWith(selectedTag: 'v0.8.0', selectedBackend: RuntimeBackend.cpu),
@@ -271,6 +271,55 @@ void main() {
       expect(
         locator(configDirectory: p.join(temp.path, 'config')).resolveExisting(),
         library,
+      );
+    });
+  });
+
+  group('bundled runtimes', () {
+    test('resolveExisting finds a runtime beside the executable', () {
+      final library = touch(
+        p.join('bin', 'runtime', 'v0.8.0', 'cpu', 'libllama.so'),
+      );
+
+      expect(locator().resolveExisting(), library);
+    });
+
+    test('a config runtime wins over the bundled one', () {
+      writeIndex(
+        indexWith(selectedTag: 'v0.8.0', selectedBackend: RuntimeBackend.cpu),
+      );
+      final configLibrary = touch(
+        p.join('config', 'runtime', 'v0.8.0', 'cpu', 'libllama.so'),
+      );
+      final bundledLibrary = touch(
+        p.join('bin', 'runtime', 'v0.8.0', 'cpu', 'libllama.so'),
+      );
+
+      final paths = locator(configDirectory: p.join(temp.path, 'config'))
+          .candidates;
+
+      expect(
+        paths.indexOf(configLibrary),
+        lessThan(paths.indexOf(bundledLibrary)),
+      );
+      expect(
+        locator(configDirectory: p.join(temp.path, 'config')).resolveExisting(),
+        configLibrary,
+      );
+    });
+
+    test('a bundled runtime comes before config/lib', () {
+      final bundledLibrary = touch(
+        p.join('bin', 'runtime', 'v0.8.0', 'cpu', 'libllama.so'),
+      );
+      final configLibrary = touch(p.join('config', 'lib', 'libllama.so'));
+
+      final paths = locator(configDirectory: p.join(temp.path, 'config'))
+          .candidates;
+
+      expect(
+        paths.indexOf(bundledLibrary),
+        lessThan(paths.indexOf(configLibrary)),
       );
     });
   });

@@ -10,12 +10,18 @@ import '../../domain/exceptions/server_exception.dart';
 import '../../domain/gateways/runtime_store.dart';
 import '../../domain/gateways/server_binary_locator.dart';
 import '../config/app_paths.dart';
+import '../runtime/bundled_runtimes.dart';
 import '../runtime/yaml_runtime_store.dart';
 import 'dart_process_executor.dart';
 import 'server_version_parser.dart';
 
 /// Resolves `llama-server` from configuration, the environment, the app
-/// bundle, the user data directory and `PATH`, in that order.
+/// bundle, installed runtimes, the user data directory and `PATH`, in that
+/// order.
+///
+/// Installed runtimes under `<config>/runtime/` (selected first, then newest)
+/// win over a runtime shipped in the bundle; the bundled one keeps a fresh
+/// installation working before anything has been downloaded.
 final class ServerBinaryLocatorImpl implements ServerBinaryLocator {
   /// Creates a locator.
   ///
@@ -125,6 +131,15 @@ final class ServerBinaryLocatorImpl implements ServerBinaryLocator {
       return fromRuntime;
     }
 
+    final fromBundle = await _firstBundledRuntime(
+      executableDirectory,
+      searched,
+      notExecutable,
+    );
+    if (fromBundle != null) {
+      return fromBundle;
+    }
+
     final configured = await _firstRunnable(
       [p.join(_paths.binDirectory, _binaryName)],
       searched,
@@ -181,6 +196,29 @@ final class ServerBinaryLocatorImpl implements ServerBinaryLocator {
   ///
   /// Runtime installs are tried in [RuntimeIndex.resolutionOrder]: the selected
   /// one first, then the rest newest first.
+  /// The first runtime shipped under `<exeDir>/runtime/<tag>/<backend>/`.
+  ///
+  /// The directories are tried in the order [BundledRuntimes.directories]
+  /// returns; the binary is described with its directory so the supervisor
+  /// sets the loader environment for it.
+  Future<ServerBinaryInfo?> _firstBundledRuntime(
+    String executableDirectory,
+    List<String> searched,
+    List<String> notExecutable,
+  ) async {
+    for (final directory in BundledRuntimes.directories(executableDirectory)) {
+      final path = await _firstRunnable(
+        [p.join(directory, _binaryName)],
+        searched,
+        notExecutable,
+      );
+      if (path != null) {
+        return _describe(path, runtimeDirectory: directory);
+      }
+    }
+    return null;
+  }
+
   Future<ServerBinaryInfo?> _firstRuntime(
     List<String> searched,
     List<String> notExecutable,

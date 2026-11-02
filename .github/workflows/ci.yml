@@ -56,6 +56,15 @@ jobs:
       - name: Build the Linux desktop app
         working-directory: apps/llama_pulse
         run: flutter build linux --debug
+      - name: Package the Linux bundle
+        # Exercises the packaging script against the bundle just built, with
+        # no second build and without a runtime to copy.
+        run: |
+          tool/package_linux.sh \
+            --skip-build \
+            --bundle apps/llama_pulse/build/linux/x64/debug/bundle \
+            --out dist
+          tar -tzf dist/llama-pulse-*-linux-x64.tar.gz > /dev/null
 
   test:
     name: Test (${{ matrix.os }})

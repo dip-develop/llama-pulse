@@ -36,6 +36,9 @@ migrate_working_dir/
 .pub-cache/
 .pub/
 
+# Release artifacts
+dist/
+
 # Pub workspace
 **/build/
 **/coverage/
