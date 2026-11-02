@@ -7,6 +7,13 @@ import 'package:test/test.dart';
 
 const _version = '0.8.0';
 
+/// The executable name the host locator expects.
+String get _binaryName =>
+    Platform.isWindows ? 'llama-server.exe' : 'llama-server';
+
+/// The PATH separator of the host running the test.
+String get _pathSeparator => Platform.isWindows ? ';' : ':';
+
 Future<ServerBinaryInfo> _fakeReader(String path) async => ServerBinaryInfo(
   (b) => b
     ..path = path
@@ -99,12 +106,12 @@ void main() {
 
   ServerBinaryLocatorImpl locator({
     Map<String, String> environment = const {'PATH': ''},
-    String operatingSystem = 'linux',
+    String? operatingSystem,
   }) => ServerBinaryLocatorImpl(
     paths: AppPaths(configDirectory: configDirectory.path),
     executablePath: p.join(executableDirectory.path, 'llama_pulse'),
     environment: environment,
-    operatingSystem: operatingSystem,
+    operatingSystem: operatingSystem ?? Platform.operatingSystem,
     versionReader: _fakeReader,
   );
 
@@ -145,13 +152,13 @@ void main() {
     'explicit binaryPath wins over the environment and the bundle',
     () async {
       final explicit = await createExecutable(
-        p.join(root.path, 'explicit', 'llama-server'),
+        p.join(root.path, 'explicit', _binaryName),
       );
       await createExecutable(
-        p.join(executableDirectory.path, 'data', 'llama-server'),
+        p.join(executableDirectory.path, 'data', _binaryName),
       );
       final fromEnvironment = await createExecutable(
-        p.join(root.path, 'env', 'llama-server'),
+        p.join(root.path, 'env', _binaryName),
       );
 
       final info = await locator(
@@ -165,10 +172,10 @@ void main() {
 
   test('an absolute LLAMA_PULSE_SERVER wins over the bundled binary', () async {
     await createExecutable(
-      p.join(executableDirectory.path, 'data', 'llama-server'),
+      p.join(executableDirectory.path, 'data', _binaryName),
     );
     final fromEnvironment = await createExecutable(
-      p.join(root.path, 'env', 'llama-server'),
+      p.join(root.path, 'env', _binaryName),
     );
 
     final info = await locator(
@@ -180,13 +187,13 @@ void main() {
 
   test('resolves a bare LLAMA_PULSE_SERVER name on PATH', () async {
     final onPath = await createExecutable(
-      p.join(pathDirectory.path, 'llama-server'),
+      p.join(pathDirectory.path, _binaryName),
     );
 
     final info = await locator(
       environment: {
         'PATH': pathDirectory.path,
-        'LLAMA_PULSE_SERVER': 'llama-server',
+        'LLAMA_PULSE_SERVER': _binaryName,
       },
     ).locate(ServerConfig.defaults());
 
@@ -195,7 +202,7 @@ void main() {
 
   test('resolves the bundled data directory', () async {
     final bundled = await createExecutable(
-      p.join(executableDirectory.path, 'data', 'llama-server'),
+      p.join(executableDirectory.path, 'data', _binaryName),
     );
 
     final info = await locator().locate(ServerConfig.defaults());
@@ -205,7 +212,7 @@ void main() {
 
   test('resolves next to the executable', () async {
     final adjacent = await createExecutable(
-      p.join(executableDirectory.path, 'llama-server'),
+      p.join(executableDirectory.path, _binaryName),
     );
 
     final info = await locator().locate(ServerConfig.defaults());
@@ -215,7 +222,7 @@ void main() {
 
   test('resolves the app bin directory', () async {
     final inBin = await createExecutable(
-      p.join(configDirectory.path, 'bin', 'llama-server'),
+      p.join(configDirectory.path, 'bin', _binaryName),
     );
 
     final info = await locator().locate(ServerConfig.defaults());
@@ -227,11 +234,13 @@ void main() {
     final empty = Directory(p.join(root.path, 'empty'));
     await empty.create();
     final onPath = await createExecutable(
-      p.join(pathDirectory.path, 'llama-server'),
+      p.join(pathDirectory.path, _binaryName),
     );
 
     final info = await locator(
-      environment: {'PATH': '${empty.path}:${pathDirectory.path}'},
+      environment: {
+        'PATH': '${empty.path}$_pathSeparator${pathDirectory.path}',
+      },
     ).locate(ServerConfig.defaults());
 
     expect(info.path, onPath.path);
@@ -256,7 +265,6 @@ void main() {
       paths: AppPaths(configDirectory: configDirectory.path),
       executablePath: p.join(executableDirectory.path, 'llama_pulse'),
       environment: const {'PATH': ''},
-      operatingSystem: 'linux',
       versionReader: _fakeReader,
       runtimeStore: store,
     );
@@ -268,12 +276,10 @@ void main() {
           'runtime',
           'v0.8.0',
           'cuda13',
-          'llama-server',
+          _binaryName,
         ),
       );
-      await createExecutable(
-        p.join(configDirectory.path, 'bin', 'llama-server'),
-      );
+      await createExecutable(p.join(configDirectory.path, 'bin', _binaryName));
       store.current = _index(selected: RuntimeBackend.cuda13);
 
       final info = await runtimeLocator().locate(ServerConfig.defaults());
@@ -287,13 +293,7 @@ void main() {
 
     test('without a selection the newest install wins', () async {
       final older = await createExecutable(
-        p.join(
-          configDirectory.path,
-          'runtime',
-          'v0.8.0',
-          'cpu',
-          'llama-server',
-        ),
+        p.join(configDirectory.path, 'runtime', 'v0.8.0', 'cpu', _binaryName),
       );
       final newer = await createExecutable(
         p.join(
@@ -301,7 +301,7 @@ void main() {
           'runtime',
           'v0.8.0',
           'vulkan',
-          'llama-server',
+          _binaryName,
         ),
       );
       store.current = _index(
@@ -322,7 +322,7 @@ void main() {
       'falls back to config/bin when the runtime binary is missing',
       () async {
         final configured = await createExecutable(
-          p.join(configDirectory.path, 'bin', 'llama-server'),
+          p.join(configDirectory.path, 'bin', _binaryName),
         );
         store.current = _index(selected: RuntimeBackend.cpu);
 
@@ -341,7 +341,6 @@ void main() {
       paths: AppPaths(configDirectory: configDirectory.path),
       executablePath: p.join(executableDirectory.path, 'llama_pulse'),
       environment: const {'PATH': ''},
-      operatingSystem: 'linux',
       versionReader: _fakeReader,
       runtimeStore: store,
     );
@@ -353,7 +352,7 @@ void main() {
           'runtime',
           'v0.8.0',
           'cpu',
-          'llama-server',
+          _binaryName,
         ),
       );
 
@@ -373,7 +372,7 @@ void main() {
           'runtime',
           'v0.8.0',
           'cuda13',
-          'llama-server',
+          _binaryName,
         ),
       );
       await createExecutable(
@@ -382,7 +381,7 @@ void main() {
           'runtime',
           'v0.8.0',
           'cpu',
-          'llama-server',
+          _binaryName,
         ),
       );
       store.current = _index(selected: RuntimeBackend.cuda13);
@@ -403,12 +402,10 @@ void main() {
           'runtime',
           'v0.8.0',
           'cpu',
-          'llama-server',
+          _binaryName,
         ),
       );
-      await createExecutable(
-        p.join(configDirectory.path, 'bin', 'llama-server'),
-      );
+      await createExecutable(p.join(configDirectory.path, 'bin', _binaryName));
 
       final info = await bundleLocator().locate(ServerConfig.defaults());
 
@@ -426,20 +423,17 @@ void main() {
     final details = error.failure.details!;
     expect(
       details,
-      contains(p.join(executableDirectory.path, 'data', 'llama-server')),
+      contains(p.join(executableDirectory.path, 'data', _binaryName)),
     );
-    expect(details, contains(p.join(executableDirectory.path, 'llama-server')));
-    expect(
-      details,
-      contains(p.join(configDirectory.path, 'bin', 'llama-server')),
-    );
+    expect(details, contains(p.join(executableDirectory.path, _binaryName)));
+    expect(details, contains(p.join(configDirectory.path, 'bin', _binaryName)));
   });
 
   test('throws binaryNotFound for a missing explicit path', () async {
     final error = await capture(
       () => locator().locate(
         ServerConfig.defaults().copyWith(
-          binaryPath: p.join(root.path, 'missing', 'llama-server'),
+          binaryPath: p.join(root.path, 'missing', _binaryName),
         ),
       ),
     );
@@ -452,7 +446,7 @@ void main() {
     'throws binaryNotExecutable for a non-executable POSIX candidate',
     () async {
       final plain = await createPlainFile(
-        p.join(configDirectory.path, 'bin', 'llama-server'),
+        p.join(configDirectory.path, 'bin', _binaryName),
       );
 
       final error = await capture(
@@ -469,7 +463,7 @@ void main() {
     'throws binaryNotExecutable for a non-executable explicit path',
     () async {
       final plain = await createPlainFile(
-        p.join(root.path, 'explicit', 'llama-server'),
+        p.join(root.path, 'explicit', _binaryName),
       );
 
       final error = await capture(
