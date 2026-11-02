@@ -195,7 +195,7 @@ void main() {
       expect(code, ExitCodes.failure);
       expect(out.toString(), isEmpty);
       expect(err.toString(), contains('error: libraryNotFound:'));
-      expect(err.toString(), contains('libllama.so'));
+      expect(err.toString(), contains(LlamaLibraryLocator().libraryFileName));
     },
     timeout: const Timeout(Duration(seconds: 30)),
   );

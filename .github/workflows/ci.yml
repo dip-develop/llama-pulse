@@ -1,0 +1,110 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# A new push to the same branch supersedes the previous run; the operator's
+# merge to main still gets its own run because the ref differs.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # The baseline recorded in AGENT.md section 3.
+  FLUTTER_VERSION: '3.47.7'
+
+jobs:
+  gate:
+    name: Workspace gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+      - name: Install Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - name: Resolve the workspace
+        run: flutter pub get
+      - name: Run the gate
+        # gen, catalog drift, analyze, tests, format check and the CLI AOT
+        # build. The same command the contributor guide requires before a PR.
+        run: dart run melos run check
+      - name: Fail on generated-file drift
+        # `melos run gen` runs before this, so a stale .g.dart or catalog is a
+        # diff here. Generated files are committed and must not drift.
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            git status --porcelain
+            echo "::error::generated files drifted; run melos run gen and commit the result"
+            exit 1
+          fi
+      - name: Install the Linux desktop build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build pkg-config libgtk-3-dev liblzma-dev
+      - name: Build the Linux desktop app
+        working-directory: apps/llama_pulse
+        run: flutter build linux --debug
+
+  test:
+    name: Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        # Windows joins once issue #23 lands; its job below covers analyze and
+        # the CLI compile until then.
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+      - name: Install Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - name: Resolve the workspace
+        run: flutter pub get
+      - name: Analyze
+        run: dart run melos analyze
+      - name: Test
+        run: dart run melos test
+
+  windows:
+    name: Analyze and compile (Windows)
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+      - name: Install Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - name: Resolve the workspace
+        run: flutter pub get
+      - name: Analyze
+        run: dart run melos analyze
+      - name: Compile the CLI
+        # `dart compile exe` does not create its output directory; `mkdir -p`
+        # in the Melos script is not valid PowerShell, so create it here.
+        working-directory: apps/llama_pulse_cli
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path build | Out-Null
+          dart compile exe bin/llamapulse.dart -o build/llamapulse.exe
