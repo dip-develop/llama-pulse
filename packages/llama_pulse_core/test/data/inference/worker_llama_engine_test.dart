@@ -93,7 +93,7 @@ void main() {
             .having(
               (exception) => exception.failure.details,
               'failure.details',
-              contains('libllama.so'),
+              contains(LlamaLibraryLocator().libraryFileName),
             ),
       ),
     );

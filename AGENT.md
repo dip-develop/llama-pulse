@@ -44,7 +44,10 @@ The repository is one pub workspace and one Melos workspace.
 - Members are `packages/llama_pulse_core`, `apps/llama_pulse` and
   `apps/llama_pulse_cli`, each declaring `resolution: workspace`.
 - Exactly one `pubspec.lock`, at the root. It is generated and git-ignored;
-  never commit it or a member lockfile.
+  never commit it or a member lockfile. CI resolves the newest versions the
+  constraints allow, so a test must not depend on a transitive package's error
+  behaviour (this is why the runtime installer verifies its payload itself
+  instead of trusting the extractor's exception).
 - Run `flutter pub get` at the root only; never inside a member directory.
 - `melos` is a root dev-dependency. Use `dart run melos …`; no global install.
 - The `gen` script runs build_runner in dependency order: core, then app.
@@ -676,7 +679,7 @@ APIs, no `!` on nullable values, no empty `catch` blocks.
 
 From the root, `dart run melos test`. Melos picks `flutter test` for the app and
 `dart test` for core and CLI. Test the critical seams, not every line. Coverage
-is not a target. The suites hold 1143 tests today: 770 core (plus one
+is not a target. The suites hold 1144 tests today: 771 core (plus one
 env-gated skip), 225 CLI, 148 app.
 
 Must test today:
@@ -909,7 +912,7 @@ prints both exports. Never commit `.env` files, secrets or absolute local paths.
 
 - [ ] The workspace resolves with one lockfile (`flutter pub get` at the root).
 - [ ] `pubspec.lock` stays untracked.
-- [ ] `dart run melos run check` is green (1143 tests: 770 core, 225 CLI, 148
+- [ ] `dart run melos run check` is green (1144 tests: 771 core, 225 CLI, 148
   app; one core integration test is skipped without a native library).
 - [ ] `dart run melos run gen:catalog:check` is green, and the generated
   `llama_args.v0.8.0.yaml` and `parameter_catalog.generated.dart` are committed

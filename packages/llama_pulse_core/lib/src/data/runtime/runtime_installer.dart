@@ -106,13 +106,25 @@ final class RuntimeInstaller implements RuntimeInstallService {
         onProgress: onProgress,
         cancel: cancel,
       );
+      _verifyPayload(asset, result.payloadDir);
       final manifest = _manifestFor(asset, result);
-      await _store.commit(
-        asset.backend,
-        manifest,
-        result.payloadDir,
-        force: force,
-      );
+      try {
+        await _store.commit(
+          asset.backend,
+          manifest,
+          result.payloadDir,
+          force: force,
+        );
+      } on StateError catch (error) {
+        if (error.message.contains('already installed')) {
+          rethrow;
+        }
+        throw RuntimeException(
+          RuntimeFailureCode.manifest,
+          'the extracted runtime is not usable: ${error.message}',
+          cause: error,
+        );
+      }
       committed = true;
       // The payload moved into place; only the now-empty staging shell is left.
       await _deleteQuietly(staging);
@@ -131,6 +143,33 @@ final class RuntimeInstaller implements RuntimeInstallService {
         );
       }
       rethrow;
+    }
+  }
+
+  /// Fails when the archive did not unpack the files a runtime needs.
+  ///
+  /// The extractor is strict about the archive format, but a payload that
+  /// decodes into an empty or unrelated tree is a different failure: an
+  /// integrity problem, not a usage error. Checking here keeps the exit code
+  /// contract honest even when a newer `archive` release accepts bytes that an
+  /// older one rejected.
+  void _verifyPayload(RuntimeAsset asset, Directory payload) {
+    for (final name in <String>[
+      asset.platform.serverBinaryName,
+      asset.platform.libraryFileName,
+    ]) {
+      final type = FileSystemEntity.typeSync(
+        p.join(payload.path, name),
+        followLinks: false,
+      );
+      if (type != FileSystemEntityType.file) {
+        throw RuntimeException(
+          RuntimeFailureCode.manifest,
+          '${asset.assetName} did not unpack $name',
+          expected: name,
+          actual: type,
+        );
+      }
     }
   }
 

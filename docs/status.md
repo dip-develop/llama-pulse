@@ -8,8 +8,8 @@ a snapshot and goes stale, so check `git branch -a`, `gh pr list` and
 - Baseline: `origin/main` = `1f03e04` ("Merge pull request #21 from
   dip-develop/feature/runtime-downloader", 2026-11-02).
 - Suite on `main`, measured 2026-11-02 in a clean checkout after
-  `flutter pub get` and `melos run gen`: `melos test` exit `0`, **1143 tests** —
-  770 core (plus 1 env-gated skip, `native_integration_test`), 225 CLI, 148 app.
+  `flutter pub get` and `melos run gen`: `melos test` exit `0`, **1144 tests** —
+  771 core (plus 1 env-gated skip, `native_integration_test`), 225 CLI, 148 app.
 - `melos run check` and `flutter build linux --debug` are green on this commit.
 
 ## Shipped
@@ -142,6 +142,11 @@ a snapshot and goes stale, so check `git branch -a`, `gh pr list` and
   `dart compile exe` command; the CI Windows job does the latter.
 - The workspace suites are not yet Windows-clean (POSIX mode bits, `chmod`
   fixtures, symlinks): see issue #23.
+- `pubspec.lock` is untracked, so CI resolves newer transitive versions than a
+  long-lived local checkout. The first CI run surfaced exactly that: `archive
+  4.6.0` accepted a garbage payload that 4.5.2 rejected, and the installer now
+  verifies the unpacked payload itself. Treat a green local run as necessary,
+  not sufficient.
 - 64-bit desktop only — structs cross FFI by value.
 - One embedded engine per process: `llama_backend_init` is global and there is
   no `dlclose` in `dart:ffi`.

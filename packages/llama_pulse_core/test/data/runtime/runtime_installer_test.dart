@@ -146,6 +146,46 @@ void main() {
     expect(leftovers, isEmpty);
   });
 
+  test(
+    'an archive without the runtime files is an integrity failure',
+    () async {
+      final packed = tarGzEntries(<ArchiveFile>[
+        ArchiveFile.bytes('llama-b11960/README.md', 'nope'.codeUnits),
+      ]);
+      final incomplete = RuntimeAsset(
+        tag: asset.tag,
+        backend: asset.backend,
+        platform: asset.platform,
+        assetName: asset.assetName,
+        sha256: sha256Hex(packed),
+        sizeBytes: packed.length,
+      );
+      fetcher = FakeRuntimeFetcher(
+        routes: <String, List<int>>{incomplete.url: packed},
+      );
+
+      await expectLater(
+        installer().install(asset: incomplete, onProgress: (_) {}),
+        throwsA(
+          isA<RuntimeException>().having(
+            (error) => error.code,
+            'code',
+            RuntimeFailureCode.manifest,
+          ),
+        ),
+      );
+
+      expect(await store.list(), isEmpty);
+      expect(
+        Directory(paths.runtimeDirectory)
+            .listSync()
+            .whereType<Directory>()
+            .where((d) => p.basename(d.path).startsWith('.tmp-')),
+        isEmpty,
+      );
+    },
+  );
+
   test('a checksum mismatch removes the staging tree', () async {
     final tampered = RuntimeAsset(
       tag: asset.tag,

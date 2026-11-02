@@ -70,7 +70,7 @@ void main() {
       expect(code, ExitCodes.failure);
       expect(out.toString(), isEmpty);
       expect(err.toString(), contains('error: libraryNotFound:'));
-      expect(err.toString(), contains('libllama.so'));
+      expect(err.toString(), contains(LlamaLibraryLocator().libraryFileName));
       expect(engine.loadCalls, 0);
       expect(engine.generateCalls, 0);
     },
@@ -101,7 +101,7 @@ void main() {
     expect(event['text'], '');
     final failure = event['failure'] as Map<String, Object?>;
     expect(failure['code'], 'libraryNotFound');
-    expect(failure['details'], contains('libllama.so'));
+    expect(failure['details'], contains(LlamaLibraryLocator().libraryFileName));
     expect(err.toString(), contains('error: libraryNotFound:'));
   }, timeout: const Timeout(Duration(seconds: 30)));
 
