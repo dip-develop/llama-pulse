@@ -62,11 +62,16 @@ final class StopCommand extends LlamaPulseCommand {
     // A forced kill cannot be handled by the process, so only the graceful
     // attempt looks for acceptance before escalating.
     if (!force) {
-      final gone = attempt.signalled != null && await _waitUntilGone();
+      final accepted = attempt.signalled != null;
+      final gone = accepted && await _waitUntilGone();
       if (!gone) {
-        forced = true;
-        final latest = await repository.load() ?? state;
-        if (!_isGone(latest)) {
+        // A missing document means the run ended on its own while the graceful
+        // signal was in flight: that is a clean stop, not a forced one. Never
+        // fall back to the stale in-memory state here, or a vanished run is
+        // force-signalled and reported as forced.
+        final latest = await repository.load();
+        if (latest != null && !_isGone(latest)) {
+          forced = true;
           attempt = _signal(latest, ServerKillMode.force);
         }
       }
