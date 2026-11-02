@@ -10,6 +10,9 @@ import '../../domain/entities/inference_failure.dart';
 import '../../domain/entities/inference_failure_code.dart';
 import '../../domain/entities/model_file_info.dart';
 import '../../domain/entities/model_params.dart';
+import '../../domain/entities/runtime_index.dart';
+import '../../domain/entities/runtime_install_ref.dart';
+import '../../domain/entities/runtime_manifest.dart';
 import '../../domain/entities/server_binary_info.dart';
 import '../../domain/entities/server_config.dart';
 import '../../domain/entities/server_failure.dart';
@@ -25,6 +28,7 @@ import '../../domain/entities/worker_request.dart';
 import '../../domain/entities/worker_request_kind.dart';
 import '../../domain/entities/worker_response.dart';
 import '../../domain/entities/worker_response_kind.dart';
+import 'runtime_enum_serializers.dart';
 
 part 'serializers.g.dart';
 
@@ -34,6 +38,9 @@ part 'serializers.g.dart';
 /// isolate transport encoding happen above this layer.
 @SerializersFor([
   ModelParams,
+  RuntimeManifest,
+  RuntimeIndex,
+  RuntimeInstallRef,
   GenerationRequest,
   GenerationMetrics,
   GenerationEvent,
@@ -58,4 +65,8 @@ part 'serializers.g.dart';
   WorkerResponseKind,
 ])
 final Serializers serializers =
-    (_$serializers.toBuilder()..addPlugin(StandardJsonPlugin())).build();
+    (_$serializers.toBuilder()
+          ..addPlugin(StandardJsonPlugin())
+          ..add(const RuntimeBackendSerializer())
+          ..add(const RuntimePlatformSerializer()))
+        .build();

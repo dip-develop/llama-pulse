@@ -3,6 +3,7 @@ import 'package:injectable/injectable.dart';
 import 'package:llama_pulse_core/llama_pulse_core.dart';
 
 import '../../../presentation/inference/bloc/inference_bloc.dart';
+import '../../../presentation/runtime/bloc/runtime_bloc.dart';
 import '../../../presentation/server/bloc/server_bloc.dart';
 import '../platform/file_picker.dart';
 import 'injection.config.dart';
@@ -40,6 +41,10 @@ Future<void> configureDependencies({
   AppPaths? paths,
   bool? useStubEngine,
   bool? useStubServer,
+  RuntimeProbe? runtimeProbe,
+  RuntimeStore? runtimeStore,
+  RuntimeInstallService? runtimeInstallService,
+  RuntimeRelease? runtimeRelease,
 }) async {
   final AppPaths resolvedPaths = paths ?? AppPaths.resolve();
   getIt
@@ -91,6 +96,24 @@ Future<void> configureDependencies({
     ..registerLazySingleton<ServerLogStore>(
       () => ServerLogStore(filePath: resolvedPaths.serverLogFile),
     )
+    ..registerSingleton<RuntimeStore>(
+      runtimeStore ?? YamlRuntimeStore(paths: resolvedPaths),
+    )
+    ..registerSingleton<RuntimeProbe>(runtimeProbe ?? const DartRuntimeProbe())
+    ..registerSingleton<RuntimeRelease>(runtimeRelease ?? RuntimeRelease.v080)
+    ..registerLazySingleton<RuntimeFetcher>(HttpRuntimeFetcher.new)
+    ..registerLazySingleton<RuntimeInstaller>(
+      () => RuntimeInstaller(
+        store: getIt<RuntimeStore>(),
+        fetcher: getIt<RuntimeFetcher>(),
+        paths: resolvedPaths,
+        release: getIt<RuntimeRelease>(),
+        executor: const DartProcessExecutor(),
+      ),
+    )
+    ..registerLazySingleton<RuntimeInstallService>(
+      () => runtimeInstallService ?? getIt<RuntimeInstaller>(),
+    )
     ..registerLazySingleton<FilePicker>(SystemFilePicker.new);
   if (engine != null) {
     getIt.registerLazySingleton<LlamaEngine>(() => engine);
@@ -128,6 +151,16 @@ Future<void> configureDependencies({
         getIt<ServerConfigValidator>(),
         getIt<ServerController>(),
         getIt<ServerStateRepository>(),
+      ),
+    )
+    ..registerFactory<RuntimeBloc>(
+      () => RuntimeBloc(
+        RuntimeStatusReader(
+          store: getIt<RuntimeStore>(),
+          probe: getIt<RuntimeProbe>(),
+          release: getIt<RuntimeRelease>(),
+        ),
+        getIt<RuntimeInstallService>(),
       ),
     )
     ..init();

@@ -27,6 +27,14 @@ abstract class ServerBinaryInfo
   /// First lines of the executable's version output.
   String get rawOutput;
 
+  /// The managed runtime directory the executable belongs to, when it was
+  /// resolved from `<config>/runtime/<tag>/<backend>/`.
+  ///
+  /// The supervisor starts a runtime binary from this directory and points the
+  /// loader variables (`LD_LIBRARY_PATH`, `DYLD_LIBRARY_PATH`, `PATH`,
+  /// `GGML_BACKEND_PATH`) at it. Null for every other discovery source.
+  String? get runtimeDirectory;
+
   factory ServerBinaryInfo([void Function(ServerBinaryInfoBuilder)? updates]) =
       _$ServerBinaryInfo;
 

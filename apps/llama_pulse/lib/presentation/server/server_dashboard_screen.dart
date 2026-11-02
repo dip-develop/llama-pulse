@@ -6,6 +6,7 @@ import '../../app/platform/clipboard_service.dart';
 import '../../app/platform/file_picker.dart';
 import '../../app/platform/model_path_picker.dart';
 import '../../app/platform/server_binary_picker.dart';
+import '../runtime/widgets/runtime_card.dart';
 import 'bloc/server_bloc.dart';
 import 'bloc/server_dashboard_state.dart';
 import 'widgets/server_config_form.dart';
@@ -141,6 +142,8 @@ class ServerDashboardScreen extends StatelessWidget {
   List<Widget> _panels() {
     return [
       const ServerStatusCard(),
+      const SizedBox(height: 16),
+      const RuntimeCard(),
       const SizedBox(height: 16),
       ServerEndpointCard(clipboard: clipboard),
       const SizedBox(height: 16),

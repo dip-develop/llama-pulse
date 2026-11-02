@@ -7,8 +7,10 @@ import '../../domain/entities/server_config.dart';
 import '../../domain/entities/server_failure.dart';
 import '../../domain/entities/server_failure_code.dart';
 import '../../domain/exceptions/server_exception.dart';
+import '../../domain/gateways/runtime_store.dart';
 import '../../domain/gateways/server_binary_locator.dart';
 import '../config/app_paths.dart';
+import '../runtime/yaml_runtime_store.dart';
 import 'dart_process_executor.dart';
 import 'server_version_parser.dart';
 
@@ -26,6 +28,7 @@ final class ServerBinaryLocatorImpl implements ServerBinaryLocator {
     Map<String, String>? environment,
     String? operatingSystem,
     Future<ServerBinaryInfo> Function(String path)? versionReader,
+    RuntimeStore? runtimeStore,
   }) {
     final reader =
         versionReader ?? ServerVersionParser(const DartProcessExecutor()).parse;
@@ -35,6 +38,7 @@ final class ServerBinaryLocatorImpl implements ServerBinaryLocator {
       environment ?? Platform.environment,
       operatingSystem ?? Platform.operatingSystem,
       reader,
+      runtimeStore ?? YamlRuntimeStore(paths: paths),
     );
   }
 
@@ -44,6 +48,7 @@ final class ServerBinaryLocatorImpl implements ServerBinaryLocator {
     this._environment,
     this._operatingSystem,
     this._versionReader,
+    this._runtimeStore,
   );
 
   static const String _environmentVariable = 'LLAMA_PULSE_SERVER';
@@ -53,6 +58,7 @@ final class ServerBinaryLocatorImpl implements ServerBinaryLocator {
   final Map<String, String> _environment;
   final String _operatingSystem;
   final Future<ServerBinaryInfo> Function(String path) _versionReader;
+  final RuntimeStore _runtimeStore;
 
   bool get _isWindows => _operatingSystem == 'windows';
 
@@ -106,13 +112,26 @@ final class ServerBinaryLocatorImpl implements ServerBinaryLocator {
       [
         p.join(executableDirectory, 'data', _binaryName),
         p.join(executableDirectory, _binaryName),
-        p.join(_paths.binDirectory, _binaryName),
       ],
       searched,
       notExecutable,
     );
     if (bundled != null) {
       return _describe(bundled);
+    }
+
+    final fromRuntime = await _firstRuntime(searched, notExecutable);
+    if (fromRuntime != null) {
+      return fromRuntime;
+    }
+
+    final configured = await _firstRunnable(
+      [p.join(_paths.binDirectory, _binaryName)],
+      searched,
+      notExecutable,
+    );
+    if (configured != null) {
+      return _describe(configured);
     }
 
     final onPath = await _firstRunnable(
@@ -158,6 +177,33 @@ final class ServerBinaryLocatorImpl implements ServerBinaryLocator {
     return null;
   }
 
+  /// The first installed runtime whose `llama-server` is runnable.
+  ///
+  /// Runtime installs are tried in [RuntimeIndex.resolutionOrder]: the selected
+  /// one first, then the rest newest first.
+  Future<ServerBinaryInfo?> _firstRuntime(
+    List<String> searched,
+    List<String> notExecutable,
+  ) async {
+    final index = await _runtimeStore.index();
+    for (final install in index.resolutionOrder) {
+      final directory = p.join(
+        _paths.runtimeDirectory,
+        install.tag,
+        install.backend.id,
+      );
+      final path = await _firstRunnable(
+        [p.join(directory, _binaryName)],
+        searched,
+        notExecutable,
+      );
+      if (path != null) {
+        return _describe(path, runtimeDirectory: directory);
+      }
+    }
+    return null;
+  }
+
   List<String> _pathCandidates(String name) {
     final raw = _environment['PATH'] ?? '';
     final separator = _isWindows ? ';' : ':';
@@ -187,12 +233,20 @@ final class ServerBinaryLocatorImpl implements ServerBinaryLocator {
     }
   }
 
-  Future<ServerBinaryInfo> _describe(String path) async {
+  Future<ServerBinaryInfo> _describe(
+    String path, {
+    String? runtimeDirectory,
+  }) async {
     final info = await _versionReader(path);
-    if (info.path == path) {
-      return info;
-    }
-    return info.rebuild((b) => b..path = path);
+    final described =
+        info.path == path && info.runtimeDirectory == runtimeDirectory
+        ? info
+        : info.rebuild(
+            (b) => b
+              ..path = path
+              ..runtimeDirectory = runtimeDirectory,
+          );
+    return described;
   }
 
   static ServerException _error(

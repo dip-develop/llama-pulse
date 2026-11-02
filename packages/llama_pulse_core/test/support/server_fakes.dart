@@ -97,6 +97,12 @@ final class FakeLauncher implements ServerProcessLauncher {
   /// Number of launch attempts.
   int calls = 0;
 
+  /// Environment overrides of the most recent launch.
+  Map<String, String>? environment;
+
+  /// Working directory of the most recent launch.
+  String? workingDirectory;
+
   @override
   Future<ServerProcess> start(
     String executable,
@@ -107,6 +113,8 @@ final class FakeLauncher implements ServerProcessLauncher {
     calls++;
     this.executable = executable;
     this.arguments = List<String>.of(arguments);
+    this.environment = environment;
+    this.workingDirectory = workingDirectory;
     final waiting = gate;
     if (waiting != null) {
       await waiting.future;

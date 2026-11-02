@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:built_collection/built_collection.dart';
 import 'package:llama_pulse_core/llama_pulse_core.dart';
 import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
@@ -168,6 +169,109 @@ void main() {
       final library = touch(p.join('config', 'lib', 'libllama.so'));
 
       expect(locator(configDirectory: config).resolveExisting(), library);
+    });
+  });
+
+  group('runtime installs', () {
+    void writeIndex(RuntimeIndex index) {
+      final body =
+          serializers.serializeWith(RuntimeIndex.serializer, index)!
+              as Map<String, Object?>;
+      File(p.join(temp.path, 'config', 'runtime', 'index.yaml'))
+        ..parent.createSync(recursive: true)
+        ..writeAsStringSync(
+          YamlEncoder.encode(<String, Object?>{
+            'schemaVersion': RuntimeIndex.schemaVersion,
+            ...body,
+          }),
+        );
+    }
+
+    RuntimeIndex indexWith({
+      String? selectedTag,
+      RuntimeBackend? selectedBackend,
+      List<(RuntimeBackend, int)> installed = const [
+        (RuntimeBackend.cuda13, 20),
+        (RuntimeBackend.cpu, 30),
+      ],
+    }) => RuntimeIndex(
+      (b) => b
+        ..selectedTag = selectedTag ?? ''
+        ..selectedBackend = selectedBackend
+        ..installed = BuiltList<RuntimeInstallRef>(<RuntimeInstallRef>[
+          for (final (backend, installedAt) in installed)
+            RuntimeInstallRef(
+              (r) => r
+                ..tag = 'v0.8.0'
+                ..backend = backend
+                ..platform = RuntimePlatform.linuxX64
+                ..installedAtEpochMs = installedAt
+                ..sizeBytes = 1,
+            ),
+        ]).toBuilder(),
+    );
+
+    test('selected runtime comes before config/lib', () {
+      writeIndex(
+        indexWith(selectedTag: 'v0.8.0', selectedBackend: RuntimeBackend.cpu),
+      );
+
+      final paths = locator(configDirectory: p.join(temp.path, 'config'))
+          .candidates;
+
+      final selectedPath = p.join(
+        temp.path,
+        'config',
+        'runtime',
+        'v0.8.0',
+        'cpu',
+        'libllama.so',
+      );
+      final otherPath = p.join(
+        temp.path,
+        'config',
+        'runtime',
+        'v0.8.0',
+        'cuda13',
+        'libllama.so',
+      );
+      final legacyPath = p.join(temp.path, 'config', 'lib', 'libllama.so');
+      expect(paths.indexOf(selectedPath), greaterThanOrEqualTo(0));
+      expect(paths.indexOf(otherPath), paths.indexOf(selectedPath) + 1);
+      expect(paths.indexOf(legacyPath), paths.indexOf(otherPath) + 1);
+    });
+
+    test('without a selection the newest install comes first', () {
+      writeIndex(indexWith());
+
+      final paths = locator(configDirectory: p.join(temp.path, 'config'))
+          .candidates;
+
+      final runtimePaths = paths
+          .where((path) => path.contains(p.join('runtime', 'v0.8.0')))
+          .toList();
+      expect(runtimePaths, hasLength(2));
+      expect(runtimePaths.first, contains(p.join('v0.8.0', 'cpu')));
+      expect(runtimePaths.last, contains(p.join('v0.8.0', 'cuda13')));
+    });
+
+    test('a missing index adds no runtime candidates', () {
+      final paths = locator(configDirectory: p.join(temp.path, 'config'))
+          .candidates;
+
+      expect(paths.where((path) => path.contains('runtime')), isEmpty);
+    });
+
+    test('resolveExisting finds a runtime library', () {
+      writeIndex(indexWith());
+      final library = touch(
+        p.join('config', 'runtime', 'v0.8.0', 'cpu', 'libllama.so'),
+      );
+
+      expect(
+        locator(configDirectory: p.join(temp.path, 'config')).resolveExisting(),
+        library,
+      );
     });
   });
 

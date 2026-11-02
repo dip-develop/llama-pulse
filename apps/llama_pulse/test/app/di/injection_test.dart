@@ -5,11 +5,13 @@ import 'package:llama_pulse/app/app.dart';
 import 'package:llama_pulse/app/bootstrap.dart';
 import 'package:llama_pulse/app/di/injection.dart';
 import 'package:llama_pulse/presentation/inference/bloc/inference_bloc.dart';
+import 'package:llama_pulse/presentation/runtime/bloc/runtime_bloc.dart';
 import 'package:llama_pulse/presentation/server/bloc/server_bloc.dart';
 import 'package:llama_pulse/presentation/server/bloc/server_event.dart';
 import 'package:llama_pulse_core/llama_pulse_core.dart';
 
 import '../../support/fake_llama_engine.dart';
+import '../../support/fake_runtime.dart';
 import '../../support/fake_server_controller.dart';
 
 void main() {
@@ -53,10 +55,44 @@ void main() {
     expect(getIt<ServerLogStore>(), isA<ServerLogStore>());
     expect(getIt.isRegistered<ServerController>(), isTrue);
     expect(getIt.isRegistered<ServerBloc>(), isTrue);
+    expect(getIt<RuntimeStore>(), isA<YamlRuntimeStore>());
+    expect(getIt<RuntimeProbe>(), isA<DartRuntimeProbe>());
+    expect(getIt<RuntimeInstallService>(), isA<RuntimeInstaller>());
+    expect(getIt.isRegistered<RuntimeBloc>(), isTrue);
     final InferenceBloc bloc = getIt<InferenceBloc>();
     expect(bloc, isA<InferenceBloc>());
     await bloc.close();
+    await getIt<RuntimeBloc>().close();
   });
+
+  test(
+    'runtime overrides replace the probe, the store and the installer',
+    () async {
+      await getIt.reset();
+      final FakeRuntimeStore store = FakeRuntimeStore();
+      final RuntimeRelease release = testRuntimeRelease();
+      final FakeRuntimeInstallService installer = FakeRuntimeInstallService(
+        release: release,
+        store: store,
+      );
+      await configureDependencies(
+        paths: AppPaths(configDirectory: tempDir.path),
+        configStore: InMemoryConfigStore(),
+        engine: FakeLlamaEngine(),
+        runtimeProbe: FakeRuntimeProbe(),
+        runtimeStore: store,
+        runtimeRelease: release,
+        runtimeInstallService: installer,
+      );
+
+      expect(getIt<RuntimeStore>(), same(store));
+      expect(getIt<RuntimeProbe>(), isA<FakeRuntimeProbe>());
+      expect(getIt<RuntimeInstallService>(), same(installer));
+
+      final RuntimeBloc bloc = getIt<RuntimeBloc>();
+      await bloc.close();
+    },
+  );
 
   test('loads defaults from an empty store', () async {
     final ModelParams params = await getIt<LoadModelParams>()();

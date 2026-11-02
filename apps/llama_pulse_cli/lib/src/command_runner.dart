@@ -12,6 +12,11 @@ import 'commands/params_export_command.dart';
 import 'commands/params_get_command.dart';
 import 'commands/params_set_command.dart';
 import 'commands/run_command.dart';
+import 'commands/runtime_install_command.dart';
+import 'commands/runtime_list_command.dart';
+import 'commands/runtime_remove_command.dart';
+import 'commands/runtime_select_command.dart';
+import 'commands/runtime_status_command.dart';
 import 'commands/serve_command.dart';
 import 'commands/server_get_command.dart';
 import 'commands/server_set_command.dart';
@@ -32,6 +37,7 @@ final class LlamaPulseCommandRunner extends CommandRunner<int> {
     addCommand(_ParamsCommand(services));
     addCommand(_ModelsCommand(services));
     addCommand(_ServerCommand(services));
+    addCommand(_RuntimeCommand(services));
     addCommand(RunCommand(services));
     addCommand(BenchCommand(services));
     addCommand(ServeCommand(services));
@@ -127,4 +133,22 @@ final class _ServerCommand extends Command<int> {
 
   @override
   String get description => 'Read and update the server configuration.';
+}
+
+/// The `runtime` command group.
+final class _RuntimeCommand extends Command<int> {
+  _RuntimeCommand(CliServices services) {
+    addSubcommand(RuntimeListCommand(services));
+    addSubcommand(RuntimeStatusCommand(services));
+    addSubcommand(RuntimeInstallCommand(services));
+    addSubcommand(RuntimeSelectCommand(services));
+    addSubcommand(RuntimeRemoveCommand(services));
+  }
+
+  @override
+  String get name => 'runtime';
+
+  @override
+  String get description =>
+      'Detect, install, select and remove pinned llama.cpp runtimes.';
 }

@@ -24,6 +24,7 @@ import '../../domain/gateways/server_state_repository.dart';
 import '../../domain/server_config_validator.dart';
 import '../config/app_paths.dart';
 import '../config/yaml_server_state_repository.dart';
+import '../runtime/runtime_environment.dart';
 import '../serialization/serializers.dart';
 import 'dart_http_client.dart';
 import 'dart_process_launcher.dart';
@@ -58,7 +59,8 @@ final class LlamaServerSupervisor implements ServerController {
     this._tuning = const SupervisorTuning(),
     this._clock = _nowEpochMs,
     this._delay = Future<void>.delayed,
-  }) {
+    Map<String, String>? environment,
+  }) : _environment = environment ?? Platform.environment {
     _state = ServerState.stopped(updatedAtEpochMs: _clock());
   }
 
@@ -116,6 +118,7 @@ final class LlamaServerSupervisor implements ServerController {
   final SupervisorTuning _tuning;
   final int Function() _clock;
   final Future<void> Function(Duration) _delay;
+  final Map<String, String> _environment;
 
   final StreamController<ServerState> _statesController =
       StreamController<ServerState>.broadcast();
@@ -306,7 +309,18 @@ final class LlamaServerSupervisor implements ServerController {
 
       final ServerProcess process;
       try {
-        process = await _launcher.start(binary.path, arguments);
+        final runtimeDirectory = binary.runtimeDirectory;
+        process = await _launcher.start(
+          binary.path,
+          arguments,
+          workingDirectory: runtimeDirectory,
+          environment: runtimeDirectory == null
+              ? null
+              : RuntimeEnvironment.forDirectory(
+                  runtimeDirectory,
+                  base: _environment,
+                ),
+        );
       } catch (error) {
         _throwIfAborted(generation);
         final failure = ServerFailure(

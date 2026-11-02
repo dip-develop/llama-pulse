@@ -4,7 +4,10 @@ import 'package:path/path.dart' as p;
 
 import '../../domain/entities/inference_failure.dart';
 import '../../domain/entities/inference_failure_code.dart';
+import '../../domain/entities/runtime_install_ref.dart';
 import '../config/app_paths.dart';
+import '../runtime/runtime_index_file.dart';
+import '../serialization/serializers.dart' as core;
 
 /// Resolves the llama.cpp shared library a worker should `dlopen`.
 ///
@@ -40,8 +43,10 @@ final class LlamaLibraryLocator {
 
   /// Candidate library paths in resolution order, de-duplicated.
   ///
-  /// The last entry is the bare file name: it is never checked for existence
-  /// here because `dlopen` may still resolve it through the loader.
+  /// Installed runtimes under `<config>/runtime/<tag>/<backend>` come before
+  /// `<config>/lib`, with the selected runtime first and the others newest
+  /// first. The last entry is the bare file name: it is never checked for
+  /// existence here because `dlopen` may still resolve it through the loader.
   List<String> get candidates {
     final seen = <String>{};
     final found = <String>[];
@@ -74,12 +79,38 @@ final class LlamaLibraryLocator {
 
     final configDirectory = _configDirectory;
     if (configDirectory != null) {
-      add(p.join(_absolute(configDirectory), 'lib', libraryFileName));
+      final absoluteConfig = _absolute(configDirectory);
+      for (final install in _runtimeInstalls(absoluteConfig)) {
+        add(
+          p.join(
+            absoluteConfig,
+            'runtime',
+            install.tag,
+            install.backend.id,
+            libraryFileName,
+          ),
+        );
+      }
+      add(p.join(absoluteConfig, 'lib', libraryFileName));
     }
 
     add(libraryFileName);
 
     return List.unmodifiable(found);
+  }
+
+  /// Installed runtimes in the order the loader must prefer them.
+  ///
+  /// The read is synchronous because [candidates] is a getter and the worker
+  /// resolves once at startup; a corrupt index reads as "none installed".
+  Iterable<RuntimeInstallRef> _runtimeInstalls(String absoluteConfig) {
+    final indexFile = File(
+      RuntimeIndexFile.pathFor(p.join(absoluteConfig, 'runtime')),
+    );
+    return RuntimeIndexFile.readSync(
+      indexFile,
+      core.serializers,
+    ).resolutionOrder;
   }
 
   /// The first candidate that exists on disk, or null when none does.

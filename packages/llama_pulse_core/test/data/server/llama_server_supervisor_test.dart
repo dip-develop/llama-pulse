@@ -246,6 +246,43 @@ void main() {
     ]);
   });
 
+  test('starts a managed runtime from its directory', () async {
+    const directory = '/home/u/.config/llama_pulse/runtime/v0.8.0/cuda13';
+    binaryLocator.info = _binary().rebuild(
+      (b) => b
+        ..path = '$directory/llama-server'
+        ..runtimeDirectory = directory,
+    );
+    final created = LlamaServerSupervisor(
+      launcher: launcher,
+      httpClient: httpClient,
+      portProbe: portProbe,
+      binaryLocator: binaryLocator,
+      stateRepository: stateRepository,
+      logStore: logStore,
+      validator: const ServerConfigValidator(),
+      tuning: _tuning,
+      clock: () => now,
+      delay: (duration) async {
+        now += duration.inMilliseconds;
+      },
+      environment: const <String, String>{
+        'PATH': '/usr/bin',
+        'LD_LIBRARY_PATH': '/opt/lib',
+      },
+    );
+    supervisor = created;
+
+    answerHealthy();
+    await created.start(_config(modelPath));
+
+    expect(launcher.executable, '$directory/llama-server');
+    expect(launcher.workingDirectory, directory);
+    expect(launcher.environment?['LD_LIBRARY_PATH'], '$directory:/opt/lib');
+    expect(launcher.environment?['PATH'], '$directory:/usr/bin');
+    expect(launcher.environment?['GGML_BACKEND_PATH'], directory);
+  });
+
   test('uses the legacy load flags for builds before 10875', () async {
     binaryLocator.info = _binary(buildNumber: 5000);
     final created = create();

@@ -9,6 +9,9 @@ import '../../app/platform/server_binary_picker.dart';
 import '../inference/bloc/inference_bloc.dart';
 import '../inference/bloc/inference_event.dart';
 import '../inference/chat_screen.dart';
+import '../runtime/bloc/runtime_bloc.dart';
+import '../runtime/bloc/runtime_event.dart';
+import '../runtime/runtime_screen.dart';
 import '../server/bloc/server_bloc.dart';
 import '../server/bloc/server_event.dart';
 import '../server/server_dashboard_screen.dart';
@@ -54,6 +57,7 @@ class HomeShell extends StatefulWidget {
 class _HomeShellState extends State<HomeShell> {
   static const int _serverTab = 0;
   static const int _chatTab = 1;
+  static const int _runtimeTab = 2;
 
   int _index = _serverTab;
 
@@ -69,6 +73,9 @@ class _HomeShellState extends State<HomeShell> {
         ),
         BlocProvider<InferenceBloc>(
           create: (_) => getIt<InferenceBloc>()..add(const InferenceStarted()),
+        ),
+        BlocProvider<RuntimeBloc>(
+          create: (_) => getIt<RuntimeBloc>()..add(const RuntimeStarted()),
         ),
       ],
       child: LayoutBuilder(
@@ -92,8 +99,11 @@ class _HomeShellState extends State<HomeShell> {
     );
   }
 
-  String get _title =>
-      _index == _chatTab ? 'LlamaPulse — Chat' : 'LlamaPulse — Server';
+  String get _title => switch (_index) {
+    _chatTab => 'LlamaPulse — Chat',
+    _runtimeTab => 'LlamaPulse — Runtime',
+    _ => 'LlamaPulse — Server',
+  };
 
   Widget _body() {
     return IndexedStack(
@@ -119,6 +129,7 @@ class _HomeShellState extends State<HomeShell> {
             ),
           ],
         ),
+        const RuntimeScreen(),
       ],
     );
   }
@@ -142,6 +153,11 @@ class _HomeShellState extends State<HomeShell> {
           selectedIcon: Icon(Icons.chat_bubble),
           label: Text('Chat', key: ValueKey('chat-tab')),
         ),
+        NavigationRailDestination(
+          icon: Icon(Icons.memory_outlined),
+          selectedIcon: Icon(Icons.memory),
+          label: Text('Runtime', key: ValueKey('runtime-tab')),
+        ),
       ],
     );
   }
@@ -162,6 +178,12 @@ class _HomeShellState extends State<HomeShell> {
           icon: Icon(Icons.chat_bubble_outline),
           selectedIcon: Icon(Icons.chat_bubble),
           label: 'Chat (experimental)',
+        ),
+        NavigationDestination(
+          key: ValueKey('runtime-tab'),
+          icon: Icon(Icons.memory_outlined),
+          selectedIcon: Icon(Icons.memory),
+          label: 'Runtime',
         ),
       ],
     );

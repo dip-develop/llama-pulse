@@ -81,6 +81,8 @@ Pins are deliberate; do not loosen them without reproducing the resolution:
 | `melos` (dev) | `^8.10.0` | workspace scripts and task runner |
 | `yaml` | `^3.1.4` | YAML decoding in core |
 | `args` | `^2.7.0` | CLI argument and command parsing |
+| `archive` | `^4.0.0` | streaming `.tar.gz`/`.zip` extraction for the runtime installer |
+| `crypto` | `^3.0.8` | SHA-256 of downloaded runtime archives; dev-only for the catalog digest |
 | `flutter_launcher_icons` (dev) | `^0.14.4` | Windows/macOS launcher icons |
 | `lints` (dev) | `^6.1.0` | lint baseline for core and CLI |
 | `test` (dev) | `^1.31.1` | core and CLI tests |
@@ -112,20 +114,22 @@ must leave the tree clean when run twice.
 apps/llama_pulse/
   lib/main.dart
   lib/app/          bootstrap.dart, app.dart, di/, platform/, theme/
-  lib/presentation/home/        shell: rail/nav bar and the two tabs
+  lib/presentation/home/        shell: rail/nav bar and the three tabs
   lib/presentation/server/      dashboard, bloc/, widgets/
+  lib/presentation/runtime/     Runtime tab, RuntimeCard, bloc/, widgets/
   lib/presentation/inference/   experimental chat screen, bloc/, widgets/
   test/             app/, presentation/, support/
 apps/llama_pulse_cli/
   bin/llamapulse.dart
-  lib/src/          command_runner.dart, commands/, inference/, server/,
-                    cli_services.dart
+  lib/src/          command_runner.dart, commands/, inference/, runtime/,
+                    server/, cli_services.dart
   test/
 packages/llama_pulse_core/
   lib/llama_pulse_core.dart     public entrypoint
-  lib/src/domain/   entities/ (server_*), exceptions/, gateways/ (server_*),
-                    usecases/, text/, server_config_validator.dart
-  lib/src/data/     config/, inference/, models/, server/, serialization/
+  lib/src/domain/   entities/ (server_*, runtime_*), exceptions/, gateways/,
+                    runtime/, usecases/, text/, server_config_validator.dart
+  lib/src/data/     config/, inference/, models/, runtime/, server/,
+                    serialization/
   lib/src/data/inference/native/  llama_bindings.dart, llama_library.dart,
                     native_llama_session.dart
   test/             architecture/, data/, domain/
@@ -184,12 +188,19 @@ Adding a mutable field to state or an entity is a review blocker. If
 
 ## 6. Configuration
 
-On-disk configuration is YAML. There are three documents, all in the same
-directory:
+On-disk configuration is YAML. There are three configuration documents, all in
+the same directory:
 
 - `params.yaml` — embedded/chat parameters (`ModelParams`), unchanged.
 - `server.yaml` — the supervised `llama-server` configuration (`ServerConfig`).
 - `server-state.yaml` — the supervisor's persisted state (`ServerState`).
+
+The runtime store keeps its own two YAML documents under `<config>/runtime/`:
+`index.yaml` (`RuntimeIndex`: what is installed and which one is selected) and
+`<tag>/<backend>/runtime.yaml` (`RuntimeManifest`: the exact release, asset and
+digest an install came from). They are parsed and written by
+`YamlRuntimeStore`, never hand-edited, and a malformed document degrades to
+"nothing installed" instead of blocking a launch.
 
 JSON is only for machine-readable command output (`--json` and `serve`'s
 NDJSON), isolate/transport payloads, and decoding the `/metrics`, `/slots` and
@@ -308,14 +319,20 @@ Native session rules:
 
 - **Pin.** Bind only llama.cpp `v0.8.0`
   (commit `8642541b255bfb5dc39cd351a178be09013a55d6`). `LlamaVersionPin` holds
-  the version, tag and commit; the vendored headers, `PIN.md`, `SHA256SUMS` and
-  `abi_check.c` live in `third_party/llama_cpp/v0.8.0/`, and
+  the version, tag and commit; `RuntimeRelease.v080` holds the same tag and
+  commit plus build `b11960` and every platform archive. The vendored headers,
+  `PIN.md`, `SHA256SUMS`, `RUNTIME_ASSETS.md` and `abi_check.c` live in
+  `third_party/llama_cpp/v0.8.0/`, and
   `sha256sum -c third_party/llama_cpp/v0.8.0/SHA256SUMS` verifies them.
 - **Gate.** `LlamaLibrary.open` calls `llama_version()` and accepts exactly
-  `0.8.0`; anything else, including the `0.8.0-dev` a default dev build
-  reports, fails with `libraryVersionMismatch` and the reported version. A local
-  `/opt/llama.cpp-rocm` Unsloth fork reports `0.7.0-dev` and is rejected; that
-  is the gate working, not a bug. The build recipe is
+  `0.8.0`. It also accepts `0.8.0-dev` — what every official prebuilt archive
+  reports — only when `runtime.yaml` beside the library attests the pin: tag
+  `v0.8.0`, build `b11960`, a commit prefix of the pinned commit, and the
+  pinned archive name, SHA-256 and size (`RuntimeAttestation`). Everything else,
+  including a local `/opt/llama.cpp-rocm` Unsloth fork that reports `0.7.0-dev`,
+  fails with `libraryVersionMismatch` and the reported version; that is the gate
+  working, not a bug. A local `-DLLAMA_BUILD_IS_DEV=OFF` build still reports
+  `0.8.0` and needs no manifest. The build recipe is
   `third_party/llama_cpp/v0.8.0/BUILD.md`; `tool/build_llama_cpp.sh [tag]`
   (default `v0.8.0`) runs it in one command with
   `-DBUILD_SHARED_LIBS=ON -DLLAMA_BUILD_IS_DEV=OFF -DLLAMA_BUILD_TESTS=OFF
@@ -333,12 +350,17 @@ Native session rules:
   are probed from the compiled C output; a red test means the binding, not the
   test.
 - **Loading.** Best-effort sibling `libggml*` preload, then
-  `DynamicLibrary.open`. `llama_backend_init` runs once per process, so there is
-  one engine per process. No `dlclose` exists in `dart:ffi`; a library stays
-  mapped for the process lifetime.
+  `DynamicLibrary.open`. From the preloaded `libggml` handle, bind
+  `ggml_backend_load_all_from_path` and call it with the library directory
+  **before** `llama_backend_init`: without it a directory with
+  `libggml-cuda.so` silently runs on the CPU. `llama_backend_init` runs once per
+  process, so there is one engine per process. No `dlclose` exists in
+  `dart:ffi`; a library stays mapped for the process lifetime.
 - **Resolution order.** explicit `--lib`/engine path → `LLAMA_PULSE_LIB` →
-  `<exeDir>/lib` → `<exeDir>` → `<exeDir>/../Frameworks` → `<config>/lib` →
-  bare `libllama.so`/`llama.dll`/`libllama.dylib`. No library means
+  `<exeDir>/lib` → `<exeDir>` → `<exeDir>/../Frameworks` → managed runtimes
+  under `<config>/runtime/<tag>/<backend>/` in `RuntimeIndex.resolutionOrder`
+  (selected first, then newest first) → `<config>/lib` → bare
+  `libllama.so`/`llama.dll`/`libllama.dylib`. No library means
   `libraryNotFound` with every searched path in `details`; the CLI exits `1` and
   the app shows the banner. Never fall back to the stub.
 - **Generation.** Tokenize the prompt, truncate on the left to
@@ -422,7 +444,8 @@ The primary commands are the server group: `server get`, `server set`,
 `serve`, `status`, `stop` and `logs` (section 10.2). The earlier `version`,
 `params catalog`, `params describe`, `params get`, `params set`,
 `params export`, `models list`, `models inspect`, `run` and `bench` remain.
-`run` and `bench` are the embedded/experimental path.
+`runtime list|status|install|select|remove` manages the pinned runtimes
+(section 7 and `docs/runtime.md`). `run` and `bench` are the embedded path.
 
 - `run` and `bench` run the native session by default. `--stub` explicitly
   selects the deterministic `StubLlamaSession` inside the worker; it is not a
@@ -478,10 +501,19 @@ The primary commands are the server group: `server get`, `server set`,
   JSON object except `serve` and `logs --follow`, which emit NDJSON. The
   `params`, `models` and `server` groups are not invocable. Configuration files
   on disk stay YAML.
+- `runtime install --backend <id> [--tag v0.8.0] [--force] [--yes] [--json]`
+  installs one pinned archive: NDJSON `runtimeProgress` lines then one
+  `runtimeInstall` object with `--json`, a consent prompt before the CUDA
+  runtime archive unless `--yes` or a non-interactive stdin. `runtime status`
+  prints hardware, recommendation, offered backends, installed/selected
+  runtimes and the gate verdict. `runtime select|remove <tag> <backend>`
+  operate on one install; `runtime list` prints the index.
 - Exit codes: `0` success (including `stop` when nothing was running), `1`
-  unexpected failure (including `libraryNotFound` and any non-running `status`),
-  `2` invalid arguments or validation failure, `3` requested model not found or
-  not a readable `.gguf` file, `130` interrupted by SIGINT.
+  unexpected failure (including `libraryNotFound`, any non-running `status` and
+  `runtime status` on an unsupported host), `2` invalid arguments or validation
+  failure, `3` requested model or runtime not found or not a readable `.gguf`
+  file, `4` a downloaded runtime failed integrity verification, `5` a runtime
+  download failed at the network or HTTP layer, `130` interrupted by SIGINT.
 - The `params get`, `params set`, `server get`, `server set` and `logs` leaf
   commands include the active file path in their help, because the platform
   directory varies.
@@ -553,8 +585,13 @@ port probing are injected, so the supervisor tests replace them with fakes.
   current llama.cpp. Those HTTP payloads are the only JSON decode exception
   (`jsonDecode` stays under `data/server/`).
 - Binary discovery order: `binaryPath` → `LLAMA_PULSE_SERVER` → bundled
-  `<exeDir>/data/llama-server` → `<exeDir>/llama-server` →
-  `<config>/bin/llama-server` → `PATH`. `llama-server --version` supplies the
+  `<exeDir>/data/llama-server` → `<exeDir>/llama-server` → managed runtimes
+  under `<config>/runtime/<tag>/<backend>/` (selected first, then newest first)
+  → `<config>/bin/llama-server` → `PATH`. A binary from a managed runtime is
+  spawned with that directory as its working directory, with
+  `LD_LIBRARY_PATH`, `DYLD_LIBRARY_PATH` and `PATH` prefixed by it and
+  `GGML_BACKEND_PATH` set to it, so the matching `libggml*` and backend plugins
+  win over another install. `llama-server --version` supplies the
   build. Builds below `b4000` warn with `supported: false`; an unknown or
   unreadable version reports `supported: true` with a warning (shown in the
   UI). Nothing blocks a start on the version.
@@ -639,8 +676,8 @@ APIs, no `!` on nullable values, no empty `catch` blocks.
 
 From the root, `dart run melos test`. Melos picks `flutter test` for the app and
 `dart test` for core and CLI. Test the critical seams, not every line. Coverage
-is not a target. The suites hold 936 tests today: 599 core (plus one
-env-gated skip), 204 CLI, 133 app.
+is not a target. The suites hold 1143 tests today: 770 core (plus one
+env-gated skip), 225 CLI, 148 app.
 
 Must test today:
 
@@ -705,6 +742,16 @@ Must test today:
   - `ServerBloc` and the dashboard widgets: dirty/save, start/stop, test
     connection, 120-sample metrics history, 1000-line log cap, wide/narrow
     layout, demo-server banner.
+- The runtime slice, with fakes only: the release matrix and asset digests, the
+  hardware probe's verdicts and recommendation, the YAML store (atomic commit,
+  force replacement, orphan cleanup), the downloader (resume, checksum, size,
+  cancellation), the extractor's traversal/link/size guards, the installer's
+  staging and cleanup, the attested `0.8.0-dev` gate and the status reader's
+  gate verdicts.
+- The CLI `runtime` group: exit codes `0/1/2/3/4/5/130`, NDJSON progress, the
+  CUDA consent prompt and the selected/runtime listing.
+- `RuntimeBloc` and the Runtime tab/card: detect, install with progress and
+  cancel, select, remove with confirmation, unsupported host.
 - DI registration and the test overrides.
 - Widget tests for the chat screen, Generate/Cancel, the editable form and the
   demo-engine banner (the experimental path).
@@ -798,10 +845,12 @@ no imports of another feature's data layer.
 
 Post-MVP landing spots:
 
-- Binary downloader: `data/downloads/` in an app layer plus a library locator
-  strategy; the UI reaches it through a core gateway. It must
-  **ask which compute backend to install (CPU/ROCm/CUDA/Vulkan/Metal)** and
-  offer a detected default rather than guessing.
+- Runtime manager: shipped as `domain/runtime/` plus `data/runtime/` in core,
+  with `RuntimeProbe`, `RuntimeStore` and `RuntimeInstallService` gateways. It
+  **asks which compute backend to install (CPU/ROCm/CUDA/Vulkan/Metal)** and
+  offers a detected default rather than guessing. A new release means a new
+  `RuntimeRelease` constant, a new `third_party/llama_cpp/<tag>/RUNTIME_ASSETS.md`
+  and regenerated digests; never a network lookup at install time.
 - Hugging Face / model manager: `data/models/` with structured storage (the
   `hive_ce` dependency returns with the model manager) through a core gateway.
 
@@ -853,7 +902,7 @@ prints both exports. Never commit `.env` files, secrets or absolute local paths.
 
 - [ ] The workspace resolves with one lockfile (`flutter pub get` at the root).
 - [ ] `pubspec.lock` stays untracked.
-- [ ] `dart run melos run check` is green (936 tests: 599 core, 204 CLI, 133
+- [ ] `dart run melos run check` is green (1143 tests: 770 core, 225 CLI, 148
   app; one core integration test is skipped without a native library).
 - [ ] `dart run melos run gen:catalog:check` is green, and the generated
   `llama_args.v0.8.0.yaml` and `parameter_catalog.generated.dart` are committed

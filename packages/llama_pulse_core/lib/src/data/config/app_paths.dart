@@ -53,6 +53,9 @@ final class AppPaths {
   /// Directory the supervisor looks for `llama-server` binaries in.
   String get binDirectory => p.join(configDirectory, 'bin');
 
+  /// Directory holding installed llama.cpp runtimes and their index.
+  String get runtimeDirectory => p.join(configDirectory, 'runtime');
+
   /// Directory holding locally available model files.
   String get modelsDirectory => p.join(configDirectory, 'models');
 

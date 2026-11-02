@@ -17,8 +17,12 @@ environment:
   sdk: ^3.13.0
 
 dependencies:
+  archive: ^4.0.0
   built_collection: ^5.1.2
   built_value: 8.13.0
+  # SHA-256 for the runtime archive and vendored-file integrity checks, and for
+  # the catalog tool.
+  crypto: ^3.0.8
   ffi: ^2.2.0
   path: ^1.9.1
   yaml: ^3.1.4
@@ -26,7 +30,5 @@ dependencies:
 dev_dependencies:
   build_runner: 2.16.1
   built_value_generator: 8.13.0
-  # SHA-256 for the vendored-file integrity test and the catalog tool.
-  crypto: ^3.0.0
   lints: ^6.1.0
   test: ^1.31.1

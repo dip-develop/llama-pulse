@@ -6,9 +6,11 @@ local endpoint. Maintained by DIP Dev.
 
 Status: alpha — the `llama-server` supervisor, the server dashboard and the CLI
 server commands are the primary paths and work end to end. The experimental Chat
-tab and the CLI `run`/`bench` commands now drive a real embedded native session
+tab and the CLI `run`/`bench` commands drive a real embedded native session
 against a pinned llama.cpp shared library; without one they report
-`libraryNotFound` instead of producing synthetic output.
+`libraryNotFound` instead of producing synthetic output. Pinned prebuilt
+runtimes can be downloaded, verified and installed per GPU backend, and both
+paths prefer them.
 
 ## Why
 
@@ -19,6 +21,9 @@ against a pinned llama.cpp shared library; without one they report
 - **Every parameter you can see.** A generated catalog of all 362 `llama.cpp`
   `v0.8.0` server parameters drives the CLI and both GUI panels, with the same
   descriptions, defaults and validation everywhere.
+- **A runtime that matches your GPU.** Download the pinned llama.cpp build for
+  the backend LlamaPulse detects (CPU, CUDA, ROCm, Vulkan, Metal), verified
+  against a pinned SHA-256, instead of guessing or building by hand.
 - **One shared core.** The GUI, the CLI and the supervisor share entities,
   validation, configuration and the process seam.
 
@@ -30,13 +35,13 @@ llama-pulse/
 ├── pubspec.lock            generated, git-ignored; shared by all members
 ├── analysis_options.yaml   shared lint rules
 ├── apps/llama_pulse/       Flutter desktop app
-│   └── lib/presentation/   home/ (shell), server/ (dashboard), inference/
+│   └── lib/presentation/   home/ (shell), server/, runtime/, inference/
 ├── apps/llama_pulse_cli/   pure-Dart CLI, executable `llamapulse`
 ├── packages/llama_pulse_core/
 │   ├── lib/src/domain/     entities/, gateways/, usecases/, text/
-│   └── lib/src/data/       config/, inference/, models/, server/, serialization/
+│   └── lib/src/data/       config/, inference/, models/, runtime/, server/
 ├── third_party/llama_cpp/  vendored v0.8.0 headers, arg.cpp and build recipe
-├── docs/                   parameter catalog and workflow documentation
+├── docs/                   parameter catalog, runtimes and workflow documentation
 ├── tool/                   developer scripts, e.g. build_llama_cpp.sh
 ├── AGENT.md                contributor and agent rules
 └── LICENSE                 MIT
@@ -98,15 +103,20 @@ Naming: app `llama_pulse`, CLI `llamapulse`, package `llama_pulse_core`.
   [Embedded native engine](#embedded-native-engine)). It is not the primary path
   and does not use the supervised server. Without a resolvable library the
   screen reports `libraryNotFound` with every searched path.
-- **CLI**: `server get|set`, `serve`, `status`, `stop`, `logs`, plus
-  `params catalog|describe|get|set|export`, `models list|inspect`, `run` and
-  `bench`.
+- **Managed runtimes**: detect the host GPU, download the matching pinned
+  backend, verify its SHA-256, extract it safely and install it under
+  `<config>/runtime/<tag>/<backend>/`. The CLI (`runtime
+  list|status|install|select|remove`) and a Runtime tab drive it; see
+  [docs/runtime.md](docs/runtime.md).
+- **CLI**: `server get|set`, `serve`, `status`, `stop`, `logs`, `runtime
+  list|status|install|select|remove`, plus `params
+  catalog|describe|get|set|export`, `models list|inspect`, `run` and `bench`.
 - **Binary discovery and version warning**: a configured path, an environment
-  variable, the app bundle, the config `bin/` directory and `PATH` are tried in
-  that order. Builds below `b4000` warn, and an unknown or unreadable
+  variable, the app bundle, installed runtimes, the config `bin/` directory and
+  `PATH` are tried in that order. Builds below `b4000` warn, and an unknown or unreadable
   `llama-server --version` reports `supported: true` with a warning; nothing
   blocks a start on the version.
-- **936 tests** across the three packages (599 core, 204 CLI, 133 app); one
+- **1143 tests** across the three packages (770 core, 225 CLI, 148 app); one
   further core integration test is skipped unless a native library and model are
   set.
 
@@ -120,11 +130,19 @@ builds only warn. Put it on
 `<config>/bin/`, or point `LLAMA_PULSE_SERVER` or `server.yaml`'s
 `binaryPath` at it.
 
-The embedded engine needs a llama.cpp **shared library** built from the pinned
-`v0.8.0` tag, not the `llama-server` binary. The shared library and the app must
-match exactly: the engine calls `llama_version()` and accepts only `0.8.0`, so a
-default development build that reports `0.8.0-dev` is rejected. The recipe and
-the output layout are in
+The easiest way to get both is a managed runtime:
+
+```sh
+llamapulse runtime status                     # what the host can run
+llamapulse runtime install --backend cuda13   # verified download
+llamapulse runtime select v0.8.0 cuda13
+```
+
+The embedded engine also accepts a llama.cpp **shared library** built from the
+pinned `v0.8.0` tag. A local `-DLLAMA_BUILD_IS_DEV=OFF` build reports `0.8.0`
+and passes the exact gate; an official prebuilt archive reports `0.8.0-dev`
+and passes only with a matching runtime manifest (see
+[Version gate](#version-gate)). The recipe and the output layout are in
 [third_party/llama_cpp/v0.8.0/BUILD.md](third_party/llama_cpp/v0.8.0/BUILD.md).
 
 ## Embedded native engine
@@ -133,8 +151,11 @@ The Chat tab and the CLI `run`/`bench` commands use `NativeLlamaSession`, which
 implements the existing `LlamaSession` interface and runs inside the worker
 isolate. `LlamaLibrary` opens the shared library with `DynamicLibrary.open` and
 resolves every symbol with `lookupFunction`; there is no `@Native` binding. It
-pre-opens sibling `libggml*` libraries on a best-effort basis, calls
-`llama_backend_init` once per process, and then gates on `llama_version()`.
+pre-opens sibling `libggml*` libraries, binds
+`ggml_backend_load_all_from_path` from the `libggml` handle and calls it with
+the library's directory **before** `llama_backend_init` (otherwise a GPU plugin
+beside the library is silently ignored), calls `llama_backend_init` once per
+process, and then gates on `llama_version()`.
 
 Resolution order for the library:
 
@@ -143,8 +164,10 @@ Resolution order for the library:
 3. `<exeDir>/lib`
 4. `<exeDir>`
 5. `<exeDir>/../Frameworks` (macOS bundles)
-6. `<config>/lib`
-7. the bare soname (`libllama.so`, `llama.dll`, `libllama.dylib`)
+6. installed runtimes under `<config>/runtime/<tag>/<backend>/`, selected first
+   and then the others newest first
+7. `<config>/lib`
+8. the bare soname (`libllama.so`, `llama.dll`, `libllama.dylib`)
 
 A path that does not resolve fails with `libraryNotFound` and **every** searched
 path in `details`; the CLI prints them and exits `1`. Nothing falls back to the
@@ -153,10 +176,19 @@ the deterministic stub, and its output is byte-identical to before. In the app,
 the default DI registration is the native engine; `melos run app:stub` selects
 the stub.
 
+### Version gate
+
 A load of a library whose version differs fails with `libraryVersionMismatch`
-and the reported version. The local `/opt/llama.cpp-rocm` install is an Unsloth
-fork that reports `0.7.0-dev` and is rejected, which is the gate working as
-intended.
+and the reported version. Two cases are accepted:
+
+- `0.8.0`, the string a local `-DLLAMA_BUILD_IS_DEV=OFF` build reports.
+- `0.8.0-dev`, the string every official prebuilt archive reports, but only
+  when `runtime.yaml` beside the library names the pinned tag, build, commit and
+  archive SHA-256. That is an attestation of the downloaded, verified install,
+  not a loosened check.
+
+The local `/opt/llama.cpp-rocm` install is an Unsloth fork that reports
+`0.7.0-dev` and stays rejected, which is the gate working as intended.
 
 The native path is 64-bit desktop only: the structs are passed and returned by
 value. One engine per process, because `llama_backend_init` is global. Fetch the
@@ -435,6 +467,18 @@ SIGTERM during startup stops the child immediately and exits `130` or `0`. A
 supervisor stream that closes without a terminal event is reported as
 `failed(unknown, 'the supervisor stream ended')`.
 
+### Runtime commands
+
+`runtime status` prints the detected host, the recommended backend, the release,
+the offered backends, the installed and selected runtimes and the native gate
+verdict. `runtime install --backend <id>` downloads, verifies and installs the
+pinned archive, prompts before the CUDA runtime archive unless `--yes` is
+given, and accepts `--tag` (only `v0.8.0`) and `--force`. `runtime select <tag>
+<backend>` marks the default, `runtime remove <tag> <backend>` deletes it, and
+`runtime list` prints what is installed. Every leaf accepts `--json`;
+`install --json` streams `runtimeProgress` NDJSON and ends with one
+`runtimeInstall` object. See [docs/runtime.md](docs/runtime.md).
+
 `--json` switches `serve` to NDJSON on stdout, one schema-v1 object per line,
 with event types `starting`, `ready`, `metrics`, `log`, `stopping`, `stopped`
 and `failed`. A failure before the controller publishes anything still emits
@@ -543,18 +587,22 @@ object. stderr carries diagnostics, the human summary and usage errors.
 
 Every leaf command — `version`, `params get`, `params set`, `params export`,
 `models list`, `models inspect`, `server get`, `server set`, `serve`, `status`,
-`stop`, `logs`, `run` and `bench` — accepts `--json`; `serve` and
-`logs --follow` emit NDJSON, the rest print one single-line JSON object. The
-`params`, `models` and `server` groups are not invocable and take no `--json`
-of their own. The configuration files on disk stay YAML either way.
+`stop`, `logs`, `runtime list`, `runtime status`, `runtime install`,
+`runtime select`, `runtime remove`, `run` and `bench` — accepts `--json`;
+`serve`, `logs --follow` and `runtime install` emit NDJSON, the rest print one
+single-line JSON object. The `params`, `models`, `server` and `runtime` groups
+are not invocable and take no `--json` of their own. The configuration files on
+disk stay YAML either way.
 
 | Exit code | Meaning |
 |---|---|
 | 0 | Success; `status` only when running and healthy; `stop` also when nothing was running |
 | 1 | Unexpected failure, `status` for any non-running state, `serve` when a server is already recorded, `libraryNotFound` |
 | 2 | Invalid arguments or values that failed validation |
-| 3 | The requested model file was not found or is not a readable `.gguf` file |
-| 130 | Interrupted by SIGINT (`serve`, `logs --follow`, a generation) |
+| 3 | The requested model file or runtime was not found |
+| 4 | A downloaded runtime failed checksum, size or extraction verification |
+| 5 | A runtime download failed at the network or HTTP layer |
+| 130 | Interrupted by SIGINT (`serve`, `logs --follow`, a generation, a runtime install) |
 
 ## Configuration
 
@@ -621,7 +669,7 @@ params:
 | Windows | `%APPDATA%\LlamaPulse` |
 
 Set `LLAMA_PULSE_CONFIG_DIR` to an absolute path to override the platform
-location; `models/`, `bin/` and the log file sit inside it. Set
+location; `models/`, `bin/`, `runtime/` and the log file sit inside it. Set
 `LLAMA_PULSE_SERVER` to a `llama-server` executable (absolute path, path with a
 separator, or a bare name looked up on `PATH`). Config and state are YAML; JSON
 is only for `--json`/NDJSON command output and for decoding the `/metrics`,
@@ -710,7 +758,11 @@ The embedded worker isolate backs both the experimental Chat tab and the CLI
   plus `lookupFunction`, never `@Native`, and the app starts without any native
   library present.
 
-See [AGENT.md](AGENT.md) for the full rules.
+Runtime management lives in `packages/llama_pulse_core/lib/src/data/runtime/`
+and `lib/src/domain/runtime/`; the probe, the store and the installer are
+domain gateways so the GUI's `RuntimeBloc` never imports the data layer. The
+`archive` and `crypto` packages are the only runtime dependencies. See
+[docs/runtime.md](docs/runtime.md) and [AGENT.md](AGENT.md) for the full rules.
 
 ## Known limitations
 
@@ -718,9 +770,10 @@ See [AGENT.md](AGENT.md) for the full rules.
   parameters as embedded, and the native session honours all of them. Every
   other server flag is locked in the Chat panel and rejected by
   `run`/`bench --param` with exit `2`; it is not silently ignored.
-- **Exact version gate.** The library must report exactly `0.8.0`; a `0.8.0-dev`
-  build and any other release, including a newer one, are rejected at load with
-  `libraryVersionMismatch`.
+- **Pinned version gate.** The library must report `0.8.0`, or `0.8.0-dev` with
+  a runtime manifest that attests the pinned release. Any other version,
+  including a newer one and the `0.7.0-dev` Unsloth fork, is rejected at load
+  with `libraryVersionMismatch`.
 - **64-bit desktop only.** The native structs are passed and returned by value,
   so the bindings do not work on 32-bit targets.
 - **One engine per process.** `llama_backend_init` is global and `dart:ffi` has
@@ -743,13 +796,15 @@ See [AGENT.md](AGENT.md) for the full rules.
 - [x] Full `llama.cpp` parameter catalog: 362 ids, 12 groups, GUI panel and
   `--param` on the server surface, plus the 10 ids catalogued for the embedded
   engine
-- [ ] llama.cpp binary downloader and updater
+- [x] llama.cpp runtime downloader: pinned assets, hardware detection,
+  verified installs, CLI `runtime` group and the GUI Runtime tab
+- [ ] GPU smoke tests on CUDA, Vulkan, ROCm and Metal
 - [ ] Windows and macOS builds
 - [ ] CI for analyze, tests and builds
 - [ ] Packaging (app bundle and CLI archives)
 
-The downloader will **ask which compute backend to install
-(CPU/ROCm/CUDA/Vulkan/Metal)** and offer a detected default rather than
+The runtime manager **asks which compute backend to install
+(CPU/ROCm/CUDA/Vulkan/Metal)** and offers the detected default rather than
 guessing. Work is tracked in
 [GitHub issues](https://github.com/dip-develop/llama-pulse/issues).
 
