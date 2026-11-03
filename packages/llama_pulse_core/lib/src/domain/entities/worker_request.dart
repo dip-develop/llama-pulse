@@ -1,6 +1,8 @@
+import 'package:built_collection/built_collection.dart';
 import 'package:built_value/built_value.dart';
 import 'package:built_value/serializer.dart';
 
+import 'chat_message.dart';
 import 'generation_request.dart';
 import 'model_params.dart';
 import 'worker_request_kind.dart';
@@ -32,6 +34,12 @@ abstract class WorkerRequest
   /// Token cap, set on generate requests only.
   int? get maxTokens;
 
+  /// Chat messages, set on generate requests that carry a conversation.
+  ///
+  /// Null or empty means the prompt is the single user message, which keeps
+  /// the pre-message wire shape valid.
+  BuiltList<ChatMessage>? get messages;
+
   factory WorkerRequest([void Function(WorkerRequestBuilder)? updates]) =
       _$WorkerRequest;
 
@@ -51,7 +59,10 @@ abstract class WorkerRequest
       ..requestId = request.requestId
       ..prompt = request.prompt
       ..params.replace(request.params)
-      ..maxTokens = request.params.maxTokens,
+      ..maxTokens = request.params.maxTokens
+      ..messages = request.messages.isEmpty
+          ? null
+          : BuiltList<ChatMessage>(request.messages).toBuilder(),
   );
 
   /// Builds a request to cancel [targetRequestId].

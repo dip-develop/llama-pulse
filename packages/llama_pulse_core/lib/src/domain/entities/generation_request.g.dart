@@ -33,6 +33,13 @@ class _$GenerationRequestSerializer
         object.prompt,
         specifiedType: const FullType(String),
       ),
+      'messages',
+      serializers.serialize(
+        object.messages,
+        specifiedType: const FullType(BuiltList, const [
+          const FullType(ChatMessage),
+        ]),
+      ),
       'params',
       serializers.serialize(
         object.params,
@@ -75,6 +82,17 @@ class _$GenerationRequestSerializer
                   )!
                   as String;
           break;
+        case 'messages':
+          result.messages.replace(
+            serializers.deserialize(
+                  value,
+                  specifiedType: const FullType(BuiltList, const [
+                    const FullType(ChatMessage),
+                  ]),
+                )!
+                as BuiltList<Object?>,
+          );
+          break;
         case 'params':
           result.params.replace(
             serializers.deserialize(
@@ -105,6 +123,8 @@ class _$GenerationRequest extends GenerationRequest {
   @override
   final String prompt;
   @override
+  final BuiltList<ChatMessage> messages;
+  @override
   final ModelParams params;
   @override
   final bool stream;
@@ -116,6 +136,7 @@ class _$GenerationRequest extends GenerationRequest {
   _$GenerationRequest._({
     required this.requestId,
     required this.prompt,
+    required this.messages,
     required this.params,
     required this.stream,
   }) : super._();
@@ -133,6 +154,7 @@ class _$GenerationRequest extends GenerationRequest {
     return other is GenerationRequest &&
         requestId == other.requestId &&
         prompt == other.prompt &&
+        messages == other.messages &&
         params == other.params &&
         stream == other.stream;
   }
@@ -142,6 +164,7 @@ class _$GenerationRequest extends GenerationRequest {
     var _$hash = 0;
     _$hash = $jc(_$hash, requestId.hashCode);
     _$hash = $jc(_$hash, prompt.hashCode);
+    _$hash = $jc(_$hash, messages.hashCode);
     _$hash = $jc(_$hash, params.hashCode);
     _$hash = $jc(_$hash, stream.hashCode);
     _$hash = $jf(_$hash);
@@ -153,6 +176,7 @@ class _$GenerationRequest extends GenerationRequest {
     return (newBuiltValueToStringHelper(r'GenerationRequest')
           ..add('requestId', requestId)
           ..add('prompt', prompt)
+          ..add('messages', messages)
           ..add('params', params)
           ..add('stream', stream))
         .toString();
@@ -171,6 +195,12 @@ class GenerationRequestBuilder
   String? get prompt => _$this._prompt;
   set prompt(String? prompt) => _$this._prompt = prompt;
 
+  ListBuilder<ChatMessage>? _messages;
+  ListBuilder<ChatMessage> get messages =>
+      _$this._messages ??= ListBuilder<ChatMessage>();
+  set messages(ListBuilder<ChatMessage>? messages) =>
+      _$this._messages = messages;
+
   ModelParamsBuilder? _params;
   ModelParamsBuilder get params => _$this._params ??= ModelParamsBuilder();
   set params(ModelParamsBuilder? params) => _$this._params = params;
@@ -186,6 +216,7 @@ class GenerationRequestBuilder
     if ($v != null) {
       _requestId = $v.requestId;
       _prompt = $v.prompt;
+      _messages = $v.messages.toBuilder();
       _params = $v.params.toBuilder();
       _stream = $v.stream;
       _$v = null;
@@ -222,6 +253,7 @@ class GenerationRequestBuilder
               r'GenerationRequest',
               'prompt',
             ),
+            messages: messages.build(),
             params: params.build(),
             stream: BuiltValueNullFieldError.checkNotNull(
               stream,
@@ -232,6 +264,8 @@ class GenerationRequestBuilder
     } catch (_) {
       late String _$failedField;
       try {
+        _$failedField = 'messages';
+        messages.build();
         _$failedField = 'params';
         params.build();
       } catch (e) {

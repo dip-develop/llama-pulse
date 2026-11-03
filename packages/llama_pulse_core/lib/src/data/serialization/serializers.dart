@@ -2,6 +2,7 @@ import 'package:built_collection/built_collection.dart';
 import 'package:built_value/serializer.dart';
 import 'package:built_value/standard_json_plugin.dart';
 
+import '../../domain/entities/chat_message.dart';
 import '../../domain/entities/generation_event.dart';
 import '../../domain/entities/generation_event_kind.dart';
 import '../../domain/entities/generation_metrics.dart';
@@ -42,6 +43,7 @@ part 'serializers.g.dart';
   RuntimeIndex,
   RuntimeInstallRef,
   GenerationRequest,
+  ChatMessage,
   GenerationMetrics,
   GenerationEvent,
   GenerationEventKind,

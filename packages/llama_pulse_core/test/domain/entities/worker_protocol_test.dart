@@ -69,6 +69,35 @@ void main() {
       expect(roundTrip(WorkerRequest.serializer, request), request);
     });
 
+    test('generate carries the message list', () {
+      final generation = GenerationRequest.create(
+        requestId: 9,
+        prompt: 'hi',
+        params: _params,
+        messages: <ChatMessage>[
+          ChatMessage.create(role: 'system', content: 'be brief'),
+          ChatMessage.create(role: 'user', content: 'hi'),
+        ],
+      );
+
+      final request = WorkerRequest.generate(generation);
+
+      expect(request.messages, hasLength(2));
+      expect(request.messages!.first.role, 'system');
+      expect(request.messages!.last.content, 'hi');
+      expect(roundTrip(WorkerRequest.serializer, request), request);
+    });
+
+    test('a prompt-only generate carries no messages', () {
+      final generation = GenerationRequest.create(
+        requestId: 10,
+        prompt: 'hi',
+        params: _params,
+      );
+
+      expect(WorkerRequest.generate(generation).messages, isNull);
+    });
+
     test('cancel carries the target request id only', () {
       final request = WorkerRequest.cancel(2, 7);
       expect(request.kind, WorkerRequestKind.cancel);

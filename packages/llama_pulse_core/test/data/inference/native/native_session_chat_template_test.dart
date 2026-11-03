@@ -147,6 +147,122 @@ void main() {
     },
   );
 
+  test('renders every message through the template in order', () async {
+    if (skipReason != null) {
+      markTestSkipped(skipReason!);
+      return;
+    }
+    final session = await loadedSession();
+    fake.setTokenizeResult(1);
+    final messages = <ChatMessage>[
+      ChatMessage.create(role: 'system', content: 'be brief'),
+      ChatMessage.create(role: 'user', content: 'tell me a joke'),
+      ChatMessage.create(role: 'assistant', content: 'a short one'),
+      ChatMessage.create(role: 'user', content: 'and one more'),
+    ];
+
+    session.begin(
+      GenerationRequest.create(
+        requestId: 1,
+        prompt: 'and one more',
+        params: params(),
+        messages: messages,
+      ),
+    );
+
+    const expected =
+        '<|im_start|>system\nbe brief<|im_end|>\n'
+        '<|im_start|>user\ntell me a joke<|im_end|>\n'
+        '<|im_start|>assistant\na short one<|im_end|>\n'
+        '<|im_start|>user\nand one more<|im_end|>\n'
+        '<|im_start|>assistant\n';
+    expect(fake.tokenizeText, expected);
+    expect(fake.lastTemplateOutput, expected);
+  });
+
+  test(
+    'useChatTemplate false joins multiple messages as a transcript',
+    () async {
+      if (skipReason != null) {
+        markTestSkipped(skipReason!);
+        return;
+      }
+      final session = await loadedSession();
+      fake.setTokenizeResult(1);
+
+      session.begin(
+        GenerationRequest.create(
+          requestId: 1,
+          prompt: 'and one more',
+          params: params(useChatTemplate: false),
+          messages: <ChatMessage>[
+            ChatMessage.create(role: 'system', content: 'be brief'),
+            ChatMessage.create(role: 'user', content: 'tell me a joke'),
+            ChatMessage.create(role: 'assistant', content: 'a short one'),
+            ChatMessage.create(role: 'user', content: 'and one more'),
+          ],
+        ),
+      );
+
+      expect(
+        fake.tokenizeText,
+        'system: be brief\n'
+        'user: tell me a joke\n'
+        'assistant: a short one\n'
+        'user: and one more',
+      );
+      expect(fake.lastTemplateOutput, isEmpty);
+    },
+  );
+
+  test(
+    'an unknown template falls back to the transcript for multiple messages',
+    () async {
+      if (skipReason != null) {
+        markTestSkipped(skipReason!);
+        return;
+      }
+      final session = await loadedSession();
+      fake.setTokenizeResult(1);
+
+      session.begin(
+        GenerationRequest.create(
+          requestId: 1,
+          prompt: 'and one more',
+          params: params(chatTemplate: 'unknown'),
+          messages: <ChatMessage>[
+            ChatMessage.create(role: 'user', content: 'tell me a joke'),
+            ChatMessage.create(role: 'user', content: 'and one more'),
+          ],
+        ),
+      );
+
+      expect(fake.tokenizeText, 'user: tell me a joke\nuser: and one more');
+    },
+  );
+
+  test('a single message list renders like the prompt', () async {
+    if (skipReason != null) {
+      markTestSkipped(skipReason!);
+      return;
+    }
+    final session = await loadedSession();
+    fake.setTokenizeResult(1);
+
+    session.begin(
+      GenerationRequest.create(
+        requestId: 1,
+        prompt: 'tell me a joke',
+        params: params(),
+        messages: <ChatMessage>[
+          ChatMessage.create(role: 'user', content: 'tell me a joke'),
+        ],
+      ),
+    );
+
+    expect(fake.tokenizeText, templated);
+  });
+
   test('grows the prompt buffer when the template output is large', () async {
     if (skipReason != null) {
       markTestSkipped(skipReason!);

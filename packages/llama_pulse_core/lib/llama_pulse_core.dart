@@ -51,6 +51,7 @@ export 'src/data/server/server_version_parser.dart';
 export 'src/data/server/socket_port_probe.dart';
 export 'src/data/server/stub_server_controller.dart';
 export 'src/data/server/supervisor_tuning.dart';
+export 'src/domain/entities/chat_message.dart';
 export 'src/domain/entities/generation_event.dart';
 export 'src/domain/entities/generation_event_kind.dart';
 export 'src/domain/entities/generation_metrics.dart';

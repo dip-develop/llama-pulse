@@ -380,12 +380,17 @@ Native session rules:
 - **Chat templates.** `params.chatTemplate` null uses the model's built-in
   template, the literal `none` disables templating, and any other value names
   a built-in template passed to `llama_model_chat_template`;
-  `useChatTemplate: false` forces the raw prompt. `begin` renders one `user`
-  message through `llama_chat_apply_template` (probe length, allocate,
-  retry) before tokenization and silently falls back to the raw prompt when no
-  template resolves or the call fails, so a model without chat metadata still
-  runs. The CLI exposes both as `--chat-template` and
-  `--[no-]use-chat-template`; the chat form has the matching field and switch.
+  `useChatTemplate: false` forces the raw prompt. `begin` renders every
+  `GenerationRequest.effectiveMessages` entry through
+  `llama_chat_apply_template` in order (probe length, allocate, retry) before
+  tokenization. An empty message list means the prompt is one `user` message;
+  that shape renders exactly as before. When no template resolves or the call
+  fails, a single user message falls back to the raw prompt and a longer
+  conversation to a plain `role: content` transcript, so a model without chat
+  metadata still runs. The CLI exposes the template as `--chat-template` /
+  `--[no-]use-chat-template` and the conversation as `--system` plus repeatable
+  `--message role:content`; the chat form has the matching template field and
+  switch (it still sends a single prompt).
 - **Platform.** 64-bit desktop only: structs are returned by value.
 - **Selection.** `WorkerConfig.useStubSession` chooses
   `StubLlamaSession` (explicit `--stub` or `LLAMAPULSE_STUB_ENGINE`);
@@ -464,11 +469,15 @@ The primary commands are the server group: `server get`, `server set`,
 - `bench` without `--stub` requires a readable `.gguf` model: a blank path is a
   usage error (`2`) and a missing, non-`.gguf` or unreadable file exits `3`.
 - `run` flags: `--model`, `--lib`, `--prompt`, `--file` (`-` reads stdin),
-  `--stream`, `--json`, `--threads`, `--temperature`, `--top-p`, `--top-k`,
-  `--max-tokens`, `--context-size`, `--chat-template`,
-  `--[no-]use-chat-template` and repeatable `--param`. `--prompt` and `--file`
-  are mutually exclusive; one is required. `--json` and `--stream` cannot be
-  combined. `--param` follows the embedded catalog rules: typed owners
+  `--system`, repeatable `--message role:content`, `--stream`, `--json`,
+  `--threads`, `--temperature`, `--top-p`, `--top-k`, `--max-tokens`,
+  `--context-size`, `--chat-template`, `--[no-]use-chat-template` and repeatable
+  `--param`. `--prompt` and `--file` are mutually exclusive; one of `--prompt`,
+  `--file` or a user `--message` is required. A message is `role:content` split
+  at the first colon; the role must be one of `ChatMessage.knownRoles`, and a
+  malformed message or an unknown role exits `2` before the engine loads.
+  `--system` comes first, then the `--message` entries in order, then the
+  prompt as the final user turn. `--json` and `--stream` cannot be combined. `--param` follows the embedded catalog rules: typed owners
   (`ctx-size`, `threads`, `gpu-layers`, `temp`, `top-k`, `top-p`,
   `chat-template`) write `ModelParams` fields, `seed`, `min-p` and `batch-size`
   stay in `params`, and an unknown or unsupported id exits `2` before the
@@ -681,8 +690,8 @@ APIs, no `!` on nullable values, no empty `catch` blocks.
 
 From the root, `dart run melos test`. Melos picks `flutter test` for the app and
 `dart test` for core and CLI. Test the critical seams, not every line. Coverage
-is not a target. The suites hold 1155 tests today: 781 core (plus one
-env-gated skip), 226 CLI, 148 app.
+is not a target. The suites hold 1172 tests today: 791 core (plus one
+env-gated skip), 233 CLI, 148 app.
 
 Must test today:
 
@@ -919,7 +928,7 @@ prints both exports. Never commit `.env` files, secrets or absolute local paths.
 
 - [ ] The workspace resolves with one lockfile (`flutter pub get` at the root).
 - [ ] `pubspec.lock` stays untracked.
-- [ ] `dart run melos run check` is green (1155 tests: 781 core, 226 CLI, 148
+- [ ] `dart run melos run check` is green (1172 tests: 791 core, 233 CLI, 148
   app; one core integration test is skipped without a native library).
 - [ ] `dart run melos run gen:catalog:check` is green, and the generated
   `llama_args.v0.8.0.yaml` and `parameter_catalog.generated.dart` are committed

@@ -7,6 +7,7 @@ import 'dart:typed_data';
 import 'package:ffi/ffi.dart';
 import 'package:path/path.dart' as p;
 
+import '../../../domain/entities/chat_message.dart';
 import '../../../domain/entities/generation_metrics.dart';
 import '../../../domain/entities/generation_request.dart';
 import '../../../domain/entities/inference_failure.dart';
@@ -230,6 +231,18 @@ final class NativeLlamaSession implements LlamaSession {
         ),
       );
     }
+    for (final message in request.effectiveMessages) {
+      if (message.role.contains('\u0000') ||
+          message.content.contains('\u0000')) {
+        throw InferenceFailureException(
+          _failure(
+            InferenceFailureCode.invalidParams,
+            'a chat message contains a NUL character',
+            null,
+          ),
+        );
+      }
+    }
 
     final bindings = library.bindings;
     _clearGeneration(freeSampler: true);
@@ -435,23 +448,27 @@ final class NativeLlamaSession implements LlamaSession {
 
   /// Returns the prompt to tokenize, wrapped in the selected chat template.
   ///
-  /// A missing or unknown template falls back to the raw prompt silently: a
-  /// model without chat metadata must still be usable.
+  /// Every message is rendered through `llama_chat_apply_template`, in order,
+  /// with the assistant prefix requested. A missing or unknown template falls
+  /// back silently: a single user message becomes the raw prompt, which keeps
+  /// the pre-message behaviour byte for byte, and a longer conversation becomes
+  /// a plain `role: content` transcript so a model without chat metadata is
+  /// still usable.
   String _chatPrompt(
     LlamaBindings bindings,
     ffi.Pointer<LlamaModel> model,
     GenerationRequest request,
   ) {
     final params = request.params;
-    final prompt = request.prompt;
+    final messages = request.effectiveMessages;
     if (params.useChatTemplate == false || params.chatTemplate == 'none') {
-      return prompt;
+      return _plainTranscript(messages, request.prompt);
     }
 
     ffi.Pointer<Utf8>? namePointer;
-    ffi.Pointer<Utf8>? rolePointer;
-    ffi.Pointer<Utf8>? contentPointer;
-    ffi.Pointer<LlamaChatMessage>? message;
+    ffi.Pointer<LlamaChatMessage>? chat;
+    final roles = <ffi.Pointer<Utf8>>[];
+    final contents = <ffi.Pointer<Utf8>>[];
     ffi.Pointer<ffi.Char>? buffer;
     try {
       final name = params.chatTemplate;
@@ -463,60 +480,78 @@ final class NativeLlamaSession implements LlamaSession {
         namePointer?.cast<ffi.Char>() ?? ffi.nullptr,
       );
       if (template == ffi.nullptr) {
-        return prompt;
+        return _plainTranscript(messages, request.prompt);
       }
 
-      rolePointer = 'user'.toNativeUtf8();
-      contentPointer = prompt.toNativeUtf8();
-      message = calloc<LlamaChatMessage>()
-        ..ref.role = rolePointer.cast<ffi.Char>()
-        ..ref.content = contentPointer.cast<ffi.Char>();
+      final chatPointer = calloc<LlamaChatMessage>(messages.length);
+      chat = chatPointer;
+      for (var index = 0; index < messages.length; index++) {
+        final rolePointer = messages[index].role.toNativeUtf8();
+        final contentPointer = messages[index].content.toNativeUtf8();
+        roles.add(rolePointer);
+        contents.add(contentPointer);
+        final message = (chatPointer + index).ref;
+        message.role = rolePointer.cast<ffi.Char>();
+        message.content = contentPointer.cast<ffi.Char>();
+      }
 
       final probe = bindings.llamaChatApplyTemplate(
         template,
-        message,
-        1,
+        chat,
+        messages.length,
         true,
         ffi.nullptr,
         0,
       );
       final required = probe < 0 ? -probe : probe;
       if (required <= 0) {
-        return prompt;
+        return _plainTranscript(messages, request.prompt);
       }
 
       buffer = calloc<ffi.Char>(required);
       final written = bindings.llamaChatApplyTemplate(
         template,
-        message,
-        1,
+        chat,
+        messages.length,
         true,
         buffer,
         required,
       );
       if (written <= 0) {
-        return prompt;
+        return _plainTranscript(messages, request.prompt);
       }
       return buffer.cast<Utf8>().toDartString(length: written);
     } catch (_) {
-      return prompt;
+      return _plainTranscript(messages, request.prompt);
     } finally {
       if (namePointer != null) {
         malloc.free(namePointer);
       }
-      if (rolePointer != null) {
-        malloc.free(rolePointer);
+      for (final pointer in roles) {
+        malloc.free(pointer);
       }
-      if (contentPointer != null) {
-        malloc.free(contentPointer);
+      for (final pointer in contents) {
+        malloc.free(pointer);
       }
-      if (message != null) {
-        calloc.free(message);
+      if (chat != null) {
+        calloc.free(chat);
       }
       if (buffer != null) {
         calloc.free(buffer);
       }
     }
+  }
+
+  /// The fallback when no template renders, and the `none` path.
+  String _plainTranscript(List<ChatMessage> messages, String prompt) {
+    if (messages.length == 1 &&
+        messages.single.role == 'user' &&
+        messages.single.content == prompt) {
+      return prompt;
+    }
+    return messages
+        .map((message) => '${message.role}: ${message.content}')
+        .join('\n');
   }
 
   /// Tokenizes [prompt] with the probe/allocate/retry dance llama.cpp needs.

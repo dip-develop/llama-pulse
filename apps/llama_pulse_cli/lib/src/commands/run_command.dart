@@ -26,6 +26,17 @@ final class RunCommand extends LlamaPulseCommand {
         'file',
         help: 'Read the prompt from a file; "-" reads standard input.',
       )
+      ..addOption(
+        'system',
+        help: 'System message prepended to the conversation.',
+      )
+      ..addMultiOption(
+        'message',
+        splitCommas: false,
+        help:
+            'Chat message as role:content; repeatable and rendered in order '
+            'before --prompt. Roles: system, user, assistant, tool.',
+      )
       ..addFlag(
         'stream',
         negatable: false,
@@ -63,7 +74,14 @@ final class RunCommand extends LlamaPulseCommand {
     }
     final mode = _mode(args);
 
-    final promptArgumentError = _promptArgumentError(args);
+    final parsedMessages = _parseMessageOptions(args);
+    if (parsedMessages.error != null) {
+      services.err.writeln('error: ${parsedMessages.error}');
+      return ExitCodes.usage;
+    }
+    final messages = parsedMessages.messages;
+
+    final promptArgumentError = _promptArgumentError(args, messages);
     if (promptArgumentError != null) {
       services.err.writeln('error: $promptArgumentError');
       return ExitCodes.usage;
@@ -128,10 +146,19 @@ final class RunCommand extends LlamaPulseCommand {
 
     // Reading the prompt is last, so `--file -` never blocks on stdin for an
     // invocation that is already invalid.
-    final prompt = await _resolvePrompt(args);
-    if (prompt == null) {
+    final hasPromptArgument =
+        args.option('prompt') != null || args.option('file') != null;
+    final prompt = hasPromptArgument ? await _resolvePrompt(args) : null;
+    if (hasPromptArgument && prompt == null) {
       return ExitCodes.usage;
     }
+    final chat = <ChatMessage>[
+      ...messages,
+      if (prompt != null) ChatMessage.create(role: 'user', content: prompt),
+    ];
+    final usedMessageOptions =
+        args.option('system') != null || args.multiOption('message').isNotEmpty;
+    final promptText = prompt ?? _lastUserContent(chat);
 
     final engine = services.createEngine(
       useStubSession: stub,
@@ -147,8 +174,9 @@ final class RunCommand extends LlamaPulseCommand {
         engine: engine,
         request: GenerationRequest.create(
           requestId: 1,
-          prompt: prompt,
+          prompt: promptText,
           params: params,
+          messages: usedMessageOptions ? chat : const <ChatMessage>[],
         ),
         out: services.out,
         err: services.err,
@@ -165,16 +193,68 @@ final class RunCommand extends LlamaPulseCommand {
     }
   }
 
-  String? _promptArgumentError(ArgResults args) {
+  String? _promptArgumentError(ArgResults args, List<ChatMessage> messages) {
     final prompt = args.option('prompt');
     final file = args.option('file');
     if (prompt != null && file != null) {
       return '--prompt and --file cannot be combined';
     }
-    if (prompt == null && file == null) {
-      return 'pass either --prompt or --file';
+    if (prompt == null &&
+        file == null &&
+        !messages.any((message) => message.role == 'user')) {
+      return 'pass --prompt, --file or a --message with the user role';
     }
     return null;
+  }
+
+  /// Parses `--system` and the repeatable `--message role:content` flags.
+  ///
+  /// The system message comes first, then the `--message` entries in the order
+  /// they were given; the prompt is appended later as the final user message.
+  ({List<ChatMessage> messages, String? error}) _parseMessageOptions(
+    ArgResults args,
+  ) {
+    final messages = <ChatMessage>[];
+    final system = args.option('system');
+    if (system != null) {
+      if (system.trim().isEmpty) {
+        return (messages: messages, error: '--system must not be empty');
+      }
+      messages.add(ChatMessage.create(role: 'system', content: system));
+    }
+    for (final raw in args.multiOption('message')) {
+      final separator = raw.indexOf(':');
+      if (separator <= 0) {
+        return (
+          messages: messages,
+          error: "invalid --message '$raw': expected role:content",
+        );
+      }
+      final role = raw.substring(0, separator).trim();
+      if (!ChatMessage.knownRoles.contains(role)) {
+        return (
+          messages: messages,
+          error:
+              "invalid role '$role' in --message; use "
+              '${ChatMessage.knownRoles.join(', ')}',
+        );
+      }
+      messages.add(
+        ChatMessage.create(role: role, content: raw.substring(separator + 1)),
+      );
+    }
+    return (messages: messages, error: null);
+  }
+
+  /// The final user text, used as `GenerationRequest.prompt` for callers that
+  /// report a single prompt (the stub engine and the human summary).
+  String _lastUserContent(List<ChatMessage> messages) {
+    for (final message in messages.reversed) {
+      if (message.role == 'user') {
+        return message.content;
+      }
+    }
+    return messages.isEmpty ? '' : messages.last.content;
   }
 
   Future<String?> _resolvePrompt(ArgResults args) async {
