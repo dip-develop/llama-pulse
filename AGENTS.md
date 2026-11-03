@@ -22,8 +22,9 @@ guide is [`AGENT.md`](AGENT.md); read it before changing anything. When
 - **Before a PR:** `dart run melos run check` and
   `dart run melos run gen:catalog:check` are green.
 - **CI runs on every PR.** `.github/workflows/ci.yml` runs the workspace gate
-  and a Linux desktop build, tests on Linux and macOS, and analyze plus the CLI
-  compile on Windows. A red run blocks the PR; Windows tests wait on issue #23.
+  and a Linux desktop build, the suites on Linux, macOS and Windows, and a
+  standalone Windows job that only compiles the CLI (no analyze). A red run
+  blocks the PR.
 
 ## Quick commands (run from the repo root only)
 
@@ -70,12 +71,13 @@ A new session needs four things before it changes anything:
    flight, next and landmines — the issue mirrors this file.
 2. `gh pr list` and `gh issue list` — the live queue; `docs/status.md` records
    the state at the last checkpoint.
-3. `git branch -a` — the in-flight branch is listed in `docs/status.md`; merged
+3. `git branch -a` — in-flight work is listed in `docs/status.md`; merged
    feature branches may still exist locally, and only the operator deletes
    them.
-4. After the runtime work (issue #15, merged as PR #21) the next steps are CI
-   (issue #22), packaging, Windows/macOS validation and Windows test
-   portability (issue #23).
+4. Packaging v1 (Linux bundle, PR #28), Windows test portability (PR #29) and
+   multi-message prompts in core and the CLI (PR #31) have shipped. The next
+   steps are the GUI chat transcript and the packaging follow-ups (icons,
+   installers, Windows/macOS bundles).
 
 Rules for this repo: never merge, tag, force-push or delete branches — the
 operator does those, and no PR goes to anything but `main`. Before opening a
