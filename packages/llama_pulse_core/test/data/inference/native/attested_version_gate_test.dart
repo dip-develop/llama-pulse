@@ -39,10 +39,12 @@ void main() {
   });
 
   setUp(() async {
+    // Created before the skip check so tearDown always has a directory to
+    // clean up, even when the shim cannot be built on this platform.
+    temp = Directory.systemTemp.createTempSync('llama_pulse_gate_');
     if (skipReason != null) {
       return;
     }
-    temp = Directory.systemTemp.createTempSync('llama_pulse_gate_');
     final shim = await FakeLlamaBuilder.build();
     libraryPath = (await File(shim).copy(p.join(temp.path, p.basename(shim))))
         .path;
