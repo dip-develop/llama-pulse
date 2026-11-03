@@ -8,6 +8,7 @@ part of 'serializers.dart';
 
 Serializers _$serializers =
     (Serializers().toBuilder()
+          ..add(ChatMessage.serializer)
           ..add(GenerationEvent.serializer)
           ..add(GenerationEventKind.serializer)
           ..add(GenerationMetrics.serializer)
@@ -34,6 +35,14 @@ Serializers _$serializers =
           ..add(WorkerRequestKind.serializer)
           ..add(WorkerResponse.serializer)
           ..add(WorkerResponseKind.serializer)
+          ..addBuilderFactory(
+            const FullType(BuiltList, const [const FullType(ChatMessage)]),
+            () => ListBuilder<ChatMessage>(),
+          )
+          ..addBuilderFactory(
+            const FullType(BuiltList, const [const FullType(ChatMessage)]),
+            () => ListBuilder<ChatMessage>(),
+          )
           ..addBuilderFactory(
             const FullType(BuiltList, const [
               const FullType(RuntimeInstallRef),

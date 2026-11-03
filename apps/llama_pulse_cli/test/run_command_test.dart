@@ -77,6 +77,141 @@ void main() {
     timeout: const Timeout(Duration(seconds: 30)),
   );
 
+  test('--system becomes the first message', () async {
+    final runner = makeRunner();
+
+    final code = await runner.run([
+      'run',
+      '--model',
+      modelFile.path,
+      '--system',
+      'be brief',
+      '--prompt',
+      'hi',
+    ]);
+
+    expect(code, ExitCodes.ok);
+    final request = engine.generateRequests.single;
+    expect(request.prompt, 'hi');
+    expect(request.effectiveMessages, hasLength(2));
+    expect(request.effectiveMessages.first.role, 'system');
+    expect(request.effectiveMessages.first.content, 'be brief');
+    expect(request.effectiveMessages.last.role, 'user');
+    expect(request.effectiveMessages.last.content, 'hi');
+  });
+
+  test('--message keeps its order and the prompt comes last', () async {
+    final runner = makeRunner();
+
+    final code = await runner.run([
+      'run',
+      '--model',
+      modelFile.path,
+      '--message',
+      'user:tell me a joke',
+      '--message',
+      'assistant:a short one',
+      '--prompt',
+      'and one more',
+    ]);
+
+    expect(code, ExitCodes.ok);
+    final messages = engine.generateRequests.single.effectiveMessages;
+    expect(messages.map((message) => message.role), <String>[
+      'user',
+      'assistant',
+      'user',
+    ]);
+    expect(messages.map((message) => message.content), <String>[
+      'tell me a joke',
+      'a short one',
+      'and one more',
+    ]);
+    expect(engine.generateRequests.single.prompt, 'and one more');
+  });
+
+  test('a user --message works without --prompt', () async {
+    final runner = makeRunner();
+
+    final code = await runner.run([
+      'run',
+      '--model',
+      modelFile.path,
+      '--message',
+      'user:hello from a message',
+    ]);
+
+    expect(code, ExitCodes.ok);
+    final request = engine.generateRequests.single;
+    expect(request.prompt, 'hello from a message');
+    expect(request.effectiveMessages.single.content, 'hello from a message');
+  });
+
+  test('a message may contain colons and commas', () async {
+    final runner = makeRunner();
+
+    final code = await runner.run([
+      'run',
+      '--model',
+      modelFile.path,
+      '--message',
+      'user:a: b, c',
+    ]);
+
+    expect(code, ExitCodes.ok);
+    final message = engine.generateRequests.single.effectiveMessages.single;
+    expect(message.role, 'user');
+    expect(message.content, 'a: b, c');
+  });
+
+  test('an invalid role exits 2 before the engine starts', () async {
+    final runner = makeRunner();
+
+    final code = await runner.run([
+      'run',
+      '--model',
+      modelFile.path,
+      '--message',
+      'wizard:hi',
+    ]);
+
+    expect(code, ExitCodes.usage);
+    expect(err.toString(), contains("invalid role 'wizard'"));
+    expect(engine.generateCalls, 0);
+  });
+
+  test('a malformed --message exits 2', () async {
+    final runner = makeRunner();
+
+    final code = await runner.run([
+      'run',
+      '--model',
+      modelFile.path,
+      '--message',
+      'hello',
+    ]);
+
+    expect(code, ExitCodes.usage);
+    expect(err.toString(), contains('expected role:content'));
+    expect(engine.generateCalls, 0);
+  });
+
+  test('a system message alone is not a prompt', () async {
+    final runner = makeRunner();
+
+    final code = await runner.run([
+      'run',
+      '--model',
+      modelFile.path,
+      '--system',
+      'be brief',
+    ]);
+
+    expect(code, ExitCodes.usage);
+    expect(err.toString(), contains('pass --prompt, --file or a --message'));
+    expect(engine.generateCalls, 0);
+  });
+
   test('without --stub emits one failed object in --json mode', () async {
     final runner = makeRunner(
       engineFactory: () => WorkerLlamaEngine(libraryPath: ''),
@@ -265,7 +400,7 @@ void main() {
       ExitCodes.usage,
     );
 
-    expect(err.toString(), contains('--prompt or --file'));
+    expect(err.toString(), contains('--prompt, --file or a --message'));
     expect(engine.loadCalls, 0);
   });
 

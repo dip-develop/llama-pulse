@@ -116,7 +116,7 @@ Naming: app `llama_pulse`, CLI `llamapulse`, package `llama_pulse_core`.
   `PATH` are tried in that order. Builds below `b4000` warn, and an unknown or unreadable
   `llama-server --version` reports `supported: true` with a warning; nothing
   blocks a start on the version.
-- **1155 tests** across the three packages (781 core, 226 CLI, 148 app); one
+- **1172 tests** across the three packages (791 core, 233 CLI, 148 app); one
   further core integration test is skipped unless a native library and model are
   set.
 
@@ -540,15 +540,32 @@ Local models run on your machine. No
 $ cat prompt.txt | llamapulse run --stub --model /models/demo.gguf --file - --json
 ```
 
-Flags: `--model`, `--lib`, `--prompt`, `--file` (`-` reads stdin), `--stream`,
-`--json`, `--threads`, `--temperature`, `--top-p`, `--top-k`, `--max-tokens`,
-`--context-size`, `--chat-template`, `--[no-]use-chat-template`, repeatable
-`--param`. `--prompt` and `--file` are mutually exclusive; one is required.
-`--json` and `--stream` cannot be combined. `--param` applies the embedded
-catalog rules for this run only; an unknown or unsupported id exits 2 before
-the engine loads. `--chat-template` names a built-in template (for example
-`chatml`); `none` disables templating and `--no-use-chat-template` sends the raw
-prompt.
+Flags: `--model`, `--lib`, `--prompt`, `--file` (`-` reads stdin), `--system`,
+repeatable `--message role:content`, `--stream`, `--json`, `--threads`,
+`--temperature`, `--top-p`, `--top-k`, `--max-tokens`, `--context-size`,
+`--chat-template`, `--[no-]use-chat-template`, repeatable `--param`. `--prompt`
+and `--file` are mutually exclusive; one of `--prompt`, `--file` or a user
+`--message` is required. `--json` and `--stream` cannot be combined. `--param`
+applies the embedded catalog rules for this run only; an unknown or unsupported
+id exits 2 before the engine loads. `--chat-template` names a built-in template
+(for example `chatml`); `none` disables templating and `--no-use-chat-template`
+sends the raw prompt.
+
+The embedded session renders the whole conversation through the model's chat
+template. `--system` prepends a system message and every `--message
+role:content` adds one entry in order (`system`, `user`, `assistant` or `tool`);
+the prompt is the final user turn. A model without chat metadata falls back to
+the raw prompt for a single user message and to a plain `role: content`
+transcript for a longer conversation. `--stub` ignores the conversation and
+echoes the final user text.
+
+```console
+$ llamapulse run --stub --model /models/demo.gguf \
+    --system "You are terse." \
+    --message user:"Say hi" --message assistant:"Hi" \
+    --prompt "One more"
+```
+
 
 `--stream` writes newline-delimited JSON (NDJSON), schema v1, one object per
 line. In the order they occur, the event types are `started`, `token`,

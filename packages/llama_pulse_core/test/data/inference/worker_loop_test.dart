@@ -74,6 +74,38 @@ Future<_Harness> _loaded({Duration tokenDelay = Duration.zero}) async {
   return harness;
 }
 
+/// Delegates to a [StubLlamaSession] and records what [begin] received.
+final class _RecordingSession implements LlamaSession {
+  _RecordingSession(this._inner);
+
+  final StubLlamaSession _inner;
+  GenerationRequest? began;
+
+  @override
+  Future<void> open(String libraryPath) => _inner.open(libraryPath);
+
+  @override
+  Future<void> load(ModelParams params) => _inner.load(params);
+
+  @override
+  void begin(GenerationRequest request) {
+    began = request;
+    _inner.begin(request);
+  }
+
+  @override
+  Future<GenerationStep?> next() => _inner.next();
+
+  @override
+  Future<void> cancel() => _inner.cancel();
+
+  @override
+  Future<void> unload() => _inner.unload();
+
+  @override
+  Future<void> dispose() => _inner.dispose();
+}
+
 /// Emits exactly [tokens] text steps, is not stopped by cancel and keeps
 /// producing metrics so interval behaviour can be asserted.
 final class _TickSession implements LlamaSession {
@@ -256,6 +288,34 @@ void main() {
       expect(batches, isNotEmpty);
       expect(batches.length, lessThanOrEqualTo(expected.tokens));
       expect(batches.every((response) => response.requestId == 3), isTrue);
+    });
+
+    test('forwards the message list to the session', () async {
+      final session = _RecordingSession(
+        StubLlamaSession(tokenDelay: Duration.zero),
+      );
+      await session.open('libllama.so');
+      final harness = _Harness(session: session);
+      await harness.load();
+
+      harness.loop.handle(
+        WorkerRequest.generate(
+          GenerationRequest.create(
+            requestId: 4,
+            prompt: 'hi',
+            params: _params(),
+            messages: <ChatMessage>[
+              ChatMessage.create(role: 'system', content: 'be brief'),
+              ChatMessage.create(role: 'user', content: 'hi'),
+            ],
+          ),
+        ),
+      );
+      await harness.loop.idle;
+
+      expect(session.began?.effectiveMessages, hasLength(2));
+      expect(session.began?.effectiveMessages.first.role, 'system');
+      expect(harness.ofKind(WorkerResponseKind.completed), hasLength(1));
     });
 
     test('ends with metrics and exactly one completed terminal', () async {

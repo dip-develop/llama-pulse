@@ -65,6 +65,19 @@ class _$WorkerRequestSerializer implements StructuredSerializer<WorkerRequest> {
         ..add('maxTokens')
         ..add(serializers.serialize(value, specifiedType: const FullType(int)));
     }
+    value = object.messages;
+    if (value != null) {
+      result
+        ..add('messages')
+        ..add(
+          serializers.serialize(
+            value,
+            specifiedType: const FullType(BuiltList, const [
+              const FullType(ChatMessage),
+            ]),
+          ),
+        );
+    }
     return result;
   }
 
@@ -125,6 +138,17 @@ class _$WorkerRequestSerializer implements StructuredSerializer<WorkerRequest> {
             specifiedType: const FullType(int),
           ) as int?;
           break;
+        case 'messages':
+          result.messages.replace(
+            serializers.deserialize(
+                  value,
+                  specifiedType: const FullType(BuiltList, const [
+                    const FullType(ChatMessage),
+                  ]),
+                )!
+                as BuiltList<Object?>,
+          );
+          break;
       }
     }
 
@@ -145,6 +169,8 @@ class _$WorkerRequest extends WorkerRequest {
   final String? prompt;
   @override
   final int? maxTokens;
+  @override
+  final BuiltList<ChatMessage>? messages;
 
   factory _$WorkerRequest([void Function(WorkerRequestBuilder)? updates]) =>
       (WorkerRequestBuilder()..update(updates))._build();
@@ -156,6 +182,7 @@ class _$WorkerRequest extends WorkerRequest {
     this.params,
     this.prompt,
     this.maxTokens,
+    this.messages,
   }) : super._();
   @override
   WorkerRequest rebuild(void Function(WorkerRequestBuilder) updates) =>
@@ -173,7 +200,8 @@ class _$WorkerRequest extends WorkerRequest {
         targetRequestId == other.targetRequestId &&
         params == other.params &&
         prompt == other.prompt &&
-        maxTokens == other.maxTokens;
+        maxTokens == other.maxTokens &&
+        messages == other.messages;
   }
 
   @override
@@ -185,6 +213,7 @@ class _$WorkerRequest extends WorkerRequest {
     _$hash = $jc(_$hash, params.hashCode);
     _$hash = $jc(_$hash, prompt.hashCode);
     _$hash = $jc(_$hash, maxTokens.hashCode);
+    _$hash = $jc(_$hash, messages.hashCode);
     _$hash = $jf(_$hash);
     return _$hash;
   }
@@ -197,7 +226,8 @@ class _$WorkerRequest extends WorkerRequest {
           ..add('targetRequestId', targetRequestId)
           ..add('params', params)
           ..add('prompt', prompt)
-          ..add('maxTokens', maxTokens))
+          ..add('maxTokens', maxTokens)
+          ..add('messages', messages))
         .toString();
   }
 }
@@ -231,6 +261,12 @@ class WorkerRequestBuilder
   int? get maxTokens => _$this._maxTokens;
   set maxTokens(int? maxTokens) => _$this._maxTokens = maxTokens;
 
+  ListBuilder<ChatMessage>? _messages;
+  ListBuilder<ChatMessage> get messages =>
+      _$this._messages ??= ListBuilder<ChatMessage>();
+  set messages(ListBuilder<ChatMessage>? messages) =>
+      _$this._messages = messages;
+
   WorkerRequestBuilder();
 
   WorkerRequestBuilder get _$this {
@@ -242,6 +278,7 @@ class WorkerRequestBuilder
       _params = $v.params?.toBuilder();
       _prompt = $v.prompt;
       _maxTokens = $v.maxTokens;
+      _messages = $v.messages?.toBuilder();
       _$v = null;
     }
     return this;
@@ -280,12 +317,16 @@ class WorkerRequestBuilder
             params: _params?.build(),
             prompt: prompt,
             maxTokens: maxTokens,
+            messages: _messages?.build(),
           );
     } catch (_) {
       late String _$failedField;
       try {
         _$failedField = 'params';
         _params?.build();
+
+        _$failedField = 'messages';
+        _messages?.build();
       } catch (e) {
         throw BuiltValueNestedFieldError(
           r'WorkerRequest',

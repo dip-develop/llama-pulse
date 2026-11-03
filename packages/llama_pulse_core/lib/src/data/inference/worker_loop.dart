@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import '../../domain/entities/chat_message.dart';
 import '../../domain/entities/generation_metrics.dart';
 import '../../domain/entities/generation_request.dart';
 import '../../domain/entities/inference_failure.dart';
@@ -260,6 +261,7 @@ final class WorkerLoop {
           requestId: requestId,
           prompt: request.prompt ?? '',
           params: params,
+          messages: request.messages?.toList() ?? const <ChatMessage>[],
         ),
       );
       while (true) {

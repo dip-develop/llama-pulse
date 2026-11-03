@@ -106,6 +106,50 @@ void main() {
       );
       expect(roundTrip(GenerationRequest.serializer, request), request);
     });
+
+    test('without messages the prompt is the single user message', () {
+      final request = GenerationRequest.create(
+        requestId: 7,
+        prompt: 'hello',
+        params: ModelParams.defaults(),
+      );
+
+      expect(request.messages, isEmpty);
+      expect(request.effectiveMessages, hasLength(1));
+      expect(request.effectiveMessages.single.role, 'user');
+      expect(request.effectiveMessages.single.content, 'hello');
+    });
+
+    test('round-trips a message list', () {
+      final request = GenerationRequest.create(
+        requestId: 8,
+        prompt: 'and one more',
+        params: ModelParams.defaults(),
+        messages: <ChatMessage>[
+          ChatMessage.create(role: 'system', content: 'be brief'),
+          ChatMessage.create(role: 'user', content: 'tell me a joke'),
+          ChatMessage.create(role: 'assistant', content: 'why did the…'),
+          ChatMessage.create(role: 'user', content: 'and one more'),
+        ],
+      );
+
+      expect(request.effectiveMessages, hasLength(4));
+      expect(request.effectiveMessages.first.role, 'system');
+      expect(request.effectiveMessages.last.content, 'and one more');
+      expect(roundTrip(GenerationRequest.serializer, request), request);
+    });
+
+    test('ChatMessage reports known and unknown roles', () {
+      expect(
+        ChatMessage.create(role: 'system', content: 'x').hasKnownRole,
+        isTrue,
+      );
+      expect(
+        ChatMessage.create(role: 'wizard', content: 'x').hasKnownRole,
+        isFalse,
+      );
+      expect(ChatMessage.knownRoles, contains('assistant'));
+    });
   });
 
   group('GenerationMetrics', () {
