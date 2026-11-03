@@ -21,6 +21,13 @@ final class FakeLlamaBuilder {
     if (cached != null) {
       return cached;
     }
+    if (Platform.isWindows) {
+      // The shim is built as an ELF/Mach-O shared library whose plain C symbols
+      // are exported automatically. A Windows DLL needs __declspec(dllexport)
+      // (or a .def file), which the test-only shim does not carry, so the
+      // native tests skip here until Windows native validation lands.
+      return _available = false;
+    }
     try {
       final result = await Process.run('clang', const ['--version']);
       return _available = result.exitCode == 0;

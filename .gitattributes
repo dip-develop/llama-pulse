@@ -1,0 +1,10 @@
+# Keep every text file at LF in the repository and in every checkout. The
+# catalog digest and the vendored-header SHA256SUMS are computed over the exact
+# file bytes, so a CRLF checkout on Windows would fail them.
+* text=auto eol=lf
+
+*.png binary
+*.ico binary
+*.jpg binary
+*.jpeg binary
+*.gif binary

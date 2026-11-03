@@ -278,8 +278,12 @@ void main() {
 
     expect(launcher.executable, '$directory/llama-server');
     expect(launcher.workingDirectory, directory);
-    expect(launcher.environment?['LD_LIBRARY_PATH'], '$directory:/opt/lib');
-    expect(launcher.environment?['PATH'], '$directory:/usr/bin');
+    final separator = Platform.isWindows ? ';' : ':';
+    expect(
+      launcher.environment?['LD_LIBRARY_PATH'],
+      '$directory$separator/opt/lib',
+    );
+    expect(launcher.environment?['PATH'], '$directory$separator/usr/bin');
     expect(launcher.environment?['GGML_BACKEND_PATH'], directory);
   });
 

@@ -78,9 +78,12 @@ void main() {
       final server = File(p.join(destinationDirectory.path, 'llama-server'));
       final library = File(p.join(destinationDirectory.path, 'libllama.so.0'));
       final readme = File(p.join(destinationDirectory.path, 'README.md'));
-      expect(FileStat.statSync(server.path).mode & 0x1ff, 0x1ed); // 0755
-      expect(FileStat.statSync(library.path).mode & 0x1ff, 0x1ed); // 0755
-      expect(FileStat.statSync(readme.path).mode & 0x1ff, 0x1a4); // 0644
+      // Windows has no POSIX permission bits; the extractor skips chmod there.
+      if (!Platform.isWindows) {
+        expect(FileStat.statSync(server.path).mode & 0x1ff, 0x1ed); // 0755
+        expect(FileStat.statSync(library.path).mode & 0x1ff, 0x1ed); // 0755
+        expect(FileStat.statSync(readme.path).mode & 0x1ff, 0x1a4); // 0644
+      }
 
       final link = Link(p.join(destinationDirectory.path, 'libllama.so'));
       expect(link.existsSync(), isTrue);
@@ -165,9 +168,11 @@ void main() {
       final library = File(p.join(destinationDirectory.path, 'ggml-cpu.dll'));
       final readme = File(p.join(destinationDirectory.path, 'README.md'));
       expect(server.existsSync(), isTrue);
-      expect(FileStat.statSync(server.path).mode & 0x1ff, 0x1ed); // 0755
-      expect(FileStat.statSync(library.path).mode & 0x1ff, 0x1a4); // 0644
-      expect(FileStat.statSync(readme.path).mode & 0x1ff, 0x1a4); // 0644
+      if (!Platform.isWindows) {
+        expect(FileStat.statSync(server.path).mode & 0x1ff, 0x1ed); // 0755
+        expect(FileStat.statSync(library.path).mode & 0x1ff, 0x1a4); // 0644
+        expect(FileStat.statSync(readme.path).mode & 0x1ff, 0x1a4); // 0644
+      }
     });
 
     test('rejects more than maxEntries', () async {
