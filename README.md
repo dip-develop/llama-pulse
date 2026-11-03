@@ -832,7 +832,7 @@ domain gateways so the GUI's `RuntimeBloc` never imports the data layer. The
   verified installs, CLI `runtime` group and the GUI Runtime tab
 - [ ] GPU smoke tests on CUDA, Vulkan, ROCm and Metal
 - [ ] Windows and macOS builds
-- [ ] CI for analyze, tests and builds
+- [x] CI for analyze, tests and builds
 - [x] Linux app bundle with an optional managed runtime
   (`tool/package_linux.sh`)
 - [ ] Icons, installers and Windows/macOS bundles
@@ -852,8 +852,8 @@ immutability and configuration rules reviews check.
 - Before pushing, run `dart run melos run check`; it runs gen, analyze, tests,
   the format check and the CLI build. Every PR also runs
   [`.github/workflows/ci.yml`](.github/workflows/ci.yml): the same gate plus a
-  Linux desktop debug build, tests on Ubuntu and macOS, and analyze plus the CLI
-  compile on Windows.
+  Linux desktop debug build, tests on Ubuntu, macOS and Windows, and a
+  standalone Windows job that only compiles the CLI.
 - Generated `.g.dart` and `.config.dart` files are committed; re-run gen after a
   model change, and add tests for the seam you touched or explain why not.
 

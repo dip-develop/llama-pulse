@@ -824,9 +824,9 @@ rules updates `AGENT.md` in the same PR.
 CI is `.github/workflows/ci.yml`, and it mirrors this gate rather than adding a
 second one: a Linux job runs `dart run melos run check`, fails on generated-file
 drift and builds the Linux desktop app; a `test` matrix runs analyze and the
-suites on Ubuntu and macOS; a Windows job runs analyze and compiles the CLI
-(Windows tests wait on issue #23). It pins the Flutter baseline from section 3,
-not `stable`. Extend this workflow when a new platform gate is needed.
+suites on Ubuntu, macOS and Windows; a standalone Windows job only compiles the
+CLI, with no analyze. It pins the Flutter baseline from section 3, not `stable`.
+Extend this workflow when a new platform gate is needed.
 
 ## 15. Extending
 
