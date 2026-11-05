@@ -40,6 +40,12 @@ abstract class ModelParams implements Built<ModelParams, ModelParamsBuilder> {
   /// `llama_model_chat_template`.
   String? get chatTemplate;
 
+  /// Default `system` message prepended to chat requests.
+  ///
+  /// Null means no system message. Persisted in `params.yaml`; the CLI's
+  /// `run --system` is a per-run override and does not read this value.
+  String? get systemPrompt;
+
   /// Whether the native session wraps the prompt in a chat template.
   ///
   /// Null means true; false forces the raw prompt.
@@ -65,6 +71,7 @@ abstract class ModelParams implements Built<ModelParams, ModelParamsBuilder> {
       ..topK = 40
       ..maxTokens = 256
       ..chatTemplate = null
+      ..systemPrompt = null
       ..useChatTemplate = null
       ..params = MapBuilder<String, String>(),
   );
@@ -75,8 +82,9 @@ abstract class ModelParams implements Built<ModelParams, ModelParamsBuilder> {
 
   /// Returns a copy with the given fields replaced.
   ///
-  /// Omitting [chatTemplate] or [useChatTemplate] keeps the current value; pass
-  /// an explicit null to clear it back to the model default.
+  /// Omitting [chatTemplate], [systemPrompt] or [useChatTemplate] keeps the
+  /// current value; pass an explicit null to clear it: no system prompt for
+  /// [systemPrompt], the model default for [useChatTemplate].
   ModelParams copyWith({
     String? modelPath,
     int? contextSize,
@@ -87,6 +95,7 @@ abstract class ModelParams implements Built<ModelParams, ModelParamsBuilder> {
     int? topK,
     int? maxTokens,
     Object? chatTemplate = _unset,
+    Object? systemPrompt = _unset,
     Object? useChatTemplate = _unset,
     BuiltMap<String, String>? params,
   }) => rebuild(
@@ -102,6 +111,9 @@ abstract class ModelParams implements Built<ModelParams, ModelParamsBuilder> {
       ..chatTemplate = identical(chatTemplate, _unset)
           ? this.chatTemplate
           : chatTemplate as String?
+      ..systemPrompt = identical(systemPrompt, _unset)
+          ? this.systemPrompt
+          : systemPrompt as String?
       ..useChatTemplate = identical(useChatTemplate, _unset)
           ? this.useChatTemplate
           : useChatTemplate as bool?

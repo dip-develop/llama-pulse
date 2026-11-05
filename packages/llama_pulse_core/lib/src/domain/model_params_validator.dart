@@ -67,6 +67,7 @@ final class ModelParamsValidator {
       ModelParamLimits.maxMaxTokens,
     );
     _checkChatTemplate(violations, params.chatTemplate);
+    _checkSystemPrompt(violations, params.systemPrompt);
 
     violations.addAll(
       const ParameterValidator().validateValues(
@@ -88,6 +89,21 @@ final class ModelParamsValidator {
     }
     if (value.codeUnits.any((unit) => unit < 0x20 || unit == 0x7f)) {
       violations.add('chatTemplate must not contain control characters');
+    }
+  }
+
+  void _checkSystemPrompt(List<String> violations, String? value) {
+    if (value == null) {
+      return;
+    }
+    if (value.trim().isEmpty) {
+      violations.add('systemPrompt must not be blank');
+    }
+    if (value.length > ModelParamLimits.maxSystemPromptLength) {
+      violations.add(
+        'systemPrompt must be at most '
+        '${ModelParamLimits.maxSystemPromptLength} characters',
+      );
     }
   }
 
