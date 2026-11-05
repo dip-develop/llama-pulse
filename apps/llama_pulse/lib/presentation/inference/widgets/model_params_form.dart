@@ -38,6 +38,8 @@ class _ModelParamsFormState extends State<ModelParamsForm> {
   late final FocusNode _modelPathFocus;
   late final TextEditingController _chatTemplateController;
   late final FocusNode _chatTemplateFocus;
+  late final TextEditingController _systemPromptController;
+  late final FocusNode _systemPromptFocus;
   late final Map<String, TextEditingController> _controllers;
   late final Map<String, FocusNode> _focusNodes;
 
@@ -51,6 +53,10 @@ class _ModelParamsFormState extends State<ModelParamsForm> {
       text: params.chatTemplate ?? '',
     );
     _chatTemplateFocus = FocusNode();
+    _systemPromptController = TextEditingController(
+      text: params.systemPrompt ?? '',
+    );
+    _systemPromptFocus = FocusNode();
     _controllers = {
       'context-size': TextEditingController(text: '${params.contextSize}'),
       'gpu-layers': TextEditingController(text: '${params.gpuLayers}'),
@@ -81,6 +87,12 @@ class _ModelParamsFormState extends State<ModelParamsForm> {
       _chatTemplateFocus,
       previous.chatTemplate ?? '',
       next.chatTemplate ?? '',
+    );
+    _sync(
+      _systemPromptController,
+      _systemPromptFocus,
+      previous.systemPrompt ?? '',
+      next.systemPrompt ?? '',
     );
     _sync(
       _controllers['context-size']!,
@@ -144,6 +156,8 @@ class _ModelParamsFormState extends State<ModelParamsForm> {
     _modelPathFocus.dispose();
     _chatTemplateController.dispose();
     _chatTemplateFocus.dispose();
+    _systemPromptController.dispose();
+    _systemPromptFocus.dispose();
     for (final TextEditingController controller in _controllers.values) {
       controller.dispose();
     }
@@ -350,6 +364,27 @@ class _ModelParamsFormState extends State<ModelParamsForm> {
                 _dispatch(
                   widget.params.copyWith(
                     chatTemplate: trimmed.isEmpty ? null : trimmed,
+                  ),
+                );
+              },
+            ),
+            const SizedBox(height: 12),
+            TextFormField(
+              key: const ValueKey('system-prompt'),
+              controller: _systemPromptController,
+              focusNode: _systemPromptFocus,
+              minLines: 2,
+              maxLines: 3,
+              decoration: const InputDecoration(
+                labelText: 'System prompt',
+                hintText:
+                    'Prepended as the system message of each chat request',
+                isDense: true,
+              ),
+              onChanged: (String text) {
+                _dispatch(
+                  widget.params.copyWith(
+                    systemPrompt: text.trim().isEmpty ? null : text,
                   ),
                 );
               },

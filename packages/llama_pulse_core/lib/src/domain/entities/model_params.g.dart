@@ -70,6 +70,14 @@ class _$ModelParamsSerializer implements StructuredSerializer<ModelParams> {
           serializers.serialize(value, specifiedType: const FullType(String)),
         );
     }
+    value = object.systemPrompt;
+    if (value != null) {
+      result
+        ..add('systemPrompt')
+        ..add(
+          serializers.serialize(value, specifiedType: const FullType(String)),
+        );
+    }
     value = object.useChatTemplate;
     if (value != null) {
       result
@@ -165,6 +173,12 @@ class _$ModelParamsSerializer implements StructuredSerializer<ModelParams> {
             specifiedType: const FullType(String),
           ) as String?;
           break;
+        case 'systemPrompt':
+          result.systemPrompt = serializers.deserialize(
+            value,
+            specifiedType: const FullType(String),
+          ) as String?;
+          break;
         case 'useChatTemplate':
           result.useChatTemplate = serializers.deserialize(
             value,
@@ -209,6 +223,8 @@ class _$ModelParams extends ModelParams {
   @override
   final String? chatTemplate;
   @override
+  final String? systemPrompt;
+  @override
   final bool? useChatTemplate;
   @override
   final BuiltMap<String, String> params;
@@ -226,6 +242,7 @@ class _$ModelParams extends ModelParams {
     required this.topK,
     required this.maxTokens,
     this.chatTemplate,
+    this.systemPrompt,
     this.useChatTemplate,
     required this.params,
   }) : super._();
@@ -249,6 +266,7 @@ class _$ModelParams extends ModelParams {
         topK == other.topK &&
         maxTokens == other.maxTokens &&
         chatTemplate == other.chatTemplate &&
+        systemPrompt == other.systemPrompt &&
         useChatTemplate == other.useChatTemplate &&
         params == other.params;
   }
@@ -265,6 +283,7 @@ class _$ModelParams extends ModelParams {
     _$hash = $jc(_$hash, topK.hashCode);
     _$hash = $jc(_$hash, maxTokens.hashCode);
     _$hash = $jc(_$hash, chatTemplate.hashCode);
+    _$hash = $jc(_$hash, systemPrompt.hashCode);
     _$hash = $jc(_$hash, useChatTemplate.hashCode);
     _$hash = $jc(_$hash, params.hashCode);
     _$hash = $jf(_$hash);
@@ -283,6 +302,7 @@ class _$ModelParams extends ModelParams {
           ..add('topK', topK)
           ..add('maxTokens', maxTokens)
           ..add('chatTemplate', chatTemplate)
+          ..add('systemPrompt', systemPrompt)
           ..add('useChatTemplate', useChatTemplate)
           ..add('params', params))
         .toString();
@@ -328,6 +348,10 @@ class ModelParamsBuilder implements Builder<ModelParams, ModelParamsBuilder> {
   String? get chatTemplate => _$this._chatTemplate;
   set chatTemplate(String? chatTemplate) => _$this._chatTemplate = chatTemplate;
 
+  String? _systemPrompt;
+  String? get systemPrompt => _$this._systemPrompt;
+  set systemPrompt(String? systemPrompt) => _$this._systemPrompt = systemPrompt;
+
   bool? _useChatTemplate;
   bool? get useChatTemplate => _$this._useChatTemplate;
   set useChatTemplate(bool? useChatTemplate) =>
@@ -352,6 +376,7 @@ class ModelParamsBuilder implements Builder<ModelParams, ModelParamsBuilder> {
       _topK = $v.topK;
       _maxTokens = $v.maxTokens;
       _chatTemplate = $v.chatTemplate;
+      _systemPrompt = $v.systemPrompt;
       _useChatTemplate = $v.useChatTemplate;
       _params = $v.params.toBuilder();
       _$v = null;
@@ -419,6 +444,7 @@ class ModelParamsBuilder implements Builder<ModelParams, ModelParamsBuilder> {
               'maxTokens',
             ),
             chatTemplate: chatTemplate,
+            systemPrompt: systemPrompt,
             useChatTemplate: useChatTemplate,
             params: params.build(),
           );

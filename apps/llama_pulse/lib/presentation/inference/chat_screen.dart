@@ -8,14 +8,14 @@ import 'bloc/inference_bloc.dart';
 import 'bloc/inference_state.dart';
 import 'bloc/inference_status.dart';
 import 'widgets/chat_parameters_card.dart';
+import 'widgets/conversation_view.dart';
 import 'widgets/failure_banner.dart';
 import 'widgets/generation_controls.dart';
-import 'widgets/generation_output.dart';
 import 'widgets/metrics_panel.dart';
 import 'widgets/model_params_form.dart';
 import 'widgets/status_chip.dart';
 
-/// Embedded chat workspace: startup parameters, generation output and metrics.
+/// Embedded chat workspace: startup parameters, conversation and metrics.
 ///
 /// It renders inside the application shell, so it owns no [Scaffold] and no
 /// [AppBar]: the shell provides those and keeps both tabs alive.
@@ -139,7 +139,7 @@ class _WideLayout extends StatelessWidget {
           const Expanded(
             child: Column(
               children: [
-                Expanded(flex: 3, child: GenerationOutput()),
+                Expanded(flex: 3, child: ConversationView()),
                 SizedBox(height: 16),
                 Expanded(flex: 2, child: MetricsPanel()),
               ],
@@ -166,7 +166,7 @@ class _NarrowLayout extends StatelessWidget {
         children: [
           _ParametersSection(picker: picker, filePicker: filePicker),
           const SizedBox(height: 16),
-          const SizedBox(height: 320, child: GenerationOutput()),
+          const SizedBox(height: 320, child: ConversationView()),
           const SizedBox(height: 16),
           const SizedBox(height: 260, child: MetricsPanel()),
         ],
