@@ -23,8 +23,8 @@ import 'fake_server_controller.dart';
 /// and a [FakeServerController] stands in for the supervisor unless the caller
 /// passes its own, so no test spawns a process or reaches a platform plugin.
 ///
-/// A [recordedState] is written to the shared state document before the first
-/// frame, as if a CLI run had left it behind.
+/// A [recordedState] or [recordedParams] is written to the shared state or
+/// params document before the first frame, as if a CLI run had left it behind.
 Future<void> pumpLlamaPulse(
   WidgetTester tester, {
   ServerController? serverController,
@@ -34,6 +34,7 @@ Future<void> pumpLlamaPulse(
   FilePicker? filePicker,
   ClipboardService? clipboard,
   ServerState? recordedState,
+  ModelParams? recordedParams,
   RuntimeProbe? runtimeProbe,
   RuntimeStore? runtimeStore,
   RuntimeInstallService? runtimeInstallService,
@@ -78,6 +79,9 @@ Future<void> pumpLlamaPulse(
   );
   if (recordedState != null) {
     await getIt<ServerStateRepository>().save(recordedState);
+  }
+  if (recordedParams != null) {
+    await getIt<SaveModelParams>()(recordedParams);
   }
 
   await tester.pumpWidget(
