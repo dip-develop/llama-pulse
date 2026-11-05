@@ -78,6 +78,14 @@ final class InferenceUnloadRequested extends InferenceEvent {
   const InferenceUnloadRequested();
 }
 
+/// Clears the conversation transcript.
+///
+/// Ignored while a generation is in flight (generating or cancelling) so the
+/// running turn can still land in the transcript.
+final class InferenceConversationCleared extends InferenceEvent {
+  const InferenceConversationCleared();
+}
+
 /// Internal plumbing: one event read from the engine's generation stream.
 ///
 /// It is part of the sealed hierarchy so the bloc can emit states from an

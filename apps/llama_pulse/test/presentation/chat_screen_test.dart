@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:llama_pulse/app/di/injection.dart';
+import 'package:llama_pulse/presentation/inference/bloc/inference_bloc.dart';
 import 'package:llama_pulse_core/llama_pulse_core.dart';
 
 import '../support/fake_model_path_picker.dart';
@@ -270,7 +272,16 @@ void main() {
     expect(find.text('Error'), findsOneWidget);
     expect(find.byKey(const ValueKey('failure-banner')), findsOneWidget);
     expect(find.textContaining('nativeError'), findsOneWidget);
-    expect(_outputText(tester), 'Partial');
+
+    // The partial reply is folded into the transcript and the draft is clear;
+    // step 7 renders the transcript, so this test reads the state for now.
+    final InferenceBloc bloc = tester
+        .element(find.byKey(const ValueKey('failure-banner')))
+        .read<InferenceBloc>();
+    expect(bloc.state.output, '');
+    expect(bloc.state.transcript.last.role, 'assistant');
+    expect(bloc.state.transcript.last.content, 'Partial');
+    expect(find.byKey(const ValueKey('output-text')), findsNothing);
   });
 }
 

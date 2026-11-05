@@ -31,6 +31,7 @@ class InferenceBloc extends Bloc<InferenceEvent, InferenceState> {
     on<InferenceGenerateRequested>(_onGenerateRequested);
     on<InferenceCancelRequested>(_onCancelRequested);
     on<InferenceUnloadRequested>(_onUnloadRequested);
+    on<InferenceConversationCleared>(_onConversationCleared);
     on<InferenceEngineEventReceived>(_onEngineEvent);
     on<InferenceEngineStreamEnded>(_onEngineStreamEnded);
   }
@@ -318,6 +319,22 @@ class InferenceBloc extends Bloc<InferenceEvent, InferenceState> {
     _terminalSeen = false;
     _cancelRequested = false;
     _stopwatch = Stopwatch()..start();
+
+    final String text = state.prompt;
+    final ChatMessage userMessage = ChatMessage.create(
+      role: 'user',
+      content: text,
+    );
+    // A non-empty list suppresses the engine's `prompt`-as-user fallback, so
+    // the user turn is always present explicitly and never a system-only list.
+    final String? systemPrompt = state.params.systemPrompt;
+    final List<ChatMessage> messages = <ChatMessage>[
+      if (systemPrompt != null && systemPrompt.trim().isNotEmpty)
+        ChatMessage.create(role: 'system', content: systemPrompt),
+      ...state.transcript,
+      userMessage,
+    ];
+
     _emit(
       emit,
       state.rebuild(
@@ -327,7 +344,11 @@ class InferenceBloc extends Bloc<InferenceEvent, InferenceState> {
           ..failure = null
           ..timeToFirstTokenMs = null
           ..outputChunks = ListBuilder<String>()
-          ..metricsHistory = ListBuilder<GenerationMetrics>(),
+          ..metricsHistory = ListBuilder<GenerationMetrics>()
+          // The prompt stays in the composer: `PromptEditor` only syncs an
+          // unfocused field, so clearing the state would desync the visible
+          // text from it.
+          ..transcript.add(userMessage),
       ),
     );
 
@@ -336,7 +357,8 @@ class InferenceBloc extends Bloc<InferenceEvent, InferenceState> {
       final Stream<GenerationEvent> events = engine.generate(
         GenerationRequest.create(
           requestId: requestId,
-          prompt: state.prompt,
+          prompt: text,
+          messages: messages,
           params: state.params,
         ),
       );
@@ -414,6 +436,22 @@ class InferenceBloc extends Bloc<InferenceEvent, InferenceState> {
           ..activeRequestId = null
           ..failure = null,
       ),
+    );
+  }
+
+  void _onConversationCleared(
+    InferenceConversationCleared event,
+    Emitter<InferenceState> emit,
+  ) {
+    if (state.status == InferenceStatus.generating ||
+        state.status == InferenceStatus.cancelling) {
+      // The running turn still has to land; a clear during generation would
+      // race its assistant reply into an already emptied transcript.
+      return;
+    }
+    _emit(
+      emit,
+      state.rebuild((b) => b..transcript = ListBuilder<ChatMessage>()),
     );
   }
 
@@ -535,7 +573,27 @@ class InferenceBloc extends Bloc<InferenceEvent, InferenceState> {
     _terminalSeen = true;
     _cancelRequested = false;
     unawaited(_cancelSubscription());
-    _emit(emit, next);
+    _emit(emit, _commitDraft(next));
+  }
+
+  /// Folds the in-flight assistant draft into the transcript.
+  ///
+  /// Returns [next] unchanged when no token arrived, so a turn that failed
+  /// before its first token leaves only the user message. Every terminal path
+  /// goes through [_finish], and [_terminalSeen] makes that happen once.
+  InferenceState _commitDraft(InferenceState next) {
+    if (next.outputChunks.isEmpty) {
+      return next;
+    }
+    final ChatMessage reply = ChatMessage.create(
+      role: 'assistant',
+      content: next.outputChunks.join(),
+    );
+    return next.rebuild(
+      (b) => b
+        ..transcript.add(reply)
+        ..outputChunks = ListBuilder<String>(),
+    );
   }
 
   void _finishWithFailure(
