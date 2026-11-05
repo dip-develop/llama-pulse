@@ -50,7 +50,9 @@ void main() {
           .value,
       isTrue,
     );
-    expect(find.text('No output yet.'), findsOneWidget);
+    expect(find.text('No messages yet.'), findsOneWidget);
+    expect(find.byKey(const ValueKey('clear-conversation')), findsOneWidget);
+    expect(_clearEnabled(tester), isFalse);
     expect(
       find.text('Metrics appear here after a generation.'),
       findsOneWidget,
@@ -221,6 +223,9 @@ void main() {
 
     expect(find.text('Ready'), findsOneWidget);
     expect(find.byKey(const ValueKey('cancel-generation')), findsNothing);
+    expect(_turnText(tester, 0), 'Say hi');
+    expect(_turnText(tester, 1), 'Hello world');
+    expect(find.byKey(const ValueKey('output-text')), findsNothing);
   });
 
   testWidgets('cancels a running generation', (tester) async {
@@ -246,6 +251,8 @@ void main() {
     await tester.pump();
 
     expect(find.text('Ready'), findsOneWidget);
+    expect(_turnText(tester, 1), 'Partial');
+    expect(find.byKey(const ValueKey('output-text')), findsNothing);
   });
 
   testWidgets('shows a failure and keeps partial output', (tester) async {
@@ -272,16 +279,40 @@ void main() {
     expect(find.text('Error'), findsOneWidget);
     expect(find.byKey(const ValueKey('failure-banner')), findsOneWidget);
     expect(find.textContaining('nativeError'), findsOneWidget);
-
-    // The partial reply is folded into the transcript and the draft is clear;
-    // step 7 renders the transcript, so this test reads the state for now.
-    final InferenceBloc bloc = tester
-        .element(find.byKey(const ValueKey('failure-banner')))
-        .read<InferenceBloc>();
-    expect(bloc.state.output, '');
-    expect(bloc.state.transcript.last.role, 'assistant');
-    expect(bloc.state.transcript.last.content, 'Partial');
+    expect(_turnText(tester, 0), 'Say hi');
+    expect(_turnText(tester, 1), 'Partial');
     expect(find.byKey(const ValueKey('output-text')), findsNothing);
+  });
+
+  testWidgets('clears the conversation', (tester) async {
+    _useView(tester, const Size(1400, 1000));
+    final ScriptedLlamaEngine engine = ScriptedLlamaEngine();
+    await pumpLlamaPulse(tester, engine: engine);
+    await _openChat(tester);
+    await _loadAndGenerate(tester, engine);
+
+    engine.emitToken('Hello');
+    await tester.pump();
+    await tester.pump();
+
+    engine.complete(_metrics());
+    await tester.pump();
+    await tester.pump();
+
+    expect(_clearEnabled(tester), isTrue);
+    expect(_turnText(tester, 1), 'Hello');
+
+    await tester.tap(find.byKey(const ValueKey('clear-conversation')));
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('No messages yet.'), findsOneWidget);
+    expect(find.byKey(const ValueKey('chat-transcript')), findsNothing);
+    expect(_clearEnabled(tester), isFalse);
+    final InferenceBloc bloc = tester
+        .element(find.byKey(const ValueKey('output-card')))
+        .read<InferenceBloc>();
+    expect(bloc.state.transcript, isEmpty);
   });
 }
 
@@ -348,3 +379,16 @@ String? _outputText(WidgetTester tester) {
   );
   return text.data;
 }
+
+String? _turnText(WidgetTester tester, int index) {
+  final SelectableText text = tester.widget<SelectableText>(
+    find.byKey(ValueKey('transcript-text-$index')),
+  );
+  return text.data;
+}
+
+bool _clearEnabled(WidgetTester tester) =>
+    tester
+        .widget<TextButton>(find.byKey(const ValueKey('clear-conversation')))
+        .onPressed !=
+    null;
