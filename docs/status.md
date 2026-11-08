@@ -7,7 +7,7 @@ a snapshot and goes stale, so check `git branch -a`, `gh pr list` and
 
 - Baseline: `origin/main` = `5f19cfe` ("Merge pull request #32 from
   dip-develop/chore/status-refresh-3", 2026-11-03), the merge base of the
-  feature branch below; its parent is `aa35432` (PR #31).
+  feature branch below.
 - Suite on `feature/chat-transcript`, measured 2026-11-08 after `flutter pub
   get` and `melos run gen`: `melos test` exit `0`, **1195 tests** — 800 core
   (plus 1 env-gated skip, `native_integration_test`), 233 CLI, 162 app.
