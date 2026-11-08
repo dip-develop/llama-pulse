@@ -63,6 +63,16 @@ void main() {
       expect(cleared.systemPrompt, isNull);
     });
 
+    test('copyWith preserves a non-null system prompt', () {
+      final withPrompt = ModelParams.defaults().copyWith(
+        systemPrompt: 'You are terse.',
+      );
+
+      final edited = withPrompt.copyWith(threads: 8);
+      expect(edited.threads, 8);
+      expect(edited.systemPrompt, 'You are terse.');
+    });
+
     test('copyWith sets and clears the chat-template fields', () {
       final named = ModelParams.defaults().copyWith(
         chatTemplate: 'chatml',
