@@ -35,7 +35,7 @@ final class RunCommand extends LlamaPulseCommand {
         splitCommas: false,
         help:
             'Chat message as role:content; repeatable and rendered in order '
-            'before --prompt. Roles: system, user, assistant, tool.',
+            'before --prompt. Roles: ${ChatMessage.knownRoles.join(', ')}.',
       )
       ..addFlag(
         'stream',
@@ -154,7 +154,8 @@ final class RunCommand extends LlamaPulseCommand {
     }
     final chat = <ChatMessage>[
       ...messages,
-      if (prompt != null) ChatMessage.create(role: 'user', content: prompt),
+      if (prompt != null)
+        ChatMessage.create(role: ChatMessage.roleUser, content: prompt),
     ];
     final usedMessageOptions =
         args.option('system') != null || args.multiOption('message').isNotEmpty;
@@ -201,7 +202,7 @@ final class RunCommand extends LlamaPulseCommand {
     }
     if (prompt == null &&
         file == null &&
-        !messages.any((message) => message.role == 'user')) {
+        !messages.any((message) => message.role == ChatMessage.roleUser)) {
       return 'pass --prompt, --file or a --message with the user role';
     }
     return null;
@@ -220,7 +221,9 @@ final class RunCommand extends LlamaPulseCommand {
       if (system.trim().isEmpty) {
         return (messages: messages, error: '--system must not be empty');
       }
-      messages.add(ChatMessage.create(role: 'system', content: system));
+      messages.add(
+        ChatMessage.create(role: ChatMessage.roleSystem, content: system),
+      );
     }
     for (final raw in args.multiOption('message')) {
       final separator = raw.indexOf(':');
@@ -250,7 +253,7 @@ final class RunCommand extends LlamaPulseCommand {
   /// report a single prompt (the stub engine and the human summary).
   String _lastUserContent(List<ChatMessage> messages) {
     for (final message in messages.reversed) {
-      if (message.role == 'user') {
+      if (message.role == ChatMessage.roleUser) {
         return message.content;
       }
     }
