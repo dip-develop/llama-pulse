@@ -698,8 +698,8 @@ APIs, no `!` on nullable values, no empty `catch` blocks.
 
 From the root, `dart run melos test`. Melos picks `flutter test` for the app and
 `dart test` for core and CLI. Test the critical seams, not every line. Coverage
-is not a target. The suites hold 1191 tests today: 799 core (plus one
-env-gated skip), 233 CLI, 159 app.
+is not a target. The suites hold 1195 tests today: 800 core (plus one
+env-gated skip), 233 CLI, 162 app.
 
 Must test today:
 
@@ -784,8 +784,8 @@ Must test today:
 - DI registration and the test overrides.
 - Widget tests for the chat screen, Generate/Cancel, the editable form, the
   stored system prompt and the demo-engine banner (the experimental path), and
-  for `ConversationView`: role-labelled bubbles, the in-flight draft under
-  `output-text`, the empty state and the clear action.
+  for `ConversationView`: role-labelled bubbles (`You`/`Assistant`), the
+  in-flight draft under `output-text`, the empty state and the clear action.
 - Screen layout: wide and narrow windows, and the two-tab shell.
 
 Supervisor, bloc and UI tests use fakes for process launch, HTTP, signals and
@@ -945,7 +945,7 @@ prints both exports. Never commit `.env` files, secrets or absolute local paths.
 
 - [ ] The workspace resolves with one lockfile (`flutter pub get` at the root).
 - [ ] `pubspec.lock` stays untracked.
-- [ ] `dart run melos run check` is green (1191 tests: 799 core, 233 CLI, 159
+- [ ] `dart run melos run check` is green (1195 tests: 800 core, 233 CLI, 162
   app; one core integration test is skipped without a native library).
 - [ ] `dart run melos run gen:catalog:check` is green, and the generated
   `llama_args.v0.8.0.yaml` and `parameter_catalog.generated.dart` are committed

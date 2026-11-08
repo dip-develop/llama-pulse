@@ -1,22 +1,22 @@
-# Project status — 2026-11-05
+# Project status — 2026-11-08
 
 A resume point for a fresh session. Facts below were measured on the commit
 named here, not copied from memory. The rules live in `AGENT.md`; this file is
 a snapshot and goes stale, so check `git branch -a`, `gh pr list` and
 `gh issue list` before trusting it. Its GitHub mirror is the pinned issue #16.
 
-- Baseline: `origin/main` = `aa35432` ("Merge pull request #31 from
-  dip-develop/feature/chat-messages", 2026-11-03); the feature branch below is
-  cut from it.
-- Suite on `feature/chat-transcript`, measured 2026-11-05 after `flutter pub
-  get` and `melos run gen`: `melos test` exit `0`, **1191 tests** — 799 core
-  (plus 1 env-gated skip, `native_integration_test`), 233 CLI, 159 app.
+- Baseline: `origin/main` = `5f19cfe` ("Merge pull request #32 from
+  dip-develop/chore/status-refresh-3", 2026-11-03), the merge base of the
+  feature branch below; its parent is `aa35432` (PR #31).
+- Suite on `feature/chat-transcript`, measured 2026-11-08 after `flutter pub
+  get` and `melos run gen`: `melos test` exit `0`, **1195 tests** — 800 core
+  (plus 1 env-gated skip, `native_integration_test`), 233 CLI, 162 app.
   The last Windows run (on `aa35432`) had 722 core tests run and 70 skipped (the
   C shim and native session tests need clang), plus 233 CLI and 148 app; this
   branch was not re-measured on Windows.
-- `melos run check` (gen twice, catalog check, analyze, 1191 tests, format, CLI
+- `melos run check` (gen twice, catalog check, analyze, 1195 tests, format, CLI
   AOT) and `flutter build linux --debug` are green on this branch. The CI run
-  for `aa35432`, its base, is green on every job.
+  for `5f19cfe`, its base, is green on every job.
 
 ## Shipped
 
@@ -72,7 +72,7 @@ a snapshot and goes stale, so check `git branch -a`, `gh pr list` and
   the first run and 23.9–24.3 tok/s on repeats. CPU only, no GPU backend.
 - **CI (PR #24, Windows suites in PR #29).** `.github/workflows/ci.yml`: a
   Linux `Workspace gate` job runs `melos run check` (gen, catalog drift,
-  analyze, 1191 tests, format, CLI AOT), fails on generated-file drift, builds
+  analyze, 1195 tests, format, CLI AOT), fails on generated-file drift, builds
   the Linux desktop app and smoke-tests the packaging script; a `test` matrix
   runs analyze and the suites on Ubuntu, macOS and Windows (the C-shim and
   native-session tests skip where clang or a native library is missing), and a
@@ -92,20 +92,6 @@ a snapshot and goes stale, so check `git branch -a`, `gh pr list` and
   native session renders every message through `llama_chat_apply_template`,
   and a single user message keeps the old raw-prompt fallback. CLI `run` gained
   `--system` and repeatable `--message role:content`.
-- **Chat transcript and stored system prompt (issue #33, branch
-  `feature/chat-transcript`).** `ModelParams.systemPrompt` is a nullable field
-  with the `copyWith` `_unset` sentinel, a 4096-character limit and a validator
-  that rejects blank or over-limit values and accepts multi-line text; it is
-  persisted in `params.yaml` and omitted when null, so the schema version stays
-  `1` and `params_golden.yaml` is untouched. The Chat tab keeps completed turns
-  in `InferenceState.transcript` (never a `system` message) and sends
-  `[system?, …transcript, user]`; the user turn is appended only after
-  validation, and every terminal path folds the streamed draft into an
-  assistant reply, so a cancelled or failed turn keeps its partial text.
-  `ConversationView` (replacing `GenerationOutput`) renders role-labelled
-  bubbles, the in-flight draft, an empty state and a Clear conversation action
-  that is a no-op while a turn is running; the form gained a `system-prompt`
-  field saved by the existing Save action, blank meaning null.
 - **Build helper.** `tool/build_llama_cpp.sh [tag]` (default `v0.8.0`) clones,
   configures with `-DBUILD_SHARED_LIBS=ON -DLLAMA_BUILD_IS_DEV=OFF
   -DLLAMA_BUILD_APP=OFF -DGGML_NATIVE=ON`, builds and prints the
@@ -115,17 +101,30 @@ a snapshot and goes stale, so check `git branch -a`, `gh pr list` and
 
 ## In flight
 
-- **Chat transcript (issue #33).** Branch `feature/chat-transcript` carries the
-  GUI transcript, the clear action and the stored system prompt; it is waiting
-  for review and merge.
+- **Chat transcript and stored system prompt (issue #33, PR #34).** Branch
+  `feature/chat-transcript` carries the GUI transcript, the clear action and
+  the stored system prompt; it is waiting for review and merge; it is not on
+  `main`. `ModelParams.systemPrompt` is a nullable field with the `copyWith`
+  `_unset` sentinel, a 4096-character limit and a validator that rejects blank
+  or over-limit values and accepts multi-line text; it is persisted in
+  `params.yaml` and omitted when null, so the schema version stays `1` and
+  `params_golden.yaml` is untouched. The Chat tab keeps completed turns in
+  `InferenceState.transcript` (never a `system` message) and sends
+  `[system?, …transcript, user]`; the user turn is appended only after
+  validation, and every terminal path folds the streamed draft into an
+  assistant reply, so a cancelled or failed turn keeps its partial text.
+  `ConversationView` (replacing `GenerationOutput`) renders role-labelled
+  bubbles, the in-flight draft, an empty state and a Clear conversation action
+  that is a no-op while a turn is running; the form gained a `system-prompt`
+  field saved by the existing Save action, blank meaning null.
 - **Packaging follow-ups (from #27).** Icons and artwork, installers and the
   Windows/macOS bundles stayed out of the v1 Linux bundle.
 
-## Open issues (2026-11-05)
+## Open issues (2026-11-08)
 
 - #16 — pinned status checkpoint (this file mirrors it).
 - #33 — chat transcript and stored system prompt; open, implemented on branch
-  `feature/chat-transcript`.
+  `feature/chat-transcript` (PR #34).
 - #27 (packaging), #25 (stop `--json`), #23 (Windows test portability), #22
   (CI), #15 (runtime) and #13 (catalog) are closed; #28 (Linux bundle), #29
   (Windows suites) and #31 (multi-message prompts) are merged.
