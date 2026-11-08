@@ -5,12 +5,24 @@ part 'chat_message.g.dart';
 
 /// One message in a chat prompt, rendered by the model's chat template.
 abstract class ChatMessage implements Built<ChatMessage, ChatMessageBuilder> {
+  /// The `system` template role.
+  static const String roleSystem = 'system';
+
+  /// The `user` template role.
+  static const String roleUser = 'user';
+
+  /// The `assistant` template role.
+  static const String roleAssistant = 'assistant';
+
+  /// The `tool` template role.
+  static const String roleTool = 'tool';
+
   /// Roles the llama.cpp chat template machinery understands.
   static const List<String> knownRoles = <String>[
-    'system',
-    'user',
-    'assistant',
-    'tool',
+    roleSystem,
+    roleUser,
+    roleAssistant,
+    roleTool,
   ];
 
   /// Template role, for example `system`, `user` or `assistant`.

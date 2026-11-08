@@ -75,9 +75,9 @@ A new session needs four things before it changes anything:
    feature branches may still exist locally, and only the operator deletes
    them.
 4. Packaging v1 (Linux bundle, PR #28), Windows test portability (PR #29) and
-   multi-message prompts in core and the CLI (PR #31) have shipped. The next
-   steps are the GUI chat transcript and the packaging follow-ups (icons,
-   installers, Windows/macOS bundles).
+   multi-message prompts in core and the CLI (PR #31) have shipped. The Chat tab
+   transcript and stored system prompt land with PR #34 (issue #33); next are
+   the packaging follow-ups (icons, installers, Windows/macOS bundles).
 
 Rules for this repo: never merge, tag, force-push or delete branches — the
 operator does those, and no PR goes to anything but `main`. Before opening a

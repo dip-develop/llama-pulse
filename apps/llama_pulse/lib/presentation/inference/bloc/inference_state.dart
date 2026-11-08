@@ -16,11 +16,22 @@ abstract class InferenceState
   /// Parameters shown in the form and used for the next request.
   ModelParams get params;
 
-  /// Prompt text in the editor.
+  /// Text in the composer, the draft of the next user turn.
+  ///
+  /// It is kept after a request so an unfocused editor never shows stale
+  /// text; the sent turn lives in [transcript].
   String get prompt;
 
-  /// Generated text chunks for the active or last request.
+  /// Chunks of the in-flight assistant turn.
+  ///
+  /// A terminal event folds them into [transcript] and clears this list.
   BuiltList<String> get outputChunks;
+
+  /// Completed conversation turns, oldest first.
+  ///
+  /// Never contains a `system` message: the system prompt lives in
+  /// [ModelParams.systemPrompt]. A failed turn may have no assistant reply.
+  BuiltList<ChatMessage> get transcript;
 
   /// Metrics reported for the active or last request, newest last.
   BuiltList<GenerationMetrics> get metricsHistory;
@@ -35,6 +46,9 @@ abstract class InferenceState
   int? get timeToFirstTokenMs;
 
   /// Generated text, assembled from [outputChunks].
+  ///
+  /// This is the draft of the in-flight assistant turn; after a terminal
+  /// event it is empty and the text lives in [transcript].
   String get output => outputChunks.join();
 
   /// Metrics from the most recent report, or `null` when none arrived.
@@ -57,6 +71,7 @@ abstract class InferenceState
       ..params.replace(ModelParams.defaults())
       ..prompt = ''
       ..outputChunks = ListBuilder<String>()
+      ..transcript = ListBuilder<ChatMessage>()
       ..metricsHistory = ListBuilder<GenerationMetrics>(),
   );
 

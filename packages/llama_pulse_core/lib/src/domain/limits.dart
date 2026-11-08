@@ -44,4 +44,7 @@ abstract final class ModelParamLimits {
 
   /// Largest accepted generation token budget.
   static const int maxMaxTokens = 131072;
+
+  /// Largest accepted system prompt, in characters.
+  static const int maxSystemPromptLength = 4096;
 }

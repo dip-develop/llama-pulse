@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:llama_pulse/app/di/injection.dart';
+import 'package:llama_pulse/presentation/inference/bloc/inference_bloc.dart';
 import 'package:llama_pulse_core/llama_pulse_core.dart';
 
 import '../support/fake_model_path_picker.dart';
@@ -48,7 +50,9 @@ void main() {
           .value,
       isTrue,
     );
-    expect(find.text('No output yet.'), findsOneWidget);
+    expect(find.text('No messages yet.'), findsOneWidget);
+    expect(find.byKey(const ValueKey('clear-conversation')), findsOneWidget);
+    expect(_clearEnabled(tester), isFalse);
     expect(
       find.text('Metrics appear here after a generation.'),
       findsOneWidget,
@@ -119,17 +123,13 @@ void main() {
 
     await tester.enterText(find.byKey(const ValueKey('context-size')), '4096');
     await tester.pump();
-    await tester.tap(find.byKey(const ValueKey('save-params')));
-    await tester.pump();
-    await tester.pump();
+    await _saveParams(tester);
 
     expect((await getIt<LoadModelParams>()()).contextSize, 4096);
 
     await tester.enterText(find.byKey(const ValueKey('context-size')), 'abc');
     await tester.pump();
-    await tester.tap(find.byKey(const ValueKey('save-params')));
-    await tester.pump();
-    await tester.pump();
+    await _saveParams(tester);
 
     expect((await getIt<LoadModelParams>()()).contextSize, 4096);
   });
@@ -159,6 +159,66 @@ void main() {
     expect(saved.useChatTemplate, isFalse);
   });
 
+  testWidgets('saves the system prompt', (tester) async {
+    _useView(tester, const Size(1400, 1000));
+    await pumpLlamaPulse(tester);
+    await _openChat(tester);
+
+    await _enterSystemPrompt(tester, 'You are terse');
+    await _saveParams(tester);
+
+    final ModelParams saved = await getIt<LoadModelParams>()();
+    expect(saved.systemPrompt, 'You are terse');
+  });
+
+  testWidgets('saves a blank system prompt as null', (tester) async {
+    _useView(tester, const Size(1400, 1000));
+    await pumpLlamaPulse(tester);
+    await _openChat(tester);
+
+    await _enterSystemPrompt(tester, 'You are terse');
+    await _saveParams(tester);
+    expect((await getIt<LoadModelParams>()()).systemPrompt, 'You are terse');
+
+    await _enterSystemPrompt(tester, '   ');
+    await _saveParams(tester);
+
+    expect((await getIt<LoadModelParams>()()).systemPrompt, isNull);
+  });
+
+  testWidgets('sends the saved system prompt as the first message', (
+    tester,
+  ) async {
+    _useView(tester, const Size(1400, 1000));
+    final ScriptedLlamaEngine engine = ScriptedLlamaEngine();
+    await pumpLlamaPulse(tester, engine: engine);
+    await _openChat(tester);
+
+    await _enterSystemPrompt(tester, 'You are terse');
+    await _saveParams(tester);
+
+    await _loadAndGenerate(tester, engine);
+
+    final ChatMessage first = engine.generatedRequests.single.messages.first;
+    expect(first.role, ChatMessage.roleSystem);
+    expect(first.content, 'You are terse');
+    expect(_turnText(tester, 0), 'Say hi');
+    expect(find.byKey(const ValueKey('transcript-text-1')), findsNothing);
+  });
+
+  testWidgets('shows the stored system prompt in the field', (tester) async {
+    _useView(tester, const Size(1400, 1000));
+    await pumpLlamaPulse(
+      tester,
+      recordedParams: ModelParams.defaults().copyWith(
+        systemPrompt: 'Stored prompt',
+      ),
+    );
+    await _openChat(tester);
+
+    expect(_fieldText(tester, 'system-prompt'), 'Stored prompt');
+  });
+
   testWidgets('reports the searched paths when no native library is found', (
     tester,
   ) async {
@@ -174,9 +234,7 @@ void main() {
       '/models/missing.gguf',
     );
     await tester.pump();
-    await tester.tap(find.byKey(const ValueKey('load-model')));
-    await tester.pump();
-    await tester.pump();
+    await _tapVisible(tester, 'load-model');
 
     expect(find.byKey(const ValueKey('failure-banner')), findsOneWidget);
     expect(find.textContaining('libraryNotFound'), findsOneWidget);
@@ -219,6 +277,11 @@ void main() {
 
     expect(find.text('Ready'), findsOneWidget);
     expect(find.byKey(const ValueKey('cancel-generation')), findsNothing);
+    expect(find.text('You'), findsOneWidget);
+    expect(find.text('Assistant'), findsOneWidget);
+    expect(_turnText(tester, 0), 'Say hi');
+    expect(_turnText(tester, 1), 'Hello world');
+    expect(find.byKey(const ValueKey('output-text')), findsNothing);
   });
 
   testWidgets('cancels a running generation', (tester) async {
@@ -244,6 +307,8 @@ void main() {
     await tester.pump();
 
     expect(find.text('Ready'), findsOneWidget);
+    expect(_turnText(tester, 1), 'Partial');
+    expect(find.byKey(const ValueKey('output-text')), findsNothing);
   });
 
   testWidgets('shows a failure and keeps partial output', (tester) async {
@@ -270,7 +335,40 @@ void main() {
     expect(find.text('Error'), findsOneWidget);
     expect(find.byKey(const ValueKey('failure-banner')), findsOneWidget);
     expect(find.textContaining('nativeError'), findsOneWidget);
-    expect(_outputText(tester), 'Partial');
+    expect(_turnText(tester, 0), 'Say hi');
+    expect(_turnText(tester, 1), 'Partial');
+    expect(find.byKey(const ValueKey('output-text')), findsNothing);
+  });
+
+  testWidgets('clears the conversation', (tester) async {
+    _useView(tester, const Size(1400, 1000));
+    final ScriptedLlamaEngine engine = ScriptedLlamaEngine();
+    await pumpLlamaPulse(tester, engine: engine);
+    await _openChat(tester);
+    await _loadAndGenerate(tester, engine);
+
+    engine.emitToken('Hello');
+    await tester.pump();
+    await tester.pump();
+
+    engine.complete(_metrics());
+    await tester.pump();
+    await tester.pump();
+
+    expect(_clearEnabled(tester), isTrue);
+    expect(_turnText(tester, 1), 'Hello');
+
+    await tester.tap(find.byKey(const ValueKey('clear-conversation')));
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('No messages yet.'), findsOneWidget);
+    expect(find.byKey(const ValueKey('chat-transcript')), findsNothing);
+    expect(_clearEnabled(tester), isFalse);
+    final InferenceBloc bloc = tester
+        .element(find.byKey(const ValueKey('output-card')))
+        .read<InferenceBloc>();
+    expect(bloc.state.transcript, isEmpty);
   });
 }
 
@@ -279,6 +377,26 @@ Future<void> _openChat(WidgetTester tester) async {
   await tester.pump();
   await tester.pump();
 }
+
+Future<void> _tapVisible(WidgetTester tester, String key) async {
+  final Finder finder = find.byKey(ValueKey(key));
+  await tester.ensureVisible(finder);
+  await tester.pumpAndSettle();
+  await tester.tap(finder);
+  await tester.pump();
+  await tester.pump();
+}
+
+Future<void> _enterSystemPrompt(WidgetTester tester, String text) async {
+  final Finder finder = find.byKey(const ValueKey('system-prompt'));
+  await tester.ensureVisible(finder);
+  await tester.pump();
+  await tester.enterText(finder, text);
+  await tester.pump();
+}
+
+Future<void> _saveParams(WidgetTester tester) =>
+    _tapVisible(tester, 'save-params');
 
 Future<void> _loadAndGenerate(
   WidgetTester tester,
@@ -289,9 +407,7 @@ Future<void> _loadAndGenerate(
     '/models/test.gguf',
   );
   await tester.pump();
-  await tester.tap(find.byKey(const ValueKey('load-model')));
-  await tester.pump();
-  await tester.pump();
+  await _tapVisible(tester, 'load-model');
 
   expect(find.text('Ready'), findsOneWidget);
 
@@ -337,3 +453,16 @@ String? _outputText(WidgetTester tester) {
   );
   return text.data;
 }
+
+String? _turnText(WidgetTester tester, int index) {
+  final SelectableText text = tester.widget<SelectableText>(
+    find.byKey(ValueKey('transcript-text-$index')),
+  );
+  return text.data;
+}
+
+bool _clearEnabled(WidgetTester tester) =>
+    tester
+        .widget<TextButton>(find.byKey(const ValueKey('clear-conversation')))
+        .onPressed !=
+    null;

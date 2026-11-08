@@ -1,19 +1,22 @@
-# Project status — 2026-11-03
+# Project status — 2026-11-08
 
 A resume point for a fresh session. Facts below were measured on the commit
 named here, not copied from memory. The rules live in `AGENT.md`; this file is
 a snapshot and goes stale, so check `git branch -a`, `gh pr list` and
 `gh issue list` before trusting it. Its GitHub mirror is the pinned issue #16.
 
-- Baseline: `origin/main` = `aa35432` ("Merge pull request #31 from
-  dip-develop/feature/chat-messages", 2026-11-03).
-- Suite on `main`, measured 2026-11-03 in a clean checkout after
-  `flutter pub get` and `melos run gen`: `melos test` exit `0`, **1172 tests** —
-  791 core (plus 1 env-gated skip, `native_integration_test`), 233 CLI, 148 app.
-  On Windows the same suites pass with 722 core tests run and 70 skipped (the C
-  shim and native session tests need clang), plus 233 CLI and 148 app.
-- `melos run check` and `flutter build linux --debug` are green on this commit,
-  and the CI run for `aa35432` is green on every job.
+- Baseline: `origin/main` = `5f19cfe` ("Merge pull request #32 from
+  dip-develop/chore/status-refresh-3", 2026-11-03), the merge base of the
+  feature branch below.
+- Suite on `feature/chat-transcript`, measured 2026-11-08 after `flutter pub
+  get` and `melos run gen`: `melos test` exit `0`, **1195 tests** — 800 core
+  (plus 1 env-gated skip, `native_integration_test`), 233 CLI, 162 app.
+  The last Windows run (on `aa35432`) had 722 core tests run and 70 skipped (the
+  C shim and native session tests need clang), plus 233 CLI and 148 app; this
+  branch was not re-measured on Windows.
+- `melos run check` (gen twice, catalog check, analyze, 1195 tests, format, CLI
+  AOT) and `flutter build linux --debug` are green on this branch. The CI run
+  for `5f19cfe`, its base, is green on every job.
 
 ## Shipped
 
@@ -69,7 +72,7 @@ a snapshot and goes stale, so check `git branch -a`, `gh pr list` and
   the first run and 23.9–24.3 tok/s on repeats. CPU only, no GPU backend.
 - **CI (PR #24, Windows suites in PR #29).** `.github/workflows/ci.yml`: a
   Linux `Workspace gate` job runs `melos run check` (gen, catalog drift,
-  analyze, 1172 tests, format, CLI AOT), fails on generated-file drift, builds
+  analyze, 1195 tests, format, CLI AOT), fails on generated-file drift, builds
   the Linux desktop app and smoke-tests the packaging script; a `test` matrix
   runs analyze and the suites on Ubuntu, macOS and Windows (the C-shim and
   native-session tests skip where clang or a native library is missing), and a
@@ -98,16 +101,30 @@ a snapshot and goes stale, so check `git branch -a`, `gh pr list` and
 
 ## In flight
 
-- **GUI chat transcript.** Core and CLI accept a full conversation, but the
-  app's chat screen still sends a single prompt. Next is a multi-turn
-  transcript with a system prompt in `apps/llama_pulse`, wired to
-  `GenerationRequest.messages`.
+- **Chat transcript and stored system prompt (issue #33, PR #34).** Branch
+  `feature/chat-transcript` carries the GUI transcript, the clear action and
+  the stored system prompt; it is waiting for review and merge; it is not on
+  `main`. `ModelParams.systemPrompt` is a nullable field with the `copyWith`
+  `_unset` sentinel, a 4096-character limit and a validator that rejects blank
+  or over-limit values and accepts multi-line text; it is persisted in
+  `params.yaml` and omitted when null, so the schema version stays `1` and
+  `params_golden.yaml` is untouched. The Chat tab keeps completed turns in
+  `InferenceState.transcript` (never a `system` message) and sends
+  `[system?, …transcript, user]`; the user turn is appended only after
+  validation, and every terminal path folds the streamed draft into an
+  assistant reply, so a cancelled or failed turn keeps its partial text.
+  `ConversationView` (replacing `GenerationOutput`) renders role-labelled
+  bubbles, the in-flight draft, an empty state and a Clear conversation action
+  that is a no-op while a turn is running; the form gained a `system-prompt`
+  field saved by the existing Save action, blank meaning null.
 - **Packaging follow-ups (from #27).** Icons and artwork, installers and the
   Windows/macOS bundles stayed out of the v1 Linux bundle.
 
-## Open issues (2026-11-03)
+## Open issues (2026-11-08)
 
 - #16 — pinned status checkpoint (this file mirrors it).
+- #33 — chat transcript and stored system prompt; open, implemented on branch
+  `feature/chat-transcript` (PR #34).
 - #27 (packaging), #25 (stop `--json`), #23 (Windows test portability), #22
   (CI), #15 (runtime) and #13 (catalog) are closed; #28 (Linux bundle), #29
   (Windows suites) and #31 (multi-message prompts) are merged.
@@ -137,19 +154,18 @@ a snapshot and goes stale, so check `git branch -a`, `gh pr list` and
 
 ## Remaining plan, in order
 
-1. **GUI chat transcript**: the multi-turn conversation and system prompt,
-   mirroring the CLI's `--system`/`--message`; core and CLI already render it
-   (PR #31), the app still sends a single prompt.
-2. **Packaging follow-ups** (from #27): icons and artwork, installers, and the
-   Windows/macOS bundles.
-3. **Chat templates beyond the built-ins**: Jinja and per-message template
-   handling for the embedded path.
-4. **Windows and macOS validation** of the supervisor and embedded paths.
-5. **Larger models and GPU backends**: bigger context, CUDA/Vulkan/ROCm/Metal
+1. **Land the chat transcript PR** (issue #33), then the **packaging
+   follow-ups** (from #27): icons and artwork, installers, and the Windows/macOS
+   bundles.
+2. **Jinja chat templates** for the embedded path: the built-in, named, `none`
+   and per-message rendering already ship (PR #31, issue #33); a Jinja engine
+   is the remaining template work.
+3. **Windows and macOS validation** of the supervisor and embedded paths.
+4. **Larger models and GPU backends**: bigger context, CUDA/Vulkan/ROCm/Metal
    smoke tests.
-6. **Watch the CI flake**: the supervisor test that failed once under parallel
+5. **Watch the CI flake**: the supervisor test that failed once under parallel
    load now runs on every PR.
-7. **Out of scope for now**: a server "router mode" (multi-model proxy).
+6. **Out of scope for now**: a server "router mode" (multi-model proxy).
 
 ## Open landmines
 
@@ -157,6 +173,11 @@ a snapshot and goes stale, so check `git branch -a`, `gh pr list` and
   before the spawn leaves no process" — failed once under parallel load and
   passed on rerun. The CI `test` job is where to watch it; do not paper over a
   real race.
+- `params.yaml`'s `systemPrompt` is the Chat tab's default only; the CLI's
+  `run` keeps its per-run `--system` and does not read the stored value.
+- A chat turn that fails before producing text stays in the transcript with no
+  assistant reply. "Clear conversation" is the escape hatch; it is disabled
+  while a turn is running, and clearing never deletes the stored system prompt.
 - `/opt/llama.cpp-rocm` is an Unsloth fork reporting `0.7.0-dev`; the gate
   rejects it. That is the gate working, not a bug.
 - Without `LD_LIBRARY_PATH` (or the sibling `libggml*` preload) the loader can
@@ -182,12 +203,12 @@ a snapshot and goes stale, so check `git branch -a`, `gh pr list` and
 ```sh
 git fetch origin
 git branch -a                  # merged feature/fix branches may linger locally
-gh pr list                     # the GUI chat PR, if one is open
-gh issue list                  # only #16 (pinned status) is open
+gh pr list                     # the open chat transcript PR, if any
+gh issue list                  # #16 (pinned status) and #33 (chat transcript)
 ```
 
 Then read `AGENT.md`, this file and pinned issue #16, and run
 `dart run melos run check` on a fresh branch cut from `origin/main`. The next
-concrete step is the GUI chat transcript, then the packaging follow-ups (icons,
-installers, Windows/macOS bundles) and Windows/macOS validation. The pinned
-checkpoint mirror is #16.
+concrete step is the packaging follow-ups (icons, installers, Windows/macOS
+bundles), Jinja templates and Windows/macOS validation, after the chat
+transcript PR merges. The pinned checkpoint mirror is #16.

@@ -45,6 +45,13 @@ class _$InferenceStateSerializer
           const FullType(String),
         ]),
       ),
+      'transcript',
+      serializers.serialize(
+        object.transcript,
+        specifiedType: const FullType(BuiltList, const [
+          const FullType(ChatMessage),
+        ]),
+      ),
       'metricsHistory',
       serializers.serialize(
         object.metricsHistory,
@@ -130,6 +137,17 @@ class _$InferenceStateSerializer
                 as BuiltList<Object?>,
           );
           break;
+        case 'transcript':
+          result.transcript.replace(
+            serializers.deserialize(
+                  value,
+                  specifiedType: const FullType(BuiltList, const [
+                    const FullType(ChatMessage),
+                  ]),
+                )!
+                as BuiltList<Object?>,
+          );
+          break;
         case 'metricsHistory':
           result.metricsHistory.replace(
             serializers.deserialize(
@@ -179,6 +197,8 @@ class _$InferenceState extends InferenceState {
   @override
   final BuiltList<String> outputChunks;
   @override
+  final BuiltList<ChatMessage> transcript;
+  @override
   final BuiltList<GenerationMetrics> metricsHistory;
   @override
   final int? activeRequestId;
@@ -195,6 +215,7 @@ class _$InferenceState extends InferenceState {
     required this.params,
     required this.prompt,
     required this.outputChunks,
+    required this.transcript,
     required this.metricsHistory,
     this.activeRequestId,
     this.failure,
@@ -215,6 +236,7 @@ class _$InferenceState extends InferenceState {
         params == other.params &&
         prompt == other.prompt &&
         outputChunks == other.outputChunks &&
+        transcript == other.transcript &&
         metricsHistory == other.metricsHistory &&
         activeRequestId == other.activeRequestId &&
         failure == other.failure &&
@@ -228,6 +250,7 @@ class _$InferenceState extends InferenceState {
     _$hash = $jc(_$hash, params.hashCode);
     _$hash = $jc(_$hash, prompt.hashCode);
     _$hash = $jc(_$hash, outputChunks.hashCode);
+    _$hash = $jc(_$hash, transcript.hashCode);
     _$hash = $jc(_$hash, metricsHistory.hashCode);
     _$hash = $jc(_$hash, activeRequestId.hashCode);
     _$hash = $jc(_$hash, failure.hashCode);
@@ -243,6 +266,7 @@ class _$InferenceState extends InferenceState {
           ..add('params', params)
           ..add('prompt', prompt)
           ..add('outputChunks', outputChunks)
+          ..add('transcript', transcript)
           ..add('metricsHistory', metricsHistory)
           ..add('activeRequestId', activeRequestId)
           ..add('failure', failure)
@@ -272,6 +296,12 @@ class InferenceStateBuilder
       _$this._outputChunks ??= ListBuilder<String>();
   set outputChunks(ListBuilder<String>? outputChunks) =>
       _$this._outputChunks = outputChunks;
+
+  ListBuilder<ChatMessage>? _transcript;
+  ListBuilder<ChatMessage> get transcript =>
+      _$this._transcript ??= ListBuilder<ChatMessage>();
+  set transcript(ListBuilder<ChatMessage>? transcript) =>
+      _$this._transcript = transcript;
 
   ListBuilder<GenerationMetrics>? _metricsHistory;
   ListBuilder<GenerationMetrics> get metricsHistory =>
@@ -303,6 +333,7 @@ class InferenceStateBuilder
       _params = $v.params.toBuilder();
       _prompt = $v.prompt;
       _outputChunks = $v.outputChunks.toBuilder();
+      _transcript = $v.transcript.toBuilder();
       _metricsHistory = $v.metricsHistory.toBuilder();
       _activeRequestId = $v.activeRequestId;
       _failure = $v.failure?.toBuilder();
@@ -343,6 +374,7 @@ class InferenceStateBuilder
               'prompt',
             ),
             outputChunks: outputChunks.build(),
+            transcript: transcript.build(),
             metricsHistory: metricsHistory.build(),
             activeRequestId: activeRequestId,
             failure: _failure?.build(),
@@ -356,6 +388,8 @@ class InferenceStateBuilder
 
         _$failedField = 'outputChunks';
         outputChunks.build();
+        _$failedField = 'transcript';
+        transcript.build();
         _$failedField = 'metricsHistory';
         metricsHistory.build();
 

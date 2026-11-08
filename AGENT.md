@@ -194,7 +194,8 @@ Adding a mutable field to state or an entity is a review blocker. If
 On-disk configuration is YAML. There are three configuration documents, all in
 the same directory:
 
-- `params.yaml` — embedded/chat parameters (`ModelParams`), unchanged.
+- `params.yaml` — embedded/chat parameters (`ModelParams`), including the
+  default `systemPrompt`; the schema version is unchanged.
 - `server.yaml` — the supervised `llama-server` configuration (`ServerConfig`).
 - `server-state.yaml` — the supervisor's persisted state (`ServerState`).
 
@@ -389,8 +390,13 @@ Native session rules:
   conversation to a plain `role: content` transcript, so a model without chat
   metadata still runs. The CLI exposes the template as `--chat-template` /
   `--[no-]use-chat-template` and the conversation as `--system` plus repeatable
-  `--message role:content`; the chat form has the matching template field and
-  switch (it still sends a single prompt).
+  `--message role:content`. The chat form has the matching template field and
+  switch. `params.systemPrompt` is persisted in `params.yaml`, edited in the
+  same form and prepended as the `system` message; the Chat tab keeps
+  `InferenceState.transcript`, sends `[system?, …transcript, user]` (the user
+  text also stays in `prompt`) and appends the assistant reply, or the partial
+  text on cancel/failure. The CLI keeps its per-run `--system` and does not
+  read the stored default.
 - **Platform.** 64-bit desktop only: structs are returned by value.
 - **Selection.** `WorkerConfig.useStubSession` chooses
   `StubLlamaSession` (explicit `--stub` or `LLAMAPULSE_STUB_ENGINE`);
@@ -477,7 +483,9 @@ The primary commands are the server group: `server get`, `server set`,
   at the first colon; the role must be one of `ChatMessage.knownRoles`, and a
   malformed message or an unknown role exits `2` before the engine loads.
   `--system` comes first, then the `--message` entries in order, then the
-  prompt as the final user turn. `--json` and `--stream` cannot be combined. `--param` follows the embedded catalog rules: typed owners
+  prompt as the final user turn. `--system` is per run and does not read the
+  stored `systemPrompt` in `params.yaml`. `--json` and `--stream` cannot be
+  combined. `--param` follows the embedded catalog rules: typed owners
   (`ctx-size`, `threads`, `gpu-layers`, `temp`, `top-k`, `top-p`,
   `chat-template`) write `ModelParams` fields, `seed`, `min-p` and `batch-size`
   stay in `params`, and an unknown or unsupported id exits `2` before the
@@ -690,12 +698,13 @@ APIs, no `!` on nullable values, no empty `catch` blocks.
 
 From the root, `dart run melos test`. Melos picks `flutter test` for the app and
 `dart test` for core and CLI. Test the critical seams, not every line. Coverage
-is not a target. The suites hold 1172 tests today: 791 core (plus one
-env-gated skip), 233 CLI, 148 app.
+is not a target. The suites hold 1195 tests today: 800 core (plus one
+env-gated skip), 233 CLI, 162 app.
 
 Must test today:
 
-- YAML round-trip, quoting and double formatting.
+- YAML round-trip (including an absent optional `systemPrompt`), quoting and
+  double formatting.
 - The parameter catalog: the digest over the canonical body, the vendored
   `arg.cpp` hash, unique ids and flags, group integrity, owner fields and the
   lookup helpers; coverage of every server-visible flag (covered or explicitly
@@ -704,7 +713,9 @@ Must test today:
   validator's managed/unsupported/removed messages; both argument builders.
 - Repository fallbacks: missing file, malformed YAML, stale `schemaVersion`,
   invalid parameters, for both `params.yaml` and `server.yaml`; the
-  `server-state.yaml` round-trip.
+  `server-state.yaml` round-trip. The `ModelParamsValidator` accepts a
+  multi-line `systemPrompt` and rejects a blank one or one over 4096
+  characters.
 - Scanner warnings and path resolution.
 - CLI exit codes, `--json` shape, and `run`/`bench` NDJSON and exit codes
   (`0`, `1`, `2`, `3`, `130`) with the stdout/stderr split. `run` validates
@@ -734,7 +745,11 @@ Must test today:
 - `InferenceBloc` state machine, including terminal events, cancellation, the
   100-entry metrics-history cap, unload rejected with `engineBusy` while
   generating, Generate re-validating params, and stored params never clobbering
-  edits made before `Started` completes.
+  edits made before `Started` completes. The chat transcript: the system prompt
+  and stored turns are sent as messages, the user turn is appended only after
+  validation, the draft folds into an assistant reply on every terminal path
+  (completed, cancelled, failed, stream ended), and a clear empties the
+  transcript only while idle.
 - Server slice seams, with fakes only:
   - `ServerArgumentBuilder`: managed flags, alias/api-key presence, legacy vs
     `--load-mode`, `extraArgs` append order, no shell quoting.
@@ -767,8 +782,10 @@ Must test today:
 - `RuntimeBloc` and the Runtime tab/card: detect, install with progress and
   cancel, select, remove with confirmation, unsupported host.
 - DI registration and the test overrides.
-- Widget tests for the chat screen, Generate/Cancel, the editable form and the
-  demo-engine banner (the experimental path).
+- Widget tests for the chat screen, Generate/Cancel, the editable form, the
+  stored system prompt and the demo-engine banner (the experimental path), and
+  for `ConversationView`: role-labelled bubbles (`You`/`Assistant`), the
+  in-flight draft under `output-text`, the empty state and the clear action.
 - Screen layout: wide and narrow windows, and the two-tab shell.
 
 Supervisor, bloc and UI tests use fakes for process launch, HTTP, signals and
@@ -928,7 +945,7 @@ prints both exports. Never commit `.env` files, secrets or absolute local paths.
 
 - [ ] The workspace resolves with one lockfile (`flutter pub get` at the root).
 - [ ] `pubspec.lock` stays untracked.
-- [ ] `dart run melos run check` is green (1172 tests: 791 core, 233 CLI, 148
+- [ ] `dart run melos run check` is green (1195 tests: 800 core, 233 CLI, 162
   app; one core integration test is skipped without a native library).
 - [ ] `dart run melos run gen:catalog:check` is green, and the generated
   `llama_args.v0.8.0.yaml` and `parameter_catalog.generated.dart` are committed

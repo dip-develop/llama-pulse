@@ -246,7 +246,9 @@ void main() {
         bloc.add(const InferenceGenerateRequested());
         await engine.waitForGenerate();
         final Future<InferenceState> done = bloc.stream.firstWhere(
-          (s) => s.status == InferenceStatus.modelReady && s.output.isNotEmpty,
+          (s) =>
+              s.status == InferenceStatus.modelReady &&
+              s.transcript.length == 2,
         );
         engine.emitToken('Hel');
         engine.emitToken('lo');
@@ -258,7 +260,17 @@ void main() {
         isA<InferenceState>()
             .having((s) => s.status, 'status', InferenceStatus.generating)
             .having((s) => s.activeRequestId, 'activeRequestId', 1)
-            .having((s) => s.output, 'output', ''),
+            .having((s) => s.output, 'output', '')
+            .having(
+              (s) => s.transcript.map((m) => m.role).toList(),
+              'transcript roles',
+              [ChatMessage.roleUser],
+            )
+            .having(
+              (s) => s.transcript.single.content,
+              'user content',
+              'hello',
+            ),
         isA<InferenceState>()
             .having((s) => s.output, 'output', 'Hel')
             .having(
@@ -277,7 +289,12 @@ void main() {
         isA<InferenceState>()
             .having((s) => s.status, 'status', InferenceStatus.modelReady)
             .having((s) => s.activeRequestId, 'activeRequestId', isNull)
-            .having((s) => s.output, 'output', 'Hello')
+            .having((s) => s.output, 'output', '')
+            .having(
+              (s) => s.transcript.map((m) => '${m.role}:${m.content}').toList(),
+              'transcript',
+              ['user:hello', 'assistant:Hello'],
+            )
             .having((s) => s.metricsHistory.length, 'metricsHistory length', 2)
             .having(
               (s) => s.latestMetrics?.generatedTokenCount,
@@ -288,6 +305,14 @@ void main() {
       verify: (bloc) {
         expect(engine.generatedRequests.single.requestId, 1);
         expect(engine.generatedRequests.single.prompt, 'hello');
+        expect(
+          engine.generatedRequests.single.messages.single.role,
+          ChatMessage.roleUser,
+        );
+        expect(
+          engine.generatedRequests.single.messages.single.content,
+          'hello',
+        );
       },
     );
 
@@ -341,7 +366,9 @@ void main() {
 
       expect(bloc.state.status, InferenceStatus.modelReady);
       expect(bloc.state.activeRequestId, isNull);
-      expect(bloc.state.output, 'par');
+      expect(bloc.state.output, '');
+      expect(bloc.state.transcript.last.role, ChatMessage.roleAssistant);
+      expect(bloc.state.transcript.last.content, 'par');
       expect(bloc.state.failure?.code, InferenceFailureCode.cancelled);
       await bloc.close();
     });
@@ -363,7 +390,9 @@ void main() {
       );
       await _waitUntil(() => bloc.state.failure != null);
 
-      expect(bloc.state.output, 'par');
+      expect(bloc.state.output, '');
+      expect(bloc.state.transcript.last.role, ChatMessage.roleAssistant);
+      expect(bloc.state.transcript.last.content, 'par');
       expect(bloc.state.failure?.code, InferenceFailureCode.nativeError);
       expect(bloc.state.activeRequestId, isNull);
       await bloc.close();
@@ -374,11 +403,229 @@ void main() {
       await _loadReady(bloc);
       bloc.add(const InferenceGenerateRequested());
       await engine.waitForGenerate();
+      engine.emitToken('par');
+      await _waitUntil(() => bloc.state.output == 'par');
       await engine.closeStream();
       await _waitUntil(() => bloc.state.failure != null);
 
       expect(bloc.state.status, InferenceStatus.failure);
       expect(bloc.state.failure?.code, InferenceFailureCode.unknown);
+      expect(bloc.state.output, '');
+      expect(bloc.state.transcript.last.role, ChatMessage.roleAssistant);
+      expect(bloc.state.transcript.last.content, 'par');
+      await bloc.close();
+    });
+
+    test('prepends the system prompt to the request', () async {
+      final bloc = buildBloc(forEngine: engine);
+      await _loadReady(bloc);
+      bloc.add(
+        InferenceParamsChanged(
+          _validParams().copyWith(systemPrompt: 'be terse'),
+        ),
+      );
+      await _waitUntil(() => bloc.state.params.systemPrompt == 'be terse');
+
+      bloc.add(const InferenceGenerateRequested());
+      await engine.waitForGenerate();
+
+      final GenerationRequest request = engine.generatedRequests.single;
+      expect(request.messages.length, 2);
+      expect(request.messages.first.role, ChatMessage.roleSystem);
+      expect(request.messages.first.content, 'be terse');
+      expect(request.messages.last.role, ChatMessage.roleUser);
+      expect(request.messages.last.content, 'hello');
+      await bloc.close();
+    });
+
+    test('rejects a blank system prompt before generating', () async {
+      // Core's validator rejects a blank system prompt, so the request is
+      // refused before it is built and no `system` message can reach the
+      // engine. The trim guard in the bloc is the belt to that braces.
+      final bloc = buildBloc(forEngine: engine);
+      await _loadReady(bloc);
+      bloc.add(
+        InferenceParamsChanged(_validParams().copyWith(systemPrompt: '   ')),
+      );
+      await _waitUntil(() => bloc.state.params.systemPrompt == '   ');
+      bloc.add(const InferenceGenerateRequested());
+      await _waitUntil(() => bloc.state.failure != null);
+
+      expect(bloc.state.failure?.code, InferenceFailureCode.invalidParams);
+      expect(engine.generatedRequests, isEmpty);
+      await bloc.close();
+    });
+
+    test(
+      'sends the transcript plus the new user turn on a second request',
+      () async {
+        final bloc = buildBloc(forEngine: engine);
+        await _loadReady(bloc);
+        bloc.add(
+          InferenceParamsChanged(
+            _validParams().copyWith(systemPrompt: 'be terse'),
+          ),
+        );
+        await _waitUntil(() => bloc.state.params.systemPrompt == 'be terse');
+        bloc.add(const InferenceGenerateRequested());
+        await engine.waitForGenerate();
+        engine.emitToken('Hi');
+        engine.complete();
+        await _waitUntil(
+          () =>
+              bloc.state.status == InferenceStatus.modelReady &&
+              bloc.state.transcript.length == 2,
+        );
+
+        bloc.add(const InferencePromptChanged('again'));
+        await _waitUntil(() => bloc.state.prompt == 'again');
+        bloc.add(const InferenceGenerateRequested());
+        await engine.waitForGenerate(2);
+
+        final GenerationRequest second = engine.generatedRequests.last;
+        expect(second.prompt, 'again');
+        expect(second.messages.map((m) => '${m.role}:${m.content}').toList(), [
+          '${ChatMessage.roleSystem}:be terse',
+          '${ChatMessage.roleUser}:hello',
+          '${ChatMessage.roleAssistant}:Hi',
+          '${ChatMessage.roleUser}:again',
+        ]);
+        await bloc.close();
+      },
+    );
+
+    test('a cancelled turn carries into the next request', () async {
+      final bloc = buildBloc(forEngine: engine);
+      await _loadReady(bloc);
+      bloc.add(const InferenceGenerateRequested());
+      await engine.waitForGenerate();
+      engine.emitToken('par');
+      await _waitUntil(() => bloc.state.output == 'par');
+
+      bloc.add(const InferenceCancelRequested());
+      await _waitUntil(() => bloc.state.status == InferenceStatus.cancelling);
+      engine.cancelled();
+      await _waitUntil(
+        () =>
+            bloc.state.status == InferenceStatus.modelReady &&
+            bloc.state.transcript.length == 2,
+      );
+
+      bloc.add(const InferencePromptChanged('again'));
+      await _waitUntil(() => bloc.state.prompt == 'again');
+      bloc.add(const InferenceGenerateRequested());
+      await engine.waitForGenerate(2);
+
+      final GenerationRequest second = engine.generatedRequests.last;
+      expect(second.messages.map((m) => '${m.role}:${m.content}').toList(), [
+        '${ChatMessage.roleUser}:hello',
+        '${ChatMessage.roleAssistant}:par',
+        '${ChatMessage.roleUser}:again',
+      ]);
+      await bloc.close();
+    });
+
+    test('folds the draft once when completion precedes the close', () async {
+      final bloc = buildBloc(forEngine: engine);
+      await _loadReady(bloc);
+      bloc.add(const InferenceGenerateRequested());
+      await engine.waitForGenerate();
+      engine.emitToken('Hi');
+      engine.complete();
+      await _waitUntil(
+        () =>
+            bloc.state.status == InferenceStatus.modelReady &&
+            bloc.state.transcript.length == 2,
+      );
+
+      await engine.closeStream();
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(
+        bloc.state.transcript.map((m) => '${m.role}:${m.content}').toList(),
+        ['${ChatMessage.roleUser}:hello', '${ChatMessage.roleAssistant}:Hi'],
+      );
+      await bloc.close();
+    });
+
+    test('does not append a user turn when validation fails', () async {
+      final bloc = buildBloc(forEngine: engine);
+      await _loadReady(bloc);
+
+      bloc.add(const InferencePromptChanged('   '));
+      await _waitUntil(() => bloc.state.prompt == '   ');
+      bloc.add(const InferenceGenerateRequested());
+      await _waitUntil(() => bloc.state.failure != null);
+
+      expect(bloc.state.failure?.code, InferenceFailureCode.invalidParams);
+      expect(bloc.state.transcript, isEmpty);
+      expect(engine.generatedRequests, isEmpty);
+
+      bloc.add(const InferencePromptChanged('hello'));
+      bloc.add(InferenceParamsChanged(_invalidParams()));
+      await _waitUntil(
+        () =>
+            bloc.state.params.contextSize == 0 && bloc.state.prompt == 'hello',
+      );
+      bloc.add(const InferenceGenerateRequested());
+      await _waitUntil(
+        () => bloc.state.failure?.message.contains('contextSize') ?? false,
+      );
+
+      expect(bloc.state.failure?.code, InferenceFailureCode.invalidParams);
+      expect(bloc.state.transcript, isEmpty);
+      expect(engine.generatedRequests, isEmpty);
+      await bloc.close();
+    });
+  });
+
+  group('conversation', () {
+    test('clears the transcript when idle', () async {
+      final bloc = buildBloc(forEngine: engine);
+      await _loadReady(bloc);
+      bloc.add(const InferenceGenerateRequested());
+      await engine.waitForGenerate();
+      engine.emitToken('Hi');
+      engine.complete();
+      await _waitUntil(
+        () =>
+            bloc.state.status == InferenceStatus.modelReady &&
+            bloc.state.transcript.length == 2,
+      );
+
+      bloc.add(const InferenceConversationCleared());
+      await _waitUntil(() => bloc.state.transcript.isEmpty);
+
+      expect(bloc.state.transcript, isEmpty);
+      expect(bloc.state.status, InferenceStatus.modelReady);
+      expect(bloc.state.params, _validParams());
+      expect(bloc.state.failure, isNull);
+      await bloc.close();
+    });
+
+    test('ignores a clear while generating', () async {
+      final bloc = buildBloc(forEngine: engine);
+      await _loadReady(bloc);
+      bloc.add(const InferenceGenerateRequested());
+      await engine.waitForGenerate();
+      await _waitUntil(() => bloc.state.status == InferenceStatus.generating);
+
+      bloc.add(const InferenceConversationCleared());
+      await Future<void>.delayed(Duration.zero);
+      expect(bloc.state.transcript.length, 1);
+      expect(bloc.state.status, InferenceStatus.generating);
+
+      engine.emitToken('Hi');
+      engine.complete();
+      await _waitUntil(
+        () =>
+            bloc.state.status == InferenceStatus.modelReady &&
+            bloc.state.transcript.length == 2,
+      );
+
+      expect(bloc.state.transcript.last.role, ChatMessage.roleAssistant);
+      expect(bloc.state.transcript.last.content, 'Hi');
       await bloc.close();
     });
   });
@@ -417,6 +664,29 @@ void main() {
       expect(engine.unloadCalls, 1);
       expect(bloc.state.activeRequestId, isNull);
       expect(bloc.state.failure, isNull);
+      await bloc.close();
+    });
+
+    test('preserves the transcript when the model unloads', () async {
+      final bloc = buildBloc(forEngine: engine);
+      await _loadReady(bloc);
+      bloc.add(const InferenceGenerateRequested());
+      await engine.waitForGenerate();
+      engine.emitToken('Hi');
+      engine.complete();
+      await _waitUntil(
+        () =>
+            bloc.state.status == InferenceStatus.modelReady &&
+            bloc.state.transcript.length == 2,
+      );
+
+      bloc.add(const InferenceUnloadRequested());
+      await _waitUntil(() => bloc.state.status == InferenceStatus.initial);
+
+      expect(
+        bloc.state.transcript.map((m) => '${m.role}:${m.content}').toList(),
+        ['${ChatMessage.roleUser}:hello', '${ChatMessage.roleAssistant}:Hi'],
+      );
       await bloc.close();
     });
   });

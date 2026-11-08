@@ -37,6 +37,7 @@ void main() {
       expect(params.topK, 40);
       expect(params.maxTokens, 256);
       expect(params.chatTemplate, isNull);
+      expect(params.systemPrompt, isNull);
       expect(params.useChatTemplate, isNull);
       expect(ModelParams.schemaVersion, 1);
     });
@@ -48,7 +49,28 @@ void main() {
       expect(params.temperature, 0.8);
       expect(params.maxTokens, 256);
       expect(params.chatTemplate, isNull);
+      expect(params.systemPrompt, isNull);
       expect(params.useChatTemplate, isNull);
+    });
+
+    test('copyWith sets and clears the system prompt', () {
+      final withPrompt = ModelParams.defaults().copyWith(
+        systemPrompt: 'You are terse.',
+      );
+      expect(withPrompt.systemPrompt, 'You are terse.');
+
+      final cleared = withPrompt.copyWith(systemPrompt: null);
+      expect(cleared.systemPrompt, isNull);
+    });
+
+    test('copyWith preserves a non-null system prompt', () {
+      final withPrompt = ModelParams.defaults().copyWith(
+        systemPrompt: 'You are terse.',
+      );
+
+      final edited = withPrompt.copyWith(threads: 8);
+      expect(edited.threads, 8);
+      expect(edited.systemPrompt, 'You are terse.');
     });
 
     test('copyWith sets and clears the chat-template fields', () {
@@ -70,12 +92,13 @@ void main() {
         temperature: 0.0,
         topP: 0.5,
         chatTemplate: 'chatml',
+        systemPrompt: 'You are terse.\nAnswer in one line.',
         useChatTemplate: true,
       );
       expect(roundTrip(ModelParams.serializer, params), params);
     });
 
-    test('serializes null chat-template fields as absent keys', () {
+    test('serializes null optional fields as absent keys', () {
       final serialized = serializers.serializeWith(
         ModelParams.serializer,
         ModelParams.defaults(),
@@ -83,6 +106,7 @@ void main() {
       expect(serialized, isA<Map<String, Object?>>());
       final document = serialized as Map<String, Object?>;
       expect(document.containsKey('chatTemplate'), isFalse);
+      expect(document.containsKey('systemPrompt'), isFalse);
       expect(document.containsKey('useChatTemplate'), isFalse);
     });
   });
