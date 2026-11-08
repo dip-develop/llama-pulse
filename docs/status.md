@@ -9,12 +9,12 @@ a snapshot and goes stale, so check `git branch -a`, `gh pr list` and
   dip-develop/chore/status-refresh-3", 2026-11-03), the merge base of the
   feature branch below.
 - Suite on `feature/chat-transcript`, measured 2026-11-08 after `flutter pub
-  get` and `melos run gen`: `melos test` exit `0`, **1195 tests** — 800 core
-  (plus 1 env-gated skip, `native_integration_test`), 233 CLI, 162 app.
+  get` and `melos run gen`: `melos test` exit `0`, **1199 tests** — 800 core
+  (plus 1 env-gated skip, `native_integration_test`), 233 CLI, 166 app.
   The last Windows run (on `aa35432`) had 722 core tests run and 70 skipped (the
   C shim and native session tests need clang), plus 233 CLI and 148 app; this
   branch was not re-measured on Windows.
-- `melos run check` (gen twice, catalog check, analyze, 1195 tests, format, CLI
+- `melos run check` (gen twice, catalog check, analyze, 1199 tests, format, CLI
   AOT) and `flutter build linux --debug` are green on this branch. The CI run
   for `5f19cfe`, its base, is green on every job.
 
@@ -72,7 +72,7 @@ a snapshot and goes stale, so check `git branch -a`, `gh pr list` and
   the first run and 23.9–24.3 tok/s on repeats. CPU only, no GPU backend.
 - **CI (PR #24, Windows suites in PR #29).** `.github/workflows/ci.yml`: a
   Linux `Workspace gate` job runs `melos run check` (gen, catalog drift,
-  analyze, 1195 tests, format, CLI AOT), fails on generated-file drift, builds
+  analyze, 1199 tests, format, CLI AOT), fails on generated-file drift, builds
   the Linux desktop app and smoke-tests the packaging script; a `test` matrix
   runs analyze and the suites on Ubuntu, macOS and Windows (the C-shim and
   native-session tests skip where clang or a native library is missing), and a
