@@ -200,7 +200,7 @@ void main() {
     await _loadAndGenerate(tester, engine);
 
     final ChatMessage first = engine.generatedRequests.single.messages.first;
-    expect(first.role, 'system');
+    expect(first.role, ChatMessage.roleSystem);
     expect(first.content, 'You are terse');
     expect(_turnText(tester, 0), 'Say hi');
     expect(find.byKey(const ValueKey('transcript-text-1')), findsNothing);
@@ -277,6 +277,8 @@ void main() {
 
     expect(find.text('Ready'), findsOneWidget);
     expect(find.byKey(const ValueKey('cancel-generation')), findsNothing);
+    expect(find.text('You'), findsOneWidget);
+    expect(find.text('Assistant'), findsOneWidget);
     expect(_turnText(tester, 0), 'Say hi');
     expect(_turnText(tester, 1), 'Hello world');
     expect(find.byKey(const ValueKey('output-text')), findsNothing);

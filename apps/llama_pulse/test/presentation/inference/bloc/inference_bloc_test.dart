@@ -264,7 +264,7 @@ void main() {
             .having(
               (s) => s.transcript.map((m) => m.role).toList(),
               'transcript roles',
-              ['user'],
+              [ChatMessage.roleUser],
             )
             .having(
               (s) => s.transcript.single.content,
@@ -305,7 +305,10 @@ void main() {
       verify: (bloc) {
         expect(engine.generatedRequests.single.requestId, 1);
         expect(engine.generatedRequests.single.prompt, 'hello');
-        expect(engine.generatedRequests.single.messages.single.role, 'user');
+        expect(
+          engine.generatedRequests.single.messages.single.role,
+          ChatMessage.roleUser,
+        );
         expect(
           engine.generatedRequests.single.messages.single.content,
           'hello',
@@ -364,7 +367,7 @@ void main() {
       expect(bloc.state.status, InferenceStatus.modelReady);
       expect(bloc.state.activeRequestId, isNull);
       expect(bloc.state.output, '');
-      expect(bloc.state.transcript.last.role, 'assistant');
+      expect(bloc.state.transcript.last.role, ChatMessage.roleAssistant);
       expect(bloc.state.transcript.last.content, 'par');
       expect(bloc.state.failure?.code, InferenceFailureCode.cancelled);
       await bloc.close();
@@ -388,7 +391,7 @@ void main() {
       await _waitUntil(() => bloc.state.failure != null);
 
       expect(bloc.state.output, '');
-      expect(bloc.state.transcript.last.role, 'assistant');
+      expect(bloc.state.transcript.last.role, ChatMessage.roleAssistant);
       expect(bloc.state.transcript.last.content, 'par');
       expect(bloc.state.failure?.code, InferenceFailureCode.nativeError);
       expect(bloc.state.activeRequestId, isNull);
@@ -408,7 +411,7 @@ void main() {
       expect(bloc.state.status, InferenceStatus.failure);
       expect(bloc.state.failure?.code, InferenceFailureCode.unknown);
       expect(bloc.state.output, '');
-      expect(bloc.state.transcript.last.role, 'assistant');
+      expect(bloc.state.transcript.last.role, ChatMessage.roleAssistant);
       expect(bloc.state.transcript.last.content, 'par');
       await bloc.close();
     });
@@ -428,14 +431,14 @@ void main() {
 
       final GenerationRequest request = engine.generatedRequests.single;
       expect(request.messages.length, 2);
-      expect(request.messages.first.role, 'system');
+      expect(request.messages.first.role, ChatMessage.roleSystem);
       expect(request.messages.first.content, 'be terse');
-      expect(request.messages.last.role, 'user');
+      expect(request.messages.last.role, ChatMessage.roleUser);
       expect(request.messages.last.content, 'hello');
       await bloc.close();
     });
 
-    test('ignores a blank system prompt', () async {
+    test('rejects a blank system prompt before generating', () async {
       // Core's validator rejects a blank system prompt, so the request is
       // refused before it is built and no `system` message can reach the
       // engine. The trim guard in the bloc is the belt to that braces.
@@ -458,6 +461,12 @@ void main() {
       () async {
         final bloc = buildBloc(forEngine: engine);
         await _loadReady(bloc);
+        bloc.add(
+          InferenceParamsChanged(
+            _validParams().copyWith(systemPrompt: 'be terse'),
+          ),
+        );
+        await _waitUntil(() => bloc.state.params.systemPrompt == 'be terse');
         bloc.add(const InferenceGenerateRequested());
         await engine.waitForGenerate();
         engine.emitToken('Hi');
@@ -475,15 +484,70 @@ void main() {
 
         final GenerationRequest second = engine.generatedRequests.last;
         expect(second.prompt, 'again');
-        expect(second.messages.map((m) => m.role).toList(), [
-          'user',
-          'assistant',
-          'user',
+        expect(second.messages.map((m) => '${m.role}:${m.content}').toList(), [
+          '${ChatMessage.roleSystem}:be terse',
+          '${ChatMessage.roleUser}:hello',
+          '${ChatMessage.roleAssistant}:Hi',
+          '${ChatMessage.roleUser}:again',
         ]);
-        expect(second.messages.last.content, 'again');
         await bloc.close();
       },
     );
+
+    test('a cancelled turn carries into the next request', () async {
+      final bloc = buildBloc(forEngine: engine);
+      await _loadReady(bloc);
+      bloc.add(const InferenceGenerateRequested());
+      await engine.waitForGenerate();
+      engine.emitToken('par');
+      await _waitUntil(() => bloc.state.output == 'par');
+
+      bloc.add(const InferenceCancelRequested());
+      await _waitUntil(() => bloc.state.status == InferenceStatus.cancelling);
+      engine.cancelled();
+      await _waitUntil(
+        () =>
+            bloc.state.status == InferenceStatus.modelReady &&
+            bloc.state.transcript.length == 2,
+      );
+
+      bloc.add(const InferencePromptChanged('again'));
+      await _waitUntil(() => bloc.state.prompt == 'again');
+      bloc.add(const InferenceGenerateRequested());
+      await engine.waitForGenerate(2);
+
+      final GenerationRequest second = engine.generatedRequests.last;
+      expect(second.messages.map((m) => '${m.role}:${m.content}').toList(), [
+        '${ChatMessage.roleUser}:hello',
+        '${ChatMessage.roleAssistant}:par',
+        '${ChatMessage.roleUser}:again',
+      ]);
+      await bloc.close();
+    });
+
+    test('folds the draft once when completion precedes the close', () async {
+      final bloc = buildBloc(forEngine: engine);
+      await _loadReady(bloc);
+      bloc.add(const InferenceGenerateRequested());
+      await engine.waitForGenerate();
+      engine.emitToken('Hi');
+      engine.complete();
+      await _waitUntil(
+        () =>
+            bloc.state.status == InferenceStatus.modelReady &&
+            bloc.state.transcript.length == 2,
+      );
+
+      await engine.closeStream();
+      await Future<void>.delayed(Duration.zero);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(
+        bloc.state.transcript.map((m) => '${m.role}:${m.content}').toList(),
+        ['${ChatMessage.roleUser}:hello', '${ChatMessage.roleAssistant}:Hi'],
+      );
+      await bloc.close();
+    });
 
     test('does not append a user turn when validation fails', () async {
       final bloc = buildBloc(forEngine: engine);
@@ -560,7 +624,7 @@ void main() {
             bloc.state.transcript.length == 2,
       );
 
-      expect(bloc.state.transcript.last.role, 'assistant');
+      expect(bloc.state.transcript.last.role, ChatMessage.roleAssistant);
       expect(bloc.state.transcript.last.content, 'Hi');
       await bloc.close();
     });
@@ -600,6 +664,29 @@ void main() {
       expect(engine.unloadCalls, 1);
       expect(bloc.state.activeRequestId, isNull);
       expect(bloc.state.failure, isNull);
+      await bloc.close();
+    });
+
+    test('preserves the transcript when the model unloads', () async {
+      final bloc = buildBloc(forEngine: engine);
+      await _loadReady(bloc);
+      bloc.add(const InferenceGenerateRequested());
+      await engine.waitForGenerate();
+      engine.emitToken('Hi');
+      engine.complete();
+      await _waitUntil(
+        () =>
+            bloc.state.status == InferenceStatus.modelReady &&
+            bloc.state.transcript.length == 2,
+      );
+
+      bloc.add(const InferenceUnloadRequested());
+      await _waitUntil(() => bloc.state.status == InferenceStatus.initial);
+
+      expect(
+        bloc.state.transcript.map((m) => '${m.role}:${m.content}').toList(),
+        ['${ChatMessage.roleUser}:hello', '${ChatMessage.roleAssistant}:Hi'],
+      );
       await bloc.close();
     });
   });
