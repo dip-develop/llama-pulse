@@ -172,7 +172,16 @@ void main() {
         ChatMessage.create(role: 'wizard', content: 'x').hasKnownRole,
         isFalse,
       );
-      expect(ChatMessage.knownRoles, contains('assistant'));
+      expect(ChatMessage.knownRoles, <String>[
+        'system',
+        'user',
+        'assistant',
+        'tool',
+      ]);
+      expect(ChatMessage.roleSystem, 'system');
+      expect(ChatMessage.roleUser, 'user');
+      expect(ChatMessage.roleAssistant, 'assistant');
+      expect(ChatMessage.roleTool, 'tool');
     });
   });
 
