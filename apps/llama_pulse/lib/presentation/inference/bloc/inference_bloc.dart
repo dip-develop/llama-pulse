@@ -322,7 +322,7 @@ class InferenceBloc extends Bloc<InferenceEvent, InferenceState> {
 
     final String text = state.prompt;
     final ChatMessage userMessage = ChatMessage.create(
-      role: 'user',
+      role: ChatMessage.roleUser,
       content: text,
     );
     // A non-empty list suppresses the engine's `prompt`-as-user fallback, so
@@ -330,7 +330,7 @@ class InferenceBloc extends Bloc<InferenceEvent, InferenceState> {
     final String? systemPrompt = state.params.systemPrompt;
     final List<ChatMessage> messages = <ChatMessage>[
       if (systemPrompt != null && systemPrompt.trim().isNotEmpty)
-        ChatMessage.create(role: 'system', content: systemPrompt),
+        ChatMessage.create(role: ChatMessage.roleSystem, content: systemPrompt),
       ...state.transcript,
       userMessage,
     ];
@@ -578,20 +578,20 @@ class InferenceBloc extends Bloc<InferenceEvent, InferenceState> {
 
   /// Folds the in-flight assistant draft into the transcript.
   ///
-  /// Returns [next] unchanged when no token arrived, so a turn that failed
-  /// before its first token leaves only the user message. Every terminal path
-  /// goes through [_finish], and [_terminalSeen] makes that happen once.
+  /// Returns [next] unchanged when no text arrived, so a turn that failed
+  /// before its first token — or that only produced zero-length tokens —
+  /// leaves only the user message. Every terminal path goes through [_finish],
+  /// and [_terminalSeen] makes that happen once.
   InferenceState _commitDraft(InferenceState next) {
-    if (next.outputChunks.isEmpty) {
+    final String reply = next.output;
+    if (reply.isEmpty) {
       return next;
     }
-    final ChatMessage reply = ChatMessage.create(
-      role: 'assistant',
-      content: next.outputChunks.join(),
-    );
     return next.rebuild(
       (b) => b
-        ..transcript.add(reply)
+        ..transcript.add(
+          ChatMessage.create(role: ChatMessage.roleAssistant, content: reply),
+        )
         ..outputChunks = ListBuilder<String>(),
     );
   }

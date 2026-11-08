@@ -94,8 +94,11 @@ class ConversationView extends StatelessWidget {
 
 /// Scrollable transcript with the in-flight draft appended as the last bubble.
 ///
-/// It jumps, rather than animates, to the bottom so a token arriving mid-frame
-/// never leaves an animation running that a widget test would have to settle.
+/// It follows new content with `jumpTo`, rather than an animation, so a token
+/// arriving mid-frame never leaves an animation running that a widget test
+/// would have to settle. It only follows when the reader was already at the
+/// bottom, and jumps once after the first layout so a fresh transcript starts
+/// at its newest turn.
 class _TranscriptList extends StatefulWidget {
   const _TranscriptList({required this.transcript, required this.draft});
 
@@ -107,15 +110,36 @@ class _TranscriptList extends StatefulWidget {
 }
 
 class _TranscriptListState extends State<_TranscriptList> {
+  /// How close to the bottom counts as "following along".
+  static const double _followThreshold = 8;
+
   final ScrollController _controller = ScrollController();
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollToBottomAfterLayout();
+  }
 
   @override
   void didUpdateWidget(covariant _TranscriptList oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.transcript.length != oldWidget.transcript.length ||
         widget.draft != oldWidget.draft) {
-      _scrollToBottomAfterLayout();
+      if (_isNearBottom()) {
+        _scrollToBottomAfterLayout();
+      }
     }
+  }
+
+  /// Whether the current offset is close enough to the bottom to keep
+  /// following, so a reader who scrolled up is not yanked back down.
+  bool _isNearBottom() {
+    if (!_controller.hasClients) {
+      return true;
+    }
+    final ScrollPosition position = _controller.position;
+    return position.maxScrollExtent - position.pixels <= _followThreshold;
   }
 
   void _scrollToBottomAfterLayout() {
@@ -152,7 +176,7 @@ class _TranscriptListState extends State<_TranscriptList> {
           );
         }
         return _Bubble(
-          role: 'assistant',
+          role: ChatMessage.roleAssistant,
           text: widget.draft,
           textKey: const ValueKey('output-text'),
         );
@@ -178,7 +202,7 @@ class _Bubble extends StatelessWidget {
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
     final ColorScheme scheme = theme.colorScheme;
-    final bool isUser = role == 'user';
+    final bool isUser = role == ChatMessage.roleUser;
     final Color background = isUser
         ? scheme.primaryContainer
         : scheme.surfaceContainerHighest;
@@ -220,9 +244,9 @@ class _Bubble extends StatelessWidget {
   }
 
   static String _roleLabel(String role) => switch (role) {
-    'user' => 'You',
-    'assistant' => 'Assistant',
-    'tool' => 'Tool',
+    ChatMessage.roleUser => 'You',
+    ChatMessage.roleAssistant => 'Assistant',
+    ChatMessage.roleTool => 'Tool',
     _ => role,
   };
 }
