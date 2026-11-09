@@ -38,9 +38,9 @@ Future<void> main(List<String> arguments) async {
 /// Exit codes:
 ///
 /// * `0` success, including `--help`, `--check` and a written archive;
-/// * `1` a missing bundle or runtime, a failed build, or an incomplete layout /
-///   archive;
-/// * `2` a usage or validation error.
+/// * `1` a missing bundle or runtime, a failed build, a filesystem error, or an
+///   incomplete layout / archive;
+/// * `2` a usage or validation error, including an unsupported ABI or target.
 Future<int> runPackageApp(
   List<String> arguments, {
   required StringSink out,
@@ -99,7 +99,13 @@ Future<int> runPackageApp(
     return 2;
   }
 
-  final arch = hostArch ?? archFromAbi();
+  final String arch;
+  try {
+    arch = hostArch ?? archFromAbi();
+  } on UnsupportedError catch (error) {
+    err.writeln('error: ${error.message}');
+    return 2;
+  }
   final root = repoRoot ?? repoRootFromScript(Platform.script);
 
   final String version;
@@ -156,14 +162,38 @@ Future<int> runPackageApp(
     }
   }
 
-  final outDir = p.normalize(
-    p.absolute(result.option('out') ?? p.join(root, 'dist')),
-  );
-  final bundleDir = p.normalize(
-    p.absolute(result.option('bundle') ?? target.defaultBundleDir(root)),
+  final outOption = result.option('out');
+  final bundleOption = result.option('bundle');
+  if (outOption != null && outOption.isEmpty) {
+    _usageError(err, '--out must not be empty', parser);
+    return 2;
+  }
+  if (bundleOption != null && bundleOption.isEmpty) {
+    _usageError(err, '--bundle must not be empty', parser);
+    return 2;
+  }
+
+  final outDir = p.normalize(p.absolute(outOption ?? p.join(root, 'dist')));
+  var bundleDir = p.normalize(
+    p.absolute(bundleOption ?? target.defaultBundleDir(root)),
   );
   final skipBuild = result.flag('skip-build');
   final check = result.flag('check');
+
+  // A `--bundle` symlink to a directory must be resolved before copying;
+  // otherwise the copy would try to recreate the root as a link.
+  if (FileSystemEntity.typeSync(bundleDir, followLinks: false) ==
+      FileSystemEntityType.link) {
+    try {
+      bundleDir = Directory(bundleDir).resolveSymbolicLinksSync();
+    } on FileSystemException catch (error) {
+      err.writeln(
+        'error: cannot resolve --bundle $bundleDir: '
+        '${error.message}',
+      );
+      return 1;
+    }
+  }
 
   if (skipBuild && !Directory(bundleDir).existsSync()) {
     err.writeln('no bundle at $bundleDir; build it or pass --bundle');
@@ -193,6 +223,13 @@ Future<int> runPackageApp(
   }
 
   final stagePath = p.join(outDir, stageName(version, target, arch: arch));
+  if (p.equals(stagePath, bundleDir) || p.isWithin(bundleDir, stagePath)) {
+    err.writeln(
+      'error: --out resolves the stage to $stagePath, inside the bundle at '
+      '$bundleDir; choose an --out outside the bundle',
+    );
+    return 2;
+  }
   final archive = p.join(outDir, archiveName(version, target, arch: arch));
   final runtime = runtimeTag == null || runtimeBackend == null
       ? null
@@ -274,6 +311,12 @@ Future<int> runPackageApp(
       ..writeln('created $archive (${_humanSize(size)}, verified)')
       ..writeln('run: ${_runHint(target, name, archive)}');
     return 0;
+  } on UnsupportedError catch (error) {
+    err.writeln('error: ${error.message}');
+    return 2;
+  } on FileSystemException catch (error) {
+    err.writeln('error: ${_fileSystemMessage(error)}');
+    return 1;
   } on StageException catch (error) {
     err.writeln(error.message);
     return 1;
@@ -354,8 +397,8 @@ String _usage(ArgParser parser) {
     ..write(parser.usage)
     ..writeln()
     ..writeln(
-      'Exit codes: 0 success, 1 missing bundle/runtime or a verification '
-      'problem, 2 usage error.',
+      'Exit codes: 0 success, 1 missing bundle/runtime, a filesystem error or '
+      'a verification problem, 2 usage or validation error.',
     );
   return buffer.toString();
 }
@@ -408,6 +451,14 @@ String _plan({
     );
   }
   return buffer.toString();
+}
+
+String _fileSystemMessage(FileSystemException error) {
+  final path = error.path;
+  if (path == null || path.isEmpty) {
+    return error.message;
+  }
+  return '${error.message}: $path';
 }
 
 String _humanSize(int bytes) {

@@ -239,6 +239,187 @@ void main() {
     expect(err.toString(), contains('not supported'));
   });
 
+  test('an unknown runtime backend exits 2 before the install check', () async {
+    final out = StringBuffer();
+    final err = StringBuffer();
+
+    final code = await run(
+      <String>[
+        '--os',
+        'linux',
+        '--runtime',
+        'v0.8.0',
+        'cda13',
+        '--skip-build',
+        '--bundle',
+        p.join(Directory.systemTemp.path, 'missing-bundle'),
+      ],
+      out: out,
+      err: err,
+    );
+
+    expect(code, 2);
+    expect(err.toString(), contains('unknown runtime backend: cda13'));
+    expect(err.toString(), contains('use one of:'));
+    expect(err.toString(), contains('vulkan'));
+    expect(
+      err.toString(),
+      isNot(contains('install the runtime first')),
+      reason: 'a typo must be rejected before looking for an install',
+    );
+  });
+
+  test('an unpublished backend exits 2 with the valid list', () async {
+    final out = StringBuffer();
+    final err = StringBuffer();
+
+    final code = await run(
+      <String>[
+        '--os',
+        'windows',
+        '--runtime',
+        'v0.8.0',
+        'metal',
+        '--skip-build',
+        '--bundle',
+        p.join(Directory.systemTemp.path, 'missing-bundle'),
+      ],
+      out: out,
+      err: err,
+    );
+
+    expect(code, 2);
+    expect(err.toString(), contains('not published for windows-x64'));
+    expect(err.toString(), contains('use one of: cpu, cuda13, vulkan'));
+    expect(
+      err.toString(),
+      isNot(contains('install the runtime first')),
+      reason: 'a backend that was never published is not an install problem',
+    );
+  });
+
+  test('empty --out or --bundle exits 2', () async {
+    for (final option in <String>['--out', '--bundle']) {
+      final out = StringBuffer();
+      final err = StringBuffer();
+
+      final code = await run(
+        <String>[option, '', '--skip-build'],
+        out: out,
+        err: err,
+      );
+
+      expect(code, 2, reason: option);
+      expect(err.toString(), contains('$option must not be empty'));
+    }
+  });
+
+  test('refuses an --out that puts the stage inside the bundle', () async {
+    final workspace = await Directory.systemTemp.createTemp(
+      'llama_pulse_nested_out_',
+    );
+    addTearDown(() async {
+      if (await workspace.exists()) {
+        await workspace.delete(recursive: true);
+      }
+    });
+    final bundle = await windowsBundle(workspace.path);
+    final out = StringBuffer();
+    final err = StringBuffer();
+
+    final code = await run(
+      <String>[
+        '--os',
+        'windows',
+        '--skip-build',
+        '--bundle',
+        bundle.path,
+        '--out',
+        bundle.path,
+        '--check',
+      ],
+      out: out,
+      err: err,
+    );
+
+    expect(code, 2);
+    expect(err.toString(), contains('inside the bundle'));
+  });
+
+  test('an --out that is an existing file exits 1 with error:', () async {
+    final workspace = await Directory.systemTemp.createTemp(
+      'llama_pulse_occupied_out_',
+    );
+    addTearDown(() async {
+      if (await workspace.exists()) {
+        await workspace.delete(recursive: true);
+      }
+    });
+    final bundle = await windowsBundle(workspace.path);
+    final outFile = p.join(workspace.path, 'out-file');
+    await File(outFile).writeAsString('occupied');
+    final out = StringBuffer();
+    final err = StringBuffer();
+
+    final code = await run(
+      <String>[
+        '--os',
+        'windows',
+        '--skip-build',
+        '--bundle',
+        bundle.path,
+        '--out',
+        outFile,
+      ],
+      out: out,
+      err: err,
+    );
+
+    expect(code, 1);
+    expect(err.toString(), startsWith('error:'));
+    expect(err.toString(), isNot(contains('Stack trace')));
+  });
+
+  test(
+    'resolves a --bundle symlink to a directory before copying',
+    () async {
+      final workspace = await Directory.systemTemp.createTemp(
+        'llama_pulse_bundle_link_',
+      );
+      addTearDown(() async {
+        if (await workspace.exists()) {
+          await workspace.delete(recursive: true);
+        }
+      });
+      final bundle = await windowsBundle(workspace.path);
+      final link = p.join(workspace.path, 'bundle-link');
+      Link(link).createSync(bundle.path);
+      final out = StringBuffer();
+      final err = StringBuffer();
+
+      final code = await run(
+        <String>[
+          '--os',
+          'windows',
+          '--skip-build',
+          '--bundle',
+          link,
+          '--out',
+          p.join(workspace.path, 'dist'),
+          '--check',
+        ],
+        out: out,
+        err: err,
+      );
+
+      expect(code, 0, reason: err.toString());
+      expect(out.toString(), contains('checked'));
+    },
+    skip: Platform.isWindows
+        ? 'creating directory symlinks needs extra privileges on Windows'
+        : false,
+  );
+
   test('--check stages, verifies and writes no archive', () async {
     final workspace = await Directory.systemTemp.createTemp(
       'llama_pulse_check_',
