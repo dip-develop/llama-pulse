@@ -118,7 +118,7 @@ List<String> requiredEntries(
     PackageTarget.macos => <String>[
       'llama_pulse.app/Contents/MacOS/llama_pulse',
       'llama_pulse.app/Contents/Info.plist',
-      'llama_pulse.app/Contents/Frameworks/FlutterMacOS.framework',
+      'llama_pulse.app/Contents/Frameworks/FlutterMacOS.framework/',
       'llama_pulse.app/Contents/Resources/flutter_assets/',
       'README.md',
       'LICENSE',
@@ -142,23 +142,37 @@ List<String> requiredEntries(
   return entries;
 }
 
-/// Required entries that are missing below [stage], as absolute paths.
+/// Problems found in the tree below [stage], one per missing or invalid entry.
+///
+/// A missing entry is reported as its absolute path. An entry that exists with
+/// the wrong type is reported as `<path> is not a file` or
+/// `<path> is not a directory`. Directory entries end with `/` in
+/// [requiredEntries]; so does a macOS `.framework` bundle.
 ///
 /// Returns an empty list when the staging tree is complete. This only checks
-/// existence; steps 5 and 6 own copying the tree in the first place.
+/// the tree; [stage] and the archive writer own creating it.
 List<String> verifyLayout(
   String stage,
   PackageTarget target, {
   RuntimeSelection? runtime,
 }) {
-  final missing = <String>[];
+  final problems = <String>[];
   for (final entry in requiredEntries(target, stage, runtime: runtime)) {
     final path = _joinEntry(stage, entry);
-    if (FileSystemEntity.typeSync(path) == FileSystemEntityType.notFound) {
-      missing.add(path);
+    final expectedDirectory =
+        entry.endsWith('/') || entry.endsWith('.framework/');
+    final type = FileSystemEntity.typeSync(path);
+    if (type == FileSystemEntityType.notFound) {
+      problems.add(path);
+    } else if (expectedDirectory && type != FileSystemEntityType.directory) {
+      problems.add('$path is not a directory');
+    } else if (!expectedDirectory &&
+        type != FileSystemEntityType.file &&
+        type != FileSystemEntityType.link) {
+      problems.add('$path is not a file');
     }
   }
-  return missing;
+  return problems;
 }
 
 String _joinEntry(String stage, String entry) {
