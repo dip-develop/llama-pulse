@@ -396,7 +396,9 @@ Native session rules:
   `InferenceState.transcript`, sends `[system?, …transcript, user]` (the user
   text also stays in `prompt`) and appends the assistant reply, or the partial
   text on cancel/failure. The CLI keeps its per-run `--system` and does not
-  read the stored default.
+  read the stored default. The transcript and stored system prompt shipped in
+  the merged PR #34, with the test-strength and empty-draft follow-up in PR
+  #35.
 - **Platform.** 64-bit desktop only: structs are returned by value.
 - **Selection.** `WorkerConfig.useStubSession` chooses
   `StubLlamaSession` (explicit `--stub` or `LLAMAPULSE_STUB_ENGINE`);
