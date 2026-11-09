@@ -1,22 +1,26 @@
-# Project status — 2026-11-08
+# Project status — 2026-11-09
 
 A resume point for a fresh session. Facts below were measured on the commit
 named here, not copied from memory. The rules live in `AGENT.md`; this file is
 a snapshot and goes stale, so check `git branch -a`, `gh pr list` and
 `gh issue list` before trusting it. Its GitHub mirror is the pinned issue #16.
 
-- Baseline: `origin/main` = `117058d` ("Merge pull request #34 from
-  dip-develop/feature/chat-transcript", 2026-11-08), the base of the feature
-  branch below.
-- Suite on `feature/chat-transcript`, measured 2026-11-08 after `flutter pub
-  get` and `melos run gen`: `melos test` exit `0`, **1199 tests** — 800 core
-  (plus 1 env-gated skip, `native_integration_test`), 233 CLI, 166 app.
-  The last Windows run, measured on `aa35432`, had 722 core tests run and 70
-  skipped (the C shim and native session tests need clang), plus 233 CLI and
-  148 app; this branch was not re-measured on Windows.
-- `melos run check` (gen twice, catalog check, analyze, 1199 tests, format, CLI
-  AOT) and `flutter build linux --debug` are green on this branch. The earlier
-  CI run for `5f19cfe`, the previous baseline, was green on every job.
+- Baseline: `origin/main` = `77f9db2` ("Merge pull request #35 from
+  dip-develop/feature/chat-transcript", 2026-11-09). `origin/main` is the base
+  branch for every PR. The chat-transcript feature branch sat on `2742661`
+  (merged into `main` as `117058d` from PR #34) and merged as `77f9db2` in
+  PR #35.
+- Suite on `origin/main`, measured 2026-11-09 after `flutter pub get` and
+  `melos run gen` twice (no generated-file drift): `melos test` exit `0`,
+  **1199 tests** — 800 core (plus 1 env-gated skip, `native_integration_test`),
+  233 CLI, 166 app.
+  Windows was last measured on `aa35432`: 722 core tests run and 70 skipped
+  (the C shim and native session tests need clang), plus 233 CLI and 148 app.
+  The app count has since grown to 166, and the suites have not been
+  re-measured on Windows.
+- `melos run check` (gen, catalog check, analyze, 1199 tests, format, CLI AOT)
+  and `flutter build linux --debug` are green on `77f9db2`, measured locally on
+  2026-11-09. The CI run for PR #35's head `48b33b4` was green on every job.
 
 ## Shipped
 
@@ -92,8 +96,9 @@ a snapshot and goes stale, so check `git branch -a`, `gh pr list` and
   native session renders every message through `llama_chat_apply_template`,
   and a single user message keeps the old raw-prompt fallback. CLI `run` gained
   `--system` and repeatable `--message role:content`.
-- **Chat transcript and stored system prompt (PR #34, issue #33).** Merged into
-  `main` as `117058d`. `ModelParams.systemPrompt` is a nullable field with the
+- **Chat transcript and stored system prompt (PR #34 and PR #35, issue #33).**
+  PR #34 merged into `main` as `117058d`; the review follow-up PR #35 merged as
+  `77f9db2`. `ModelParams.systemPrompt` is a nullable field with the
   `copyWith` `_unset` sentinel, a 4096-character limit and a validator that
   rejects blank or over-limit values and accepts multi-line text; it is
   persisted in `params.yaml` and omitted when null, so the schema version stays
@@ -105,8 +110,9 @@ a snapshot and goes stale, so check `git branch -a`, `gh pr list` and
   `ConversationView` (replacing `GenerationOutput`) renders role-labelled
   bubbles, the in-flight draft, an empty state and a Clear conversation action
   that is a no-op while a turn is running; the form gained a `system-prompt`
-  field saved by the existing Save action, blank meaning null. The open
-  follow-up in PR #35 strengthens the tests and clears an empty terminal draft.
+  field saved by the existing Save action, blank meaning null. PR #35
+  strengthened the tests and clears an empty terminal draft, so a turn that
+  produced no text leaves only the user message.
 - **Build helper.** `tool/build_llama_cpp.sh [tag]` (default `v0.8.0`) clones,
   configures with `-DBUILD_SHARED_LIBS=ON -DLLAMA_BUILD_IS_DEV=OFF
   -DLLAMA_BUILD_APP=OFF -DGGML_NATIVE=ON`, builds and prints the
@@ -118,15 +124,19 @@ a snapshot and goes stale, so check `git branch -a`, `gh pr list` and
 
 - **Packaging follow-ups (from #27).** Icons and artwork, installers and the
   Windows/macOS bundles stayed out of the v1 Linux bundle.
+- Nothing else is in flight: the chat transcript and stored system prompt
+  shipped in PR #34, with the follow-up in PR #35.
 
-## Open issues (2026-11-08)
+## Open issues (2026-11-09)
 
-- #16 — pinned status checkpoint (this file mirrors it).
-- #33 — chat transcript and stored system prompt; open only until the
-  `feature/chat-transcript` follow-up (PR #35) merges.
+- #16 — pinned status checkpoint (this file mirrors it); it is the only open
+  issue.
+- #33 (chat transcript) is closed after PR #34, with the review follow-up in
+  PR #35.
 - #27 (packaging), #25 (stop `--json`), #23 (Windows test portability), #22
-  (CI), #15 (runtime) and #13 (catalog) are closed; #28 (Linux bundle), #29
-  (Windows suites) and #31 (multi-message prompts) are merged.
+  (CI), #15 (runtime), #13 (catalog) and #30 (multi-message prompts) are
+  closed; #28 (Linux bundle), #29 (Windows suites), #31 (multi-message
+  prompts), #34 and #35 (chat transcript) are merged.
 
 ## Decisions already made — do not relitigate
 
@@ -153,20 +163,18 @@ a snapshot and goes stale, so check `git branch -a`, `gh pr list` and
 
 ## Remaining plan, in order
 
-1. **Operator: merge PR #35** (issue #33), close #33 and refresh this
-   checkpoint.
-2. **Packaging follow-ups** (from #27): icons and artwork (needs operator
+1. **Packaging follow-ups** (from #27): icons and artwork (needs operator
    artwork), installers (needs new tooling and dependencies), and the
    Windows/macOS bundles (unwritten).
-3. **Jinja chat templates** for the embedded path: the built-in, named, `none`
-   and per-message rendering already ship (PR #31, issue #33); a Jinja engine
-   is the remaining template work.
-4. **Windows and macOS validation** of the supervisor and embedded paths.
-5. **Larger models and GPU backends**: bigger context, CUDA/Vulkan/ROCm/Metal
+2. **Jinja chat templates** for the embedded path: the built-in, named and
+   `none` templates (issue #11) and per-message rendering (PR #31, issue #30)
+   already ship; a Jinja engine is the remaining template work.
+3. **Windows and macOS validation** of the supervisor and embedded paths.
+4. **Larger models and GPU backends**: bigger context, CUDA/Vulkan/ROCm/Metal
    smoke tests (needs real hardware).
-6. **Watch the CI flake**: the supervisor test that failed once under parallel
+5. **Watch the CI flake**: the supervisor test that failed once under parallel
    load now runs on every PR.
-7. **Out of scope for now**: a server "router mode" (multi-model proxy).
+6. **Out of scope for now**: a server "router mode" (multi-model proxy).
 
 ## Open landmines
 
@@ -204,12 +212,12 @@ a snapshot and goes stale, so check `git branch -a`, `gh pr list` and
 ```sh
 git fetch origin
 git branch -a                  # merged feature/fix branches may linger locally
-gh pr list                     # PR #35, the chat-transcript follow-up
-gh issue list                  # #16 (pinned status) and #33 (until #35 merges)
+gh pr list                     # no open PRs at this checkpoint
+gh issue list                  # #16 is the only open issue; #33 is closed
 ```
 
 Then read `AGENT.md`, this file and pinned issue #16, and run
 `dart run melos run check` on a fresh branch cut from `origin/main`. The next
-concrete step is the operator merging PR #35 and closing #33, then the packaging
-follow-ups (icons, installers, Windows/macOS bundles), Jinja templates and
-Windows/macOS validation. The pinned checkpoint mirror is #16.
+concrete step is the packaging track: icons and artwork, installers, and the
+Windows/macOS bundles, then Jinja templates and Windows/macOS validation. The
+pinned checkpoint mirror is #16.
