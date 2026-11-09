@@ -33,6 +33,10 @@ tool/package_linux.sh --runtime v0.8.0 cuda13
 tool/package_linux.sh --skip-build --bundle apps/llama_pulse/build/linux/x64/debug/bundle
 ```
 
+The shim `cd`s to the repository root before it runs the Dart tool, so relative
+`--bundle`, `--out` and `--config-dir` paths in the examples above are resolved
+from the repo root, not from the caller's working directory.
+
 | Flag | Meaning |
 |---|---|
 | `--os linux\|windows\|macos` | Target; defaults to the host OS |
@@ -47,21 +51,26 @@ tool/package_linux.sh --skip-build --bundle apps/llama_pulse/build/linux/x64/deb
 | Exit code | Meaning |
 |---|---|
 | 0 | Success, including `--help` and `--check` |
-| 1 | Missing bundle or runtime, a failed build, or a layout/archive verification problem |
-| 2 | Usage or validation error (unknown OS, invalid tag or backend, `--runtime` for an unsupported target) |
+| 1 | Missing bundle or runtime, a failed build, a filesystem error (unwritable or occupied `--out`), or a layout/archive verification problem |
+| 2 | Usage or validation error: unknown OS, empty `--bundle`/`--out`, a stage path inside the bundle, an unsupported ABI, an invalid tag, or an unknown/unpublished backend |
 
 The runtime must already be installed (`llamapulse runtime install --backend
 <id>`) and must contain `llama-server` (`llama-server.exe` on Windows) plus
-`runtime.yaml`. The tool refuses an invalid tag or backend and lists the
-backends actually published for the target. It copies the runtime verbatim; it
-never generates or rewrites `runtime.yaml`, so the attested `0.8.0-dev` gate
+`runtime.yaml`. Before it looks for an installed runtime, the tool rejects an
+invalid tag or an unknown/unpublished backend and lists the backends actually
+published for the target (exit 2); only a valid backend that is not installed
+reaches the "install the runtime first" message (exit 1). It copies the runtime
+verbatim; it never generates or rewrites `runtime.yaml`, so the attested
+`0.8.0-dev` gate
 works for a bundled install exactly as it does for a downloaded one. A CUDA
 runtime is several hundred megabytes and needs the matching NVIDIA driver, so
 bundle it only when you know the target.
 
 Archives are written in the platform's format: `tar.gz` on Linux, `zip` on
 Windows and macOS. macOS uses `ditto --sequesterRsrc --keepParent` so framework
-symlinks and extended attributes survive; Windows uses a Dart ZIP. Before the
+symlinks and extended attributes survive; Windows uses a Dart ZIP written and
+re-read as a stream, so a bundle with a large CUDA runtime is never held in
+memory in one piece. Before the
 tool reports success it re-reads the archive it just wrote and compares every
 required entry with the staged tree; on macOS it extracts the archive with
 `ditto` and re-checks the layout, the executable bit and the ad-hoc signature
@@ -217,9 +226,17 @@ unless you have a reason not to.
 
 | Target | Built | Smoke-tested |
 |---|---|---|
-| Linux x64 | On the Linux development workstation | Locally: archive extracted, app launched with an empty `LLAMA_PULSE_CONFIG_DIR`, bundled runtime reported by the dashboard |
+| Linux x64 | On the Linux development workstation | Earlier check (PR #28, not re-run on this branch): archive extracted, app launched with an empty `LLAMA_PULSE_CONFIG_DIR`, bundled runtime reported by the dashboard. This branch re-produces and extracts the archive only. |
 | Windows x64 | CI, `windows-latest` | CI: `Expand-Archive`, `llama_pulse.exe` present; no interactive launch |
 | macOS arm64 | CI, `macos-latest` | CI: `ditto -x -k`, executable bit, `codesign --verify --deep --strict`, and an assertion that the built app is not sandboxed |
+
+CI packages **runtime-free** bundles on both CI hosts: it invokes the packager
+without `--runtime`. A macOS bundle that carries a runtime is therefore not
+covered yet. Its `llama-server` and dylibs live under `Contents/Resources` and
+are not signed by Flutter; whether `codesign --force --deep` signs them and
+`codesign --verify --deep --strict` then passes is unproven. The same gap does
+not exist for Linux because the runtime is a plain file tree under the stage
+root, and Windows runtimes are unsigned DLLs/EXEs already.
 
 macOS archive correctness cannot be verified on the Linux workstation: `ditto`
 and `codesign` do not exist there, and the real-ditto test skips unless the host
@@ -235,9 +252,10 @@ validated separately.
   either a hardened runtime with
   `com.apple.security.cs.disable-library-validation` or signatures on every
   runtime dylib, and notarisation for macOS; Windows needs Authenticode.
-- The archive verifier checks structure, not execution. CI proves the bundles
-  unpack and the macOS signature verifies; it does not start a GUI, load a model
-  or run a GPU backend.
+- The archive verifier checks structure, not execution. For runtime-free
+  bundles, CI proves the bundles unpack and the macOS signature verifies; it
+  does not start a GUI, load a model or run a GPU backend. A runtime-bearing
+  macOS bundle is not yet built or verified in CI.
 - Icons and desktop entries. Every bundle carries Flutter's default icon;
   `flutter_launcher_icons` is a dev dependency but has no artwork wired up.
 - Installers (`.deb`, AppImage, MSIX, `.dmg`). These need new tooling and

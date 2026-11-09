@@ -807,7 +807,7 @@ CLI's `dart test`; never in `flutter test`. Flutter's test binding and an actual
 isolate handshake do not mix reliably. `native_integration_test.dart` is the one
 env-gated test: it runs only when both `LLAMA_PULSE_LIB` and
 `LLAMA_PULSE_MODEL` point at a real pinned library and model, and is skipped in
-the normal run (that is the one skipped test in the counts above).
+the normal run (one of the two host/env-gated skips in the counts above).
 
 Tests mirror the package layout. Most core fakes are declared inline in the
 test file that uses them; the app keeps shared fakes in `test/support/`. Never
