@@ -4,6 +4,60 @@ import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 
 import '../../../tool/package_app.dart';
+import '../../../tool/packaging/process_runner.dart';
+
+final class RecordingRunner implements ProcessRunner {
+  final List<List<String>> invocations = <List<String>>[];
+
+  @override
+  Future<ProcessResult> run(
+    String executable,
+    List<String> arguments, {
+    String? workingDirectory,
+    Map<String, String>? environment,
+    bool includeParentEnvironment = true,
+    bool runInShell = false,
+  }) async {
+    invocations.add(<String>[executable, ...arguments]);
+    return ProcessResult(0, 0, '', '');
+  }
+}
+
+Future<Directory> windowsBundle(String parent) async {
+  final bundle = await Directory(p.join(parent, 'windows-bundle'))
+      .create(recursive: true);
+  Future<void> file(String path) async {
+    await File(p.join(bundle.path, path)).create(recursive: true);
+  }
+
+  await file('llama_pulse.exe');
+  await file('flutter_windows.dll');
+  await file(p.join('data', 'icudtl.dat'));
+  await file(p.join('data', 'flutter_assets', 'AssetManifest.bin'));
+  return bundle;
+}
+
+Future<Directory> macosBundle(String parent) async {
+  final app = await Directory(p.join(parent, 'llama_pulse.app', 'Contents'))
+      .create(recursive: true);
+  Future<void> file(String path) async {
+    await File(p.join(app.path, path)).create(recursive: true);
+  }
+
+  await file(p.join('MacOS', 'llama_pulse'));
+  await file('Info.plist');
+  await file(
+    p.join(
+      'Frameworks',
+      'FlutterMacOS.framework',
+      'Versions',
+      'A',
+      'FlutterMacOS',
+    ),
+  );
+  await file(p.join('Resources', 'flutter_assets', 'AssetManifest.bin'));
+  return app.parent;
+}
 
 /// Repo root, found by walking up from the package test directory.
 String repoRoot() {
@@ -33,12 +87,14 @@ void main() {
     String hostArch = 'x64',
     required StringBuffer out,
     required StringBuffer err,
+    ProcessRunner processRunner = const SystemProcessRunner(),
   }) => runPackageApp(
     arguments,
     out: out,
     err: err,
     repoRoot: root,
     hostArch: hostArch,
+    processRunner: processRunner,
   );
 
   test('--help exits 0 and lists every flag', () async {
@@ -175,17 +231,17 @@ void main() {
     expect(err.toString(), contains('not supported'));
   });
 
-  test('prints a plan for an existing bundle without writing', () async {
-    final bundle = await Directory.systemTemp.createTemp('llama_pulse_bundle_');
+  test('--check stages, verifies and writes no archive', () async {
+    final workspace = await Directory.systemTemp.createTemp(
+      'llama_pulse_check_',
+    );
     addTearDown(() async {
-      if (await bundle.exists()) {
-        await bundle.delete(recursive: true);
+      if (await workspace.exists()) {
+        await workspace.delete(recursive: true);
       }
     });
-    final outDir = p.join(
-      Directory.systemTemp.path,
-      'llama-pulse-out-$pid-${DateTime.now().microsecondsSinceEpoch}',
-    );
+    final bundle = await windowsBundle(workspace.path);
+    final outDir = p.join(workspace.path, 'dist');
     final out = StringBuffer();
     final err = StringBuffer();
 
@@ -210,10 +266,91 @@ void main() {
     expect(plan, contains('llama-pulse-0.1.0-windows-x64'));
     expect(plan, contains('llama-pulse-0.1.0-windows-x64.zip'));
     expect(plan, contains('skipped (--skip-build)'));
+    expect(plan, contains('checked'));
+    expect(plan, contains('no archive written'));
     expect(Directory(outDir).existsSync(), isFalse);
   });
 
-  test('plans a Flutter build when --skip-build is absent', () async {
+  test('a non-check run writes and verifies the Windows archive', () async {
+    final workspace = await Directory.systemTemp.createTemp(
+      'llama_pulse_archive_',
+    );
+    addTearDown(() async {
+      if (await workspace.exists()) {
+        await workspace.delete(recursive: true);
+      }
+    });
+    final bundle = await windowsBundle(workspace.path);
+    final outDir = p.join(workspace.path, 'dist');
+    final out = StringBuffer();
+    final err = StringBuffer();
+
+    final code = await run(
+      <String>[
+        '--os',
+        'windows',
+        '--skip-build',
+        '--bundle',
+        bundle.path,
+        '--out',
+        outDir,
+      ],
+      out: out,
+      err: err,
+    );
+
+    expect(code, 0, reason: err.toString());
+    final archive = p.join(outDir, 'llama-pulse-0.1.0-windows-x64.zip');
+    expect(File(archive).existsSync(), isTrue);
+    expect(out.toString(), contains('created $archive'));
+    expect(out.toString(), contains('verified'));
+    expect(out.toString(), contains('run:'));
+  });
+
+  test('--check reports layout problems and exits 1', () async {
+    final workspace = await Directory.systemTemp.createTemp(
+      'llama_pulse_layout_',
+    );
+    addTearDown(() async {
+      if (await workspace.exists()) {
+        await workspace.delete(recursive: true);
+      }
+    });
+    final empty = await Directory(p.join(workspace.path, 'empty'))
+        .create(recursive: true);
+    final out = StringBuffer();
+    final err = StringBuffer();
+
+    final code = await run(
+      <String>[
+        '--os',
+        'windows',
+        '--skip-build',
+        '--bundle',
+        empty.path,
+        '--out',
+        p.join(workspace.path, 'dist'),
+        '--check',
+      ],
+      out: out,
+      err: err,
+    );
+
+    expect(code, 1);
+    expect(err.toString(), contains('layout problem'));
+  });
+
+  test('runs the Flutter build when --skip-build is absent', () async {
+    final workspace = await Directory.systemTemp.createTemp(
+      'llama_pulse_build_',
+    );
+    addTearDown(() async {
+      if (await workspace.exists()) {
+        await workspace.delete(recursive: true);
+      }
+    });
+    final bundle = await macosBundle(workspace.path);
+    final runner = RecordingRunner();
     final out = StringBuffer();
     final err = StringBuffer();
 
@@ -222,14 +359,25 @@ void main() {
         '--os',
         'macos',
         '--bundle',
-        p.join(Directory.systemTemp.path, 'not-there-yet'),
+        bundle.path,
+        '--out',
+        p.join(workspace.path, 'dist'),
+        '--check',
       ],
       hostArch: 'arm64',
       out: out,
       err: err,
+      processRunner: runner,
     );
 
     expect(code, 0, reason: err.toString());
+    expect(
+      runner.invocations.any(
+        (invocation) => invocation.join(' ') == 'flutter build macos --release',
+      ),
+      isTrue,
+      reason: '${runner.invocations}',
+    );
     expect(out.toString(), contains('flutter'));
     expect(out.toString(), contains('build macos --release'));
     expect(out.toString(), contains('macos-arm64'));

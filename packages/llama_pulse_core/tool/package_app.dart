@@ -1,8 +1,6 @@
-/// Prints the packaging plan for one LlamaPulse desktop target.
+/// Stages a LlamaPulse desktop bundle and writes its archive.
 ///
-/// This is the cross-platform replacement for `tool/package_linux.sh`. Steps 5
-/// and 6 add staging and archive creation; until then the tool validates its
-/// inputs, prints what it would do, and never writes to disk.
+/// This is the cross-platform replacement for `tool/package_linux.sh`.
 ///
 /// Usage:
 ///
@@ -19,9 +17,11 @@ import 'package:args/args.dart';
 import 'package:llama_pulse_core/llama_pulse_core.dart';
 import 'package:path/path.dart' as p;
 
+import 'packaging/archive_writer.dart';
 import 'packaging/package_plan.dart';
 import 'packaging/package_target.dart';
 import 'packaging/process_runner.dart';
+import 'packaging/staging.dart';
 
 /// Entry point used by `dart run`.
 Future<void> main(List<String> arguments) async {
@@ -29,16 +29,17 @@ Future<void> main(List<String> arguments) async {
   exitCode = code;
 }
 
-/// Runs the planner and returns the process exit code.
+/// Runs the packager and returns the process exit code.
 ///
-/// [out] and [err] are sinks so tests can capture the plan without spawning a
+/// [out] and [err] are sinks so tests can capture the output without spawning a
 /// process. [repoRoot], [hostArch] and [processRunner] are injectable for the
 /// same reason; the command line does not expose them.
 ///
 /// Exit codes:
 ///
-/// * `0` success, including `--help`;
-/// * `1` a missing bundle or runtime, or an unreadable app pubspec;
+/// * `0` success, including `--help`, `--check` and a written archive;
+/// * `1` a missing bundle or runtime, a failed build, or an incomplete layout /
+///   archive;
 /// * `2` a usage or validation error.
 Future<int> runPackageApp(
   List<String> arguments, {
@@ -155,9 +156,9 @@ Future<int> runPackageApp(
     return 1;
   }
 
+  final configDir = _configDirectory(result.option('config-dir'));
   String? runtimeSource;
   if (runtimeTag != null && runtimeBackend != null) {
-    final configDir = _configDirectory(result.option('config-dir'));
     if (configDir == null) {
       err.writeln(
         'cannot resolve the config directory; pass --config-dir or set '
@@ -177,12 +178,12 @@ Future<int> runPackageApp(
     }
   }
 
-  final stage = p.join(outDir, stageName(version, target, arch: arch));
+  final stagePath = p.join(outDir, stageName(version, target, arch: arch));
   final archive = p.join(outDir, archiveName(version, target, arch: arch));
   final runtime = runtimeTag == null || runtimeBackend == null
       ? null
       : (tag: runtimeTag, backend: runtimeBackend);
-  final entries = requiredEntries(target, stage, runtime: runtime);
+  final entries = requiredEntries(target, stagePath, runtime: runtime);
 
   out.writeln(
     _plan(
@@ -191,7 +192,7 @@ Future<int> runPackageApp(
       version: version,
       bundleDir: bundleDir,
       outDir: outDir,
-      stage: stage,
+      stage: stagePath,
       archive: archive,
       skipBuild: skipBuild,
       runtime: runtime,
@@ -199,10 +200,80 @@ Future<int> runPackageApp(
       entryCount: entries.length,
       check: check,
       flutterExecutable: flutterExecutable(),
-      processRunner: processRunner,
     ),
   );
-  return 0;
+
+  Directory? temporaryStage;
+  try {
+    final stageDir = check
+        ? (temporaryStage = await Directory.systemTemp.createTemp(
+            'llama-pulse-check-',
+          )).path
+        : stagePath;
+    final staged = await stage(
+      target: target,
+      bundleDir: bundleDir,
+      stageDir: stageDir,
+      repoRoot: root,
+      runtimeTag: runtimeTag,
+      runtimeBackend: runtimeBackend,
+      configDir: configDir,
+      runner: processRunner,
+      skipBuild: skipBuild,
+      arch: arch,
+    );
+    if (!staged.isOk) {
+      for (final problem in staged.problems) {
+        err.writeln('layout problem: $problem');
+      }
+      return 1;
+    }
+
+    if (check) {
+      out.writeln('checked ${staged.stageDir} (no archive written)');
+      return 0;
+    }
+
+    await writeArchive(
+      target: target,
+      stageDir: staged.stageDir,
+      archivePath: archive,
+      runner: processRunner,
+    );
+    final problems = await verifyArchive(
+      target: target,
+      archivePath: archive,
+      stageDir: staged.stageDir,
+      runtime: runtime,
+      runner: processRunner,
+    );
+    if (problems.isNotEmpty) {
+      for (final problem in problems) {
+        err.writeln('archive problem: $problem');
+      }
+      return 1;
+    }
+
+    final size = File(archive).lengthSync();
+    final name = p.basename(stagePath);
+    out
+      ..writeln('created $archive (${_humanSize(size)}, verified)')
+      ..writeln('run: ${_runHint(target, name, archive)}');
+    return 0;
+  } on StageException catch (error) {
+    err.writeln(error.message);
+    return 1;
+  } on ArchiveException catch (error) {
+    err.writeln(error.message);
+    return 1;
+  } on ProcessException catch (error) {
+    err.writeln('cannot run ${error.executable}: ${error.message}');
+    return 1;
+  } finally {
+    if (temporaryStage != null && temporaryStage.existsSync()) {
+      temporaryStage.deleteSync(recursive: true);
+    }
+  }
 }
 
 ArgParser _buildParser() => ArgParser()
@@ -239,12 +310,12 @@ ArgParser _buildParser() => ArgParser()
   ..addFlag(
     'skip-build',
     negatable: false,
-    help: 'Use --bundle as-is; do not plan a Flutter build.',
+    help: 'Use --bundle as-is; do not run a Flutter build.',
   )
   ..addFlag(
     'check',
     negatable: false,
-    help: 'Validate inputs and print the plan without writing anything.',
+    help: 'Stage into a temporary directory and verify; write no archive.',
   )
   ..addFlag('help', abbr: 'h', negatable: false, help: 'Show this help.');
 
@@ -256,19 +327,21 @@ String _usage(ArgParser parser) {
     )
     ..writeln()
     ..writeln(
-      'Plan a relocatable LlamaPulse desktop bundle for Linux, Windows or '
-      'macOS.',
+      'Stage a relocatable LlamaPulse desktop bundle and write its archive '
+      'for Linux, Windows or macOS.',
     )
     ..writeln(
-      'This preview prints the plan only; it does not build, copy or write '
-      'anything yet.',
+      'Without --check the tool builds (unless --skip-build), copies, writes '
+      'and verifies the archive. --check stages into a temporary directory '
+      'and verifies it without writing an archive.',
     )
     ..writeln()
     ..writeln('Options:')
     ..write(parser.usage)
     ..writeln()
     ..writeln(
-      'Exit codes: 0 success, 1 missing bundle/runtime, 2 usage error.',
+      'Exit codes: 0 success, 1 missing bundle/runtime or a verification '
+      'problem, 2 usage error.',
     );
   return buffer.toString();
 }
@@ -294,13 +367,12 @@ String _plan({
   required int entryCount,
   required bool check,
   required String flutterExecutable,
-  required ProcessRunner processRunner,
 }) {
   final build = skipBuild
       ? 'skipped (--skip-build)'
       : '$flutterExecutable build ${target.os} --release';
   final buffer = StringBuffer()
-    ..writeln('LlamaPulse packaging plan (no files are written yet)')
+    ..writeln('LlamaPulse packaging plan')
     ..writeln()
     ..writeln('  target:    ${target.artifactId(arch)}')
     ..writeln('  version:   $version')
@@ -317,12 +389,31 @@ String _plan({
     ..writeln('  entries:   $entryCount required');
   if (check) {
     buffer.writeln(
-      '  check:     inputs valid; staging layout is verified once steps 5-6 '
-      'land',
+      '  check:     stage and verify the layout, then discard the stage; '
+      'no archive is written',
     );
   }
   return buffer.toString();
 }
+
+String _humanSize(int bytes) {
+  const units = <String>['B', 'KiB', 'MiB', 'GiB'];
+  var value = bytes.toDouble();
+  var unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit++;
+  }
+  final digits = unit == 0 ? 0 : 1;
+  return '${value.toStringAsFixed(digits)} ${units[unit]}';
+}
+
+String _runHint(PackageTarget target, String name, String archive) =>
+    switch (target) {
+      PackageTarget.linux => 'tar -xzf $archive && ./$name/llama_pulse',
+      PackageTarget.windows => 'unzip $archive and run $name\\llama_pulse.exe',
+      PackageTarget.macos => 'unzip $archive && open $name/llama_pulse.app',
+    };
 
 String? _hostOs() {
   if (Platform.isLinux) {
