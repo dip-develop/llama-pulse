@@ -188,10 +188,11 @@ Future<List<String>> _verifyDitto({
     final executable = File(
       p.join(extracted, 'llama_pulse.app', 'Contents', 'MacOS', 'llama_pulse'),
     );
-    // Windows has no executable bit and reports mode 0, so only judge a mode
-    // that actually carries permission bits.
-    final mode = executable.existsSync() ? executable.statSync().mode : 0;
-    if (mode != 0 && !_isExecutable(mode)) {
+    // Windows reports a synthetic mode without POSIX executable bits, so only
+    // a real POSIX mode can be judged. The layout check always runs.
+    if (!Platform.isWindows &&
+        executable.existsSync() &&
+        !_isExecutable(executable.statSync().mode)) {
       problems.add(
         '$extracted/llama_pulse.app/Contents/MacOS/llama_pulse '
         'is not executable',
