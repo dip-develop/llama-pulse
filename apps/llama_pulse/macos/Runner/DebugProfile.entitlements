@@ -2,8 +2,10 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>com.apple.security.app-sandbox</key>
-	<true/>
+	<!-- LlamaPulse supervises an external llama-server process and opens
+	     .gguf files the user picks from anywhere on disk. Both need access
+	     the App Sandbox forbids, and Mac App Store distribution is out of
+	     scope, so the desktop build runs unsandboxed. -->
 	<key>com.apple.security.cs.allow-jit</key>
 	<true/>
 	<key>com.apple.security.network.server</key>
