@@ -525,7 +525,7 @@ void main() {
       await bloc.close();
     });
 
-    test('folds the draft once when completion precedes the close', () async {
+    test('folds the draft once when completion is delivered twice', () async {
       final bloc = buildBloc(forEngine: engine);
       await _loadReady(bloc);
       bloc.add(const InferenceGenerateRequested());
@@ -538,13 +538,62 @@ void main() {
             bloc.state.transcript.length == 2,
       );
 
-      await engine.closeStream();
-      await Future<void>.delayed(Duration.zero);
+      // The engine subscription is gone after the first terminal, so feed the
+      // same event to the bloc directly: a second terminal must be ignored
+      // rather than folded into another assistant turn.
+      bloc.add(
+        InferenceEngineEventReceived(
+          GenerationEvent.completed(
+            engine.lastRequestId!,
+            ScriptedLlamaEngine.zeroMetrics,
+          ),
+        ),
+      );
       await Future<void>.delayed(Duration.zero);
 
+      expect(bloc.state.transcript, hasLength(2));
       expect(
         bloc.state.transcript.map((m) => '${m.role}:${m.content}').toList(),
         ['${ChatMessage.roleUser}:hello', '${ChatMessage.roleAssistant}:Hi'],
+      );
+      await bloc.close();
+    });
+
+    test('does not append a turn for zero-length tokens', () async {
+      final bloc = buildBloc(forEngine: engine);
+      await _loadReady(bloc);
+      bloc.add(const InferenceGenerateRequested());
+      await engine.waitForGenerate();
+      engine.emitToken('');
+      engine.complete();
+      await _waitUntil(
+        () =>
+            bloc.state.status == InferenceStatus.modelReady &&
+            bloc.state.transcript.length == 1,
+      );
+
+      expect(bloc.state.transcript.single.role, ChatMessage.roleUser);
+      expect(bloc.state.transcript.single.content, 'hello');
+      expect(bloc.state.outputChunks, isEmpty);
+      await bloc.close();
+    });
+
+    test('keeps a whitespace-only reply as an assistant turn', () async {
+      final bloc = buildBloc(forEngine: engine);
+      await _loadReady(bloc);
+      bloc.add(const InferenceGenerateRequested());
+      await engine.waitForGenerate();
+      engine.emitToken(' ');
+      engine.complete();
+      await _waitUntil(
+        () =>
+            bloc.state.status == InferenceStatus.modelReady &&
+            bloc.state.transcript.length == 2,
+      );
+
+      expect(
+        bloc.state.transcript.map((m) => '${m.role}:${m.content}').toList(),
+        ['${ChatMessage.roleUser}:hello', '${ChatMessage.roleAssistant}: '],
       );
       await bloc.close();
     });

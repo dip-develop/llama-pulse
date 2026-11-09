@@ -396,7 +396,9 @@ Native session rules:
   `InferenceState.transcript`, sends `[system?, …transcript, user]` (the user
   text also stays in `prompt`) and appends the assistant reply, or the partial
   text on cancel/failure. The CLI keeps its per-run `--system` and does not
-  read the stored default.
+  read the stored default. The transcript and stored system prompt shipped in
+  the merged PR #34, with the test-strength and empty-draft follow-up in PR
+  #35.
 - **Platform.** 64-bit desktop only: structs are returned by value.
 - **Selection.** `WorkerConfig.useStubSession` chooses
   `StubLlamaSession` (explicit `--stub` or `LLAMAPULSE_STUB_ENGINE`);
@@ -698,8 +700,8 @@ APIs, no `!` on nullable values, no empty `catch` blocks.
 
 From the root, `dart run melos test`. Melos picks `flutter test` for the app and
 `dart test` for core and CLI. Test the critical seams, not every line. Coverage
-is not a target. The suites hold 1195 tests today: 800 core (plus one
-env-gated skip), 233 CLI, 162 app.
+is not a target. The suites hold 1199 tests today: 800 core (plus one
+env-gated skip), 233 CLI, 166 app.
 
 Must test today:
 
@@ -945,7 +947,7 @@ prints both exports. Never commit `.env` files, secrets or absolute local paths.
 
 - [ ] The workspace resolves with one lockfile (`flutter pub get` at the root).
 - [ ] `pubspec.lock` stays untracked.
-- [ ] `dart run melos run check` is green (1195 tests: 800 core, 233 CLI, 162
+- [ ] `dart run melos run check` is green (1199 tests: 800 core, 233 CLI, 166
   app; one core integration test is skipped without a native library).
 - [ ] `dart run melos run gen:catalog:check` is green, and the generated
   `llama_args.v0.8.0.yaml` and `parameter_catalog.generated.dart` are committed

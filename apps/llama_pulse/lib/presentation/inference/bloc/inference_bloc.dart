@@ -578,14 +578,15 @@ class InferenceBloc extends Bloc<InferenceEvent, InferenceState> {
 
   /// Folds the in-flight assistant draft into the transcript.
   ///
-  /// Returns [next] unchanged when no text arrived, so a turn that failed
-  /// before its first token — or that only produced zero-length tokens —
-  /// leaves only the user message. Every terminal path goes through [_finish],
-  /// and [_terminalSeen] makes that happen once.
+  /// Adds no assistant turn when no text arrived, so a turn that failed before
+  /// its first token — or that only produced zero-length tokens — leaves only
+  /// the user message. The draft is cleared either way, as the state contract
+  /// says a terminal event leaves [InferenceState.output] empty. Every terminal
+  /// path goes through [_finish], and [_terminalSeen] makes that happen once.
   InferenceState _commitDraft(InferenceState next) {
     final String reply = next.output;
     if (reply.isEmpty) {
-      return next;
+      return next.rebuild((b) => b..outputChunks = ListBuilder<String>());
     }
     return next.rebuild(
       (b) => b
