@@ -140,7 +140,8 @@ void main() {
         'llama_pulse.app/Contents/MacOS/llama_pulse',
         'llama_pulse.app/Contents/Info.plist',
         'llama_pulse.app/Contents/Frameworks/FlutterMacOS.framework',
-        'llama_pulse.app/Contents/Resources/flutter_assets',
+        'llama_pulse.app/Contents/Frameworks/App.framework/Resources/'
+            'flutter_assets',
         'README.md',
         'LICENSE',
       ]);

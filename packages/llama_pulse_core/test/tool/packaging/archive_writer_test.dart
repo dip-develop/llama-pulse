@@ -233,29 +233,66 @@ Future<void> _linuxStage(String stage) async {
 Future<void> _macosStage(String stage) async {
   final contents = p.join(stage, 'llama_pulse.app', 'Contents');
   await _file(p.join(contents, 'MacOS', 'llama_pulse'), executable: true);
-  await _file(p.join(contents, 'Info.plist'), text: '<plist/>');
+  await _file(
+    p.join(contents, 'Info.plist'),
+    text: _bundlePlist(
+      executable: 'llama_pulse',
+      identifier: 'dev.llamapulse.desktop',
+      packageType: 'APPL',
+    ),
+  );
+  await _framework(contents, 'FlutterMacOS');
+  await _framework(contents, 'App');
   await _file(
     p.join(
       contents,
       'Frameworks',
-      'FlutterMacOS.framework',
+      'App.framework',
       'Versions',
       'A',
-      'FlutterMacOS',
+      'Resources',
+      'flutter_assets',
+      'AssetManifest.bin',
     ),
-  );
-  if (!Platform.isWindows) {
-    final framework = p.join(contents, 'Frameworks', 'FlutterMacOS.framework');
-    Link(p.join(framework, 'Versions', 'Current')).createSync('A');
-    Link(p.join(framework, 'FlutterMacOS'))
-        .createSync('Versions/Current/FlutterMacOS');
-  }
-  await _file(
-    p.join(contents, 'Resources', 'flutter_assets', 'AssetManifest.bin'),
   );
   await _file(p.join(stage, 'README.md'), text: '# LlamaPulse\n');
   await _file(p.join(stage, 'LICENSE'), text: 'MIT\n');
 }
+
+/// Creates a versioned framework bundle, including the `Info.plist` that
+/// `codesign` requires for a nested code object.
+Future<void> _framework(String contents, String name) async {
+  final framework = p.join(contents, 'Frameworks', '$name.framework');
+  await _file(p.join(framework, 'Versions', 'A', name));
+  await _file(
+    p.join(framework, 'Versions', 'A', 'Resources', 'Info.plist'),
+    text: _bundlePlist(
+      executable: name,
+      identifier: 'dev.llamapulse.desktop.$name',
+      packageType: 'FMWK',
+    ),
+  );
+  if (!Platform.isWindows) {
+    Link(p.join(framework, 'Versions', 'Current')).createSync('A');
+    Link(p.join(framework, name)).createSync('Versions/Current/$name');
+    Link(p.join(framework, 'Resources'))
+        .createSync('Versions/Current/Resources');
+  }
+}
+
+String _bundlePlist({
+  required String executable,
+  required String identifier,
+  required String packageType,
+}) =>
+    '<?xml version="1.0" encoding="UTF-8"?>\n'
+    '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" '
+    '"http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n'
+    '<plist version="1.0"><dict>'
+    '<key>CFBundleExecutable</key><string>$executable</string>'
+    '<key>CFBundleIdentifier</key><string>$identifier</string>'
+    '<key>CFBundlePackageType</key><string>$packageType</string>'
+    '</dict></plist>\n';
 
 void _populateExtractedMacos(String stage) {
   final contents = p.join(stage, 'llama_pulse.app', 'Contents');
@@ -263,8 +300,17 @@ void _populateExtractedMacos(String stage) {
   _syncFile(p.join(contents, 'Info.plist'), text: '<plist/>');
   Directory(p.join(contents, 'Frameworks', 'FlutterMacOS.framework'))
       .createSync(recursive: true);
+  Directory(p.join(contents, 'Frameworks', 'App.framework', 'Resources'))
+      .createSync(recursive: true);
   _syncFile(
-    p.join(contents, 'Resources', 'flutter_assets', 'AssetManifest.bin'),
+    p.join(
+      contents,
+      'Frameworks',
+      'App.framework',
+      'Resources',
+      'flutter_assets',
+      'AssetManifest.bin',
+    ),
   );
   _syncFile(p.join(stage, 'README.md'), text: '# LlamaPulse\n');
   _syncFile(p.join(stage, 'LICENSE'), text: 'MIT\n');

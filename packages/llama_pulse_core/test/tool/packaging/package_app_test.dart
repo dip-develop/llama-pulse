@@ -55,7 +55,15 @@ Future<Directory> macosBundle(String parent) async {
       'FlutterMacOS',
     ),
   );
-  await file(p.join('Resources', 'flutter_assets', 'AssetManifest.bin'));
+  await file(
+    p.join(
+      'Frameworks',
+      'App.framework',
+      'Resources',
+      'flutter_assets',
+      'AssetManifest.bin',
+    ),
+  );
   return app.parent;
 }
 

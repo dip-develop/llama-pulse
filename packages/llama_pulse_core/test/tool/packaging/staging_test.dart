@@ -91,7 +91,14 @@ void main() {
             .createSync('Versions/Current/FlutterMacOS');
       }
       await _file(
-        p.join(app.path, 'Resources', 'flutter_assets', 'AssetManifest.bin'),
+        p.join(
+          app.path,
+          'Frameworks',
+          'App.framework',
+          'Resources',
+          'flutter_assets',
+          'AssetManifest.bin',
+        ),
       );
       return p.join(dir.path, 'llama_pulse.app');
     }

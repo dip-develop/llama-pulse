@@ -119,7 +119,11 @@ List<String> requiredEntries(
       'llama_pulse.app/Contents/MacOS/llama_pulse',
       'llama_pulse.app/Contents/Info.plist',
       'llama_pulse.app/Contents/Frameworks/FlutterMacOS.framework/',
-      'llama_pulse.app/Contents/Resources/flutter_assets/',
+      // Flutter bundles macOS assets inside App.framework, not Contents/
+      // Resources; `Resources` is a symlink to `Versions/Current/Resources`
+      // and verifyLayout follows it.
+      'llama_pulse.app/Contents/Frameworks/App.framework/Resources/'
+          'flutter_assets/',
       'README.md',
       'LICENSE',
     ],
@@ -178,6 +182,8 @@ List<String> verifyLayout(
 String _joinEntry(String stage, String entry) {
   final isDirectory = entry.endsWith('/');
   final trimmed = isDirectory ? entry.substring(0, entry.length - 1) : entry;
-  final joined = p.join(stage, trimmed);
+  // Entries are POSIX-style; split before joining so the reported path uses
+  // the host separator throughout instead of mixing `\` and `/` on Windows.
+  final joined = p.joinAll(<String>[stage, ...trimmed.split('/')]);
   return isDirectory ? '$joined${p.separator}' : joined;
 }

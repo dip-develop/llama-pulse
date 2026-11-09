@@ -227,7 +227,9 @@ Future<void> _build({
   required ProcessRunner runner,
 }) async {
   final result = await runner.run(
-    flutterExecutable(isWindows: target == PackageTarget.windows),
+    // The launcher name follows the host, not the target: `flutter` has no
+    // executable on Windows, whatever platform the bundle is for.
+    flutterExecutable(),
     <String>['build', target.os, '--release'],
     workingDirectory: p.join(repoRoot, 'apps', 'llama_pulse'),
   );
