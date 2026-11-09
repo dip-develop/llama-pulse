@@ -132,12 +132,26 @@ Future<int> runPackageApp(
       _usageError(err, 'invalid runtime backend: $runtimeBackend', parser);
       return 2;
     }
-    if (target.runtimePlatform(arch) == null) {
+    final platform = target.runtimePlatform(arch);
+    if (platform == null) {
       err.writeln(
         '--runtime is not supported for ${target.artifactId(arch)}: '
         'LlamaPulse publishes runtime assets only for linux-x64, '
         'windows-x64 and macos-arm64.',
       );
+      return 2;
+    }
+    // Reject an unknown or unpublished backend before looking for an
+    // installed runtime, so a typo does not report "install it first".
+    final selectionProblems = runtimeSelectionProblems(
+      runtimeTag: runtimeTag,
+      runtimeBackend: runtimeBackend,
+      platform: platform,
+    );
+    if (selectionProblems.isNotEmpty) {
+      for (final problem in selectionProblems) {
+        err.writeln('error: $problem');
+      }
       return 2;
     }
   }

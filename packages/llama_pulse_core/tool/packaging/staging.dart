@@ -129,6 +129,56 @@ Future<StageResult> stage({
   return StageResult(stageDir: stageDir, problems: problems);
 }
 
+/// Validates a runtime tag and backend against the pinned release for
+/// [platform].
+///
+/// Returns one message per invalid or unpublished input; an empty list means
+/// the selection is one the pinned release ships for [platform]. No filesystem
+/// access happens here, so callers can reject a bad selection before checking
+/// whether the runtime is installed.
+List<String> runtimeSelectionProblems({
+  required String runtimeTag,
+  required String runtimeBackend,
+  required RuntimePlatform platform,
+}) {
+  final problems = <String>[];
+  if (!_tagPattern.hasMatch(runtimeTag) ||
+      runtimeTag == '.' ||
+      runtimeTag.contains('..')) {
+    problems.add('invalid runtime tag: $runtimeTag');
+  }
+  if (!_backendPattern.hasMatch(runtimeBackend) ||
+      runtimeBackend.contains('..')) {
+    problems.add('invalid runtime backend: $runtimeBackend');
+  }
+  if (problems.isNotEmpty) {
+    return problems;
+  }
+
+  if (runtimeTag != RuntimeRelease.v080.tag) {
+    return problems;
+  }
+  final backend = RuntimeBackend.fromId(runtimeBackend);
+  if (backend == null) {
+    problems
+      ..add('unknown runtime backend: $runtimeBackend')
+      ..add('use one of: ${_publishedBackends(platform)}');
+    return problems;
+  }
+  if (RuntimeRelease.v080.forBackend(backend, platform) == null) {
+    problems.add(
+      'runtime backend $runtimeBackend is not published for '
+      '${platform.id}; use one of: ${_publishedBackends(platform)}',
+    );
+  }
+  return problems;
+}
+
+String _publishedBackends(RuntimePlatform platform) => RuntimeRelease.v080
+    .backendsFor(platform)
+    .map((candidate) => candidate.id)
+    .join(', ');
+
 /// Resolves and validates the runtime selected for [target].
 ///
 /// Adds one problem per invalid input or missing required file and returns
@@ -148,18 +198,6 @@ _ResolvedRuntime? _validateRuntime({
     problems.add('--runtime needs a tag and a backend');
     return null;
   }
-  if (!_tagPattern.hasMatch(runtimeTag) ||
-      runtimeTag == '.' ||
-      runtimeTag.contains('..')) {
-    problems.add('invalid runtime tag: $runtimeTag');
-  }
-  if (!_backendPattern.hasMatch(runtimeBackend) ||
-      runtimeBackend.contains('..')) {
-    problems.add('invalid runtime backend: $runtimeBackend');
-  }
-  if (problems.isNotEmpty) {
-    return null;
-  }
 
   final platform = target.runtimePlatform(arch);
   if (platform == null) {
@@ -171,23 +209,15 @@ _ResolvedRuntime? _validateRuntime({
     return null;
   }
 
-  if (runtimeTag == RuntimeRelease.v080.tag) {
-    final backend = RuntimeBackend.fromId(runtimeBackend);
-    if (backend == null) {
-      problems.add('unknown runtime backend: $runtimeBackend');
-    } else if (RuntimeRelease.v080.forBackend(backend, platform) == null) {
-      final valid = RuntimeRelease.v080
-          .backendsFor(platform)
-          .map((candidate) => candidate.id)
-          .join(', ');
-      problems.add(
-        'runtime backend $runtimeBackend is not published for '
-        '${platform.id}; use one of: $valid',
-      );
-    }
-    if (problems.isNotEmpty) {
-      return null;
-    }
+  problems.addAll(
+    runtimeSelectionProblems(
+      runtimeTag: runtimeTag,
+      runtimeBackend: runtimeBackend,
+      platform: platform,
+    ),
+  );
+  if (problems.isNotEmpty) {
+    return null;
   }
 
   if (configDir == null) {
