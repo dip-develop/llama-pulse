@@ -165,7 +165,11 @@ jobs:
         if: matrix.target == 'macos'
         run: |
           built=apps/llama_pulse/build/macos/Build/Products/Release/llama_pulse.app
-          entitlements=$(codesign -d --entitlements :- "$built" 2>&1 || true)
+          test -d "$built"
+          entitlements=$(codesign -d --entitlements :- "$built" 2>/dev/null) || {
+            echo "cannot read entitlements from $built" >&2
+            exit 1
+          }
           if printf '%s' "$entitlements" | grep -q com.apple.security.app-sandbox; then
             echo "the built app is still sandboxed" >&2
             exit 1
