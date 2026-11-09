@@ -31,15 +31,22 @@ abstract final class BundledRuntimes {
   static const String directoryName = 'runtime';
 
   /// `<executableDirectory>/runtime`, whether or not it exists.
-  static String rootFor(String executableDirectory) =>
-      p.join(executableDirectory, directoryName);
+  static String rootFor(String executableDirectory, {p.Context? pathContext}) =>
+      (pathContext ?? p.context).join(executableDirectory, directoryName);
 
   /// `<executableDirectory>/../Resources/runtime`, whether or not it exists.
   ///
   /// This is `Contents/Resources/runtime` for a macOS executable at
   /// `Contents/MacOS/<name>`.
-  static String macOsResourcesRootFor(String executableDirectory) => p
-      .normalize(p.join(executableDirectory, '..', 'Resources', directoryName));
+  static String macOsResourcesRootFor(
+    String executableDirectory, {
+    p.Context? pathContext,
+  }) {
+    final path = pathContext ?? p.context;
+    return path.normalize(
+      path.join(executableDirectory, '..', 'Resources', directoryName),
+    );
+  }
 
   /// Every `<tag>/<backend>` directory under the bundle's runtime roots,
   /// reverse path order.
@@ -49,20 +56,26 @@ abstract final class BundledRuntimes {
   /// and the result is sorted reverse path order, so `Contents/Resources`
   /// comes before `Contents/MacOS`.
   ///
+  /// Paths are rendered with [pathContext] (the host's context by default).
+  /// Tests pass a foreign context to exercise Windows or macOS shapes.
+  ///
   /// Returns an empty list when the bundle has no runtime directory. Unreadable
   /// roots and entries are skipped: a broken bundle must never stop a launch.
   static List<String> directories(
     String executableDirectory, {
     bool macOsBundle = false,
+    p.Context? pathContext,
   }) {
+    final path = pathContext ?? p.context;
     final roots = <String>[
-      rootFor(executableDirectory),
-      if (macOsBundle) macOsResourcesRootFor(executableDirectory),
+      rootFor(executableDirectory, pathContext: path),
+      if (macOsBundle)
+        macOsResourcesRootFor(executableDirectory, pathContext: path),
     ];
     final seen = <String>{};
     final found = <String>[];
     for (final rootPath in roots) {
-      for (final directory in _backendDirectories(rootPath)) {
+      for (final directory in _backendDirectories(rootPath, path)) {
         if (seen.add(directory)) {
           found.add(directory);
         }
@@ -73,7 +86,7 @@ abstract final class BundledRuntimes {
   }
 
   /// Backend directories under a single runtime root, unsorted.
-  static List<String> _backendDirectories(String rootPath) {
+  static List<String> _backendDirectories(String rootPath, p.Context path) {
     final root = Directory(rootPath);
     final found = <String>[];
     try {
@@ -86,7 +99,7 @@ abstract final class BundledRuntimes {
         }
         for (final backendEntry in tagEntry.listSync(followLinks: false)) {
           if (backendEntry is Directory) {
-            found.add(p.normalize(backendEntry.path));
+            found.add(path.normalize(backendEntry.path));
           }
         }
       }

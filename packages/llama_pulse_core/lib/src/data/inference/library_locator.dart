@@ -16,9 +16,10 @@ import '../serialization/serializers.dart' as core;
 /// native library on disk. Nothing here opens the library; the worker does.
 ///
 /// Tests may pass a [pathContext] for a foreign host to exercise Windows or
-/// macOS path shapes on Linux. Production must leave it null so the host's
-/// path context is used; the file existence checks in [resolveExisting] still
-/// run against the real filesystem.
+/// macOS candidate shapes on Linux; the bundled runtime roots are rendered with
+/// the same context. Production must leave it null so the host's path context
+/// is used; the file existence checks in [resolveExisting] still run against
+/// the real filesystem.
 final class LlamaLibraryLocator {
   LlamaLibraryLocator({
     String? explicitPath,
@@ -111,6 +112,7 @@ final class LlamaLibraryLocator {
       for (final directory in BundledRuntimes.directories(
         executableDirectory,
         macOsBundle: _isMacOs,
+        pathContext: _path,
       )) {
         add(_path.join(directory, libraryFileName));
       }

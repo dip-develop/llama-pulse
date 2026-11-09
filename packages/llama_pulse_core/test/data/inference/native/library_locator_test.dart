@@ -392,6 +392,52 @@ void main() {
       expect(found, library);
     });
 
+    test(
+      'Contents/Resources wins over Contents/MacOS for the same library',
+      () {
+        final fromMacOs = touch(
+          p.join(
+            'X.app',
+            'Contents',
+            'MacOS',
+            'runtime',
+            'v0.8.0',
+            'metal',
+            'libllama.dylib',
+          ),
+        );
+        final fromResources = touch(
+          p.join(
+            'X.app',
+            'Contents',
+            'Resources',
+            'runtime',
+            'v0.8.0',
+            'metal',
+            'libllama.dylib',
+          ),
+        );
+        final executable = p.join(
+          temp.path,
+          'X.app',
+          'Contents',
+          'MacOS',
+          'llama_pulse',
+        );
+
+        final paths = locator(
+          operatingSystem: 'macos',
+          executablePath: executable,
+        ).candidates;
+
+        expect(paths.indexOf(fromResources), greaterThanOrEqualTo(0));
+        expect(
+          paths.indexOf(fromResources),
+          lessThan(paths.indexOf(fromMacOs)),
+        );
+      },
+    );
+
     test('a config runtime wins over a macOS bundle library', () {
       writeIndex(
         indexWith(selectedTag: 'v0.8.0', selectedBackend: RuntimeBackend.cpu),
