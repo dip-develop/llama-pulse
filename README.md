@@ -42,7 +42,8 @@ llama-pulse/
 │   └── lib/src/data/       config/, inference/, models/, runtime/, server/
 ├── third_party/llama_cpp/  vendored v0.8.0 headers, arg.cpp and build recipe
 ├── docs/                   parameter catalog, runtimes, packaging and workflow docs
-├── tool/                   developer scripts: build_llama_cpp.sh, package_linux.sh
+├── tool/                   build_llama_cpp.sh and the package_linux.sh shim;
+│                           the cross-platform packager lives in core/tool/
 ├── AGENT.md                contributor and agent rules
 └── LICENSE                 MIT
 ```
@@ -116,9 +117,10 @@ Naming: app `llama_pulse`, CLI `llamapulse`, package `llama_pulse_core`.
   `PATH` are tried in that order. Builds below `b4000` warn, and an unknown or unreadable
   `llama-server --version` reports `supported: true` with a warning; nothing
   blocks a start on the version.
-- **1172 tests** across the three packages (791 core, 233 CLI, 148 app); one
-  further core integration test is skipped unless a native library and model are
-  set.
+- **1276 tests** across the three packages (877 core, 233 CLI, 166 app); two
+  further tests are skipped: the core integration test unless a native library
+  and model are set, and the real macOS `ditto` archive test unless the host is
+  macOS.
 
 ## Requirements
 
@@ -420,17 +422,21 @@ lockfile.
 
 ### Package it
 
-```sh
-tool/package_linux.sh                            # release bundle, no runtime
-tool/package_linux.sh --runtime v0.8.0 cuda13    # copy an installed runtime in
-```
+| Target | Command | Archive |
+|---|---|---|
+| Linux x64 | `dart run melos run package:linux` | `dist/llama-pulse-<version>-linux-x64.tar.gz` |
+| Windows x64 | `dart run melos run package:windows` | `dist/llama-pulse-<version>-windows-x64.zip` |
+| macOS arm64 | `dart run melos run package:macos` | `dist/llama-pulse-<version>-macos-arm64.zip` |
 
-The script builds the Linux release bundle, adds `README.md`/`LICENSE`, copies
-one managed runtime to `<bundle>/runtime/<tag>/<backend>/` when asked, and
-writes `dist/llama-pulse-<version>-linux-x64.tar.gz`. A bundled runtime is a
-fallback: a runtime the user selects under `<config>/runtime/` still wins. See
-[docs/packaging.md](docs/packaging.md). Icons, installers and the Windows/macOS
-bundles are not part of it yet.
+The packager at `packages/llama_pulse_core/tool/package_app.dart` builds the
+release bundle, adds `README.md`/`LICENSE`, copies one managed runtime to
+`runtime/<tag>/<backend>/` (macOS: `Contents/Resources/runtime/...`) when asked,
+and writes and verifies the platform archive. Run each target on its own host;
+`tool/package_linux.sh` remains as a shim. A bundled runtime is a fallback: a
+runtime the user selects under `<config>/runtime/` still wins. `--skip-build
+--check` stages and verifies an existing bundle without writing an archive, which
+is what CI runs. See [docs/packaging.md](docs/packaging.md). Icons, installers
+and signing/notarisation are not part of it yet.
 
 ## CLI
 
@@ -831,11 +837,12 @@ domain gateways so the GUI's `RuntimeBloc` never imports the data layer. The
 - [x] llama.cpp runtime downloader: pinned assets, hardware detection,
   verified installs, CLI `runtime` group and the GUI Runtime tab
 - [ ] GPU smoke tests on CUDA, Vulkan, ROCm and Metal
-- [ ] Windows and macOS builds
+- [x] Windows and macOS desktop builds
 - [x] CI for analyze, tests and builds
-- [x] Linux app bundle with an optional managed runtime
-  (`tool/package_linux.sh`)
-- [ ] Icons, installers and Windows/macOS bundles
+- [x] Desktop bundles for Linux, Windows and macOS with an optional managed
+  runtime (`packages/llama_pulse_core/tool/package_app.dart`;
+  `tool/package_linux.sh` is a shim)
+- [ ] Icons and installers
 
 The runtime manager **asks which compute backend to install
 (CPU/ROCm/CUDA/Vulkan/Metal)** and offers the detected default rather than
@@ -852,8 +859,10 @@ immutability and configuration rules reviews check.
 - Before pushing, run `dart run melos run check`; it runs gen, analyze, tests,
   the format check and the CLI build. Every PR also runs
   [`.github/workflows/ci.yml`](.github/workflows/ci.yml): the same gate plus a
-  Linux desktop debug build, tests on Ubuntu, macOS and Windows, and a
-  standalone Windows job that only compiles the CLI.
+  Linux desktop debug build, tests on Ubuntu, macOS and Windows, a
+  standalone Windows job that only compiles the CLI, and `Package (macos)` /
+  `Package (windows)` jobs that build, write and verify the bundles. Packaging
+  artifacts upload only on `main` and `workflow_dispatch`.
 - Generated `.g.dart` and `.config.dart` files are committed; re-run gen after a
   model change, and add tests for the seam you touched or explain why not.
 

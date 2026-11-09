@@ -1,22 +1,22 @@
-# Project status — 2026-11-08
+# Project status — 2026-11-09
 
 A resume point for a fresh session. Facts below were measured on the commit
 named here, not copied from memory. The rules live in `AGENT.md`; this file is
 a snapshot and goes stale, so check `git branch -a`, `gh pr list` and
 `gh issue list` before trusting it. Its GitHub mirror is the pinned issue #16.
 
-- Baseline: `origin/main` = `117058d` ("Merge pull request #34 from
-  dip-develop/feature/chat-transcript", 2026-11-08), the base of the feature
-  branch below.
-- Suite on `feature/chat-transcript`, measured 2026-11-08 after `flutter pub
-  get` and `melos run gen`: `melos test` exit `0`, **1199 tests** — 800 core
-  (plus 1 env-gated skip, `native_integration_test`), 233 CLI, 166 app.
-  The last Windows run, measured on `aa35432`, had 722 core tests run and 70
-  skipped (the C shim and native session tests need clang), plus 233 CLI and
-  148 app; this branch was not re-measured on Windows.
-- `melos run check` (gen twice, catalog check, analyze, 1199 tests, format, CLI
-  AOT) and `flutter build linux --debug` are green on this branch. The earlier
-  CI run for `5f19cfe`, the previous baseline, was green on every job.
+- Baseline: `origin/main` = `77f9db2` ("Merge pull request #35 from
+  dip-develop/feature/chat-transcript", 2026-11-09), the base of
+  `chore/packaging-windows-macos` (PR #40, issue #39).
+- Suite on `chore/packaging-windows-macos`, measured 2026-11-09 after `flutter
+  pub get` and `melos run gen` twice: `melos test` exit `0`, **1276 tests** —
+  877 core (plus two host/env-gated skips: `native_integration_test`, and the
+  real macOS `ditto` archive test on a non-macOS host), 233 CLI, 166 app.
+- `melos run check` (gen twice, catalog check, analyze, 1276 tests, format, CLI
+  AOT) is green on this branch, as is `melos run format:check` and
+  `gen:catalog:check` (362 parameters). The CI run for `4365352`, the branch
+  head before the docs slice, was green on every job, including `Package
+  (macos)` and `Package (windows)`. A push of the docs slice starts a new run.
 
 ## Shipped
 
@@ -72,7 +72,7 @@ a snapshot and goes stale, so check `git branch -a`, `gh pr list` and
   the first run and 23.9–24.3 tok/s on repeats. CPU only, no GPU backend.
 - **CI (PR #24, Windows suites in PR #29).** `.github/workflows/ci.yml`: a
   Linux `Workspace gate` job runs `melos run check` (gen, catalog drift,
-  analyze, 1199 tests, format, CLI AOT), fails on generated-file drift, builds
+  analyze, 1276 tests, format, CLI AOT), fails on generated-file drift, builds
   the Linux desktop app and smoke-tests the packaging script; a `test` matrix
   runs analyze and the suites on Ubuntu, macOS and Windows (the C-shim and
   native-session tests skip where clang or a native library is missing), and a
@@ -86,7 +86,24 @@ a snapshot and goes stale, so check `git branch -a`, `gh pr list` and
   `<bundle>/runtime/<tag>/<backend>/`; both locators resolve that directory
   after a user-selected runtime and before `<config>/bin`/`lib` and `PATH`.
   `docs/packaging.md` records the layout and resolution order; the CI gate
-  smoke-tests the script.
+  smoke-tests the script. The script is now a shim over the shared packager.
+- **Windows and macOS bundles (PR #40, issue #39).** The library locator takes
+  an injectable `package:path` context, and both loaders resolve a macOS
+  bundled runtime from `Contents/Resources/runtime` (which wins over
+  `Contents/MacOS/runtime`). The App Sandbox is removed from both macOS
+  entitlement files because LlamaPulse supervises an external `llama-server`
+  and opens user-selected `.gguf` files, and Mac App Store distribution is out
+  of scope. `packages/llama_pulse_core/tool/package_app.dart` stages Linux,
+  Windows and macOS bundles with per-target required-entry checks, drops
+  `*.pdb`/`*.exp`/`*.lib` on Windows, copies the runtime under
+  `runtime/<tag>/<backend>` (macOS: `Contents/Resources`), re-signs the macOS
+  app ad hoc, writes `tar.gz`/`zip` (macOS through `ditto`) and verifies the
+  archive it wrote. `--check` stages to a temporary directory without writing.
+  Melos gained `package:linux|windows|macos`; CI gained a `package` matrix on
+  `macos-latest`/`windows-latest` that builds, checks, archives, extracts and
+  verifies, asserts the macOS app is unsandboxed, and uploads artifacts only on
+  `main`/`workflow_dispatch`. `docs/packaging.md` documents all three trees,
+  flags, exit codes and what was verified where.
 - **Multi-message chat prompts (PR #31, issue #30).** `ChatMessage`,
   `GenerationRequest.messages` and `WorkerRequest` carry a conversation; the
   native session renders every message through `llama_chat_apply_template`,
@@ -105,8 +122,8 @@ a snapshot and goes stale, so check `git branch -a`, `gh pr list` and
   `ConversationView` (replacing `GenerationOutput`) renders role-labelled
   bubbles, the in-flight draft, an empty state and a Clear conversation action
   that is a no-op while a turn is running; the form gained a `system-prompt`
-  field saved by the existing Save action, blank meaning null. The open
-  follow-up in PR #35 strengthens the tests and clears an empty terminal draft.
+  field saved by the existing Save action, blank meaning null. The test-strength
+  follow-up shipped in PR #35, merged as `77f9db2`.
 - **Build helper.** `tool/build_llama_cpp.sh [tag]` (default `v0.8.0`) clones,
   configures with `-DBUILD_SHARED_LIBS=ON -DLLAMA_BUILD_IS_DEV=OFF
   -DLLAMA_BUILD_APP=OFF -DGGML_NATIVE=ON`, builds and prints the
@@ -116,17 +133,26 @@ a snapshot and goes stale, so check `git branch -a`, `gh pr list` and
 
 ## In flight
 
-- **Packaging follow-ups (from #27).** Icons and artwork, installers and the
-  Windows/macOS bundles stayed out of the v1 Linux bundle.
+- **Windows/macOS packaging (PR #40, issue #39).** Steps 1–9 are on
+  `chore/packaging-windows-macos`: the path seams, unsandboxed macOS build, the
+  cross-platform packager, the Linux shim, the melos scripts, the CI `package`
+  jobs and the documentation. It is open until the operator merges it.
+- **Packaging follow-ups (from #27).** Icons and artwork, installers and
+  signing/notarisation stayed out of this track.
+- **Runtime archive URLs (#37, PR #38).** A separate fix branch changes the
+  pinned archive download source; unrelated to packaging.
 
-## Open issues (2026-11-08)
+## Open issues (2026-11-09)
 
-- #16 — pinned status checkpoint (this file mirrors it).
-- #33 — chat transcript and stored system prompt; open only until the
-  `feature/chat-transcript` follow-up (PR #35) merges.
-- #27 (packaging), #25 (stop `--json`), #23 (Windows test portability), #22
-  (CI), #15 (runtime) and #13 (catalog) are closed; #28 (Linux bundle), #29
-  (Windows suites) and #31 (multi-message prompts) are merged.
+- #16 — pinned status checkpoint (this file mirrors it; refresh after PR #40).
+- #39 — Windows/macOS desktop bundles; open until PR #40 merges. Its last
+  checklist item, the `ServerBinaryLocatorImpl` `pathContext` seam, is still
+  open.
+- #37 — runtime archives from the nightly release (PR #38).
+- #33 is closed after PR #35 merged; #27 (packaging), #25 (stop `--json`), #23
+  (Windows test portability), #22 (CI), #15 (runtime) and #13 (catalog) are
+  closed; #28 (Linux bundle), #29 (Windows suites), #31 (multi-message prompts),
+  #34 (chat transcript) and #35 are merged.
 
 ## Decisions already made — do not relitigate
 
@@ -153,23 +179,48 @@ a snapshot and goes stale, so check `git branch -a`, `gh pr list` and
 
 ## Remaining plan, in order
 
-1. **Operator: merge PR #35** (issue #33), close #33 and refresh this
-   checkpoint.
+1. **Operator: merge PR #40** (issue #39), close #39 and refresh this
+   checkpoint and pinned #16. Do not touch #16 before the merge.
 2. **Packaging follow-ups** (from #27): icons and artwork (needs operator
-   artwork), installers (needs new tooling and dependencies), and the
-   Windows/macOS bundles (unwritten).
-3. **Jinja chat templates** for the embedded path: the built-in, named, `none`
+   artwork), installers (`.deb`, AppImage, MSIX, `.dmg`; needs new tooling and
+   dependencies), and macOS signing/notarisation (Developer ID, hardened
+   runtime plus `com.apple.security.cs.disable-library-validation` or signed
+   runtime dylibs).
+3. **Finish issue #39's last checklist item**: give `ServerBinaryLocatorImpl`
+   the same injectable `pathContext` seam as `LlamaLibraryLocator`; the
+   bundled-runtime roots are context-aware, but the binary locator still renders
+   with the host context.
+4. **Jinja chat templates** for the embedded path: the built-in, named, `none`
    and per-message rendering already ship (PR #31, issue #33); a Jinja engine
    is the remaining template work.
-4. **Windows and macOS validation** of the supervisor and embedded paths.
-5. **Larger models and GPU backends**: bigger context, CUDA/Vulkan/ROCm/Metal
-   smoke tests (needs real hardware).
+5. **Windows and macOS validation** of the supervisor and embedded paths, and
+   **GPU smoke tests** on CUDA, Vulkan, ROCm and Metal (needs real hardware).
 6. **Watch the CI flake**: the supervisor test that failed once under parallel
    load now runs on every PR.
 7. **Out of scope for now**: a server "router mode" (multi-model proxy).
 
 ## Open landmines
 
+- **macOS runs unsandboxed.** `com.apple.security.app-sandbox` is gone from both
+  entitlement files (operator-approved). LlamaPulse must spawn an external
+  `llama-server` and read `.gguf` files the user picks anywhere on disk, and
+  Mac App Store distribution is out of scope. Re-enabling the sandbox needs a
+  design for both, not just the entitlement.
+- **macOS archives are not verifiable on this workstation.** The development
+  host is Linux; `ditto` and `codesign` are macOS-only and the real-ditto test
+  skips elsewhere. The archive layout, ad-hoc signature and
+  `Contents/Resources` runtime placement are covered by CI on `macos-latest`
+  only, so a local green run says nothing about them.
+- **No signing or notarisation.** The macOS app is ad-hoc signed and the
+  Windows binaries are unsigned. A downloaded macOS app hits Gatekeeper's
+  quarantine block (right-click → Open or `xattr -dr com.apple.quarantine`);
+  Windows shows a SmartScreen warning. A real release needs a Developer ID and
+  notarisation, plus either a hardened runtime with
+  `com.apple.security.cs.disable-library-validation` or signatures on every
+  runtime dylib.
+- **Windows FFI sibling-DLL loading is CI-only.** The Windows bundle's
+  `llama.dll`/`ggml` DLL resolution and the staged `llama-server.exe` path are
+  exercised only by `windows-latest`; the Linux workstation cannot load them.
 - **Known flake.** `llama_server_supervisor_test` — "stop during a launch
   before the spawn leaves no process" — failed once under parallel load and
   passed on rerun. The CI `test` job is where to watch it; do not paper over a
@@ -204,12 +255,13 @@ a snapshot and goes stale, so check `git branch -a`, `gh pr list` and
 ```sh
 git fetch origin
 git branch -a                  # merged feature/fix branches may linger locally
-gh pr list                     # PR #35, the chat-transcript follow-up
-gh issue list                  # #16 (pinned status) and #33 (until #35 merges)
+gh pr list                     # PR #40 (Windows/macOS packaging)
+gh issue list                  # #16 (pinned status), #39 (until #40 merges), #37
 ```
 
 Then read `AGENT.md`, this file and pinned issue #16, and run
 `dart run melos run check` on a fresh branch cut from `origin/main`. The next
-concrete step is the operator merging PR #35 and closing #33, then the packaging
-follow-ups (icons, installers, Windows/macOS bundles), Jinja templates and
-Windows/macOS validation. The pinned checkpoint mirror is #16.
+concrete step is the operator merging PR #40, closing #39 and refreshing
+checkpoint #16 and this file, then the packaging follow-ups (icons, installers,
+macOS notarisation), the last #39 locator seam, Jinja templates and
+Windows/macOS/GPU validation. The pinned checkpoint mirror is #16.

@@ -83,7 +83,7 @@ Pins are deliberate; do not loosen them without reproducing the resolution:
 | `path` | `^1.9.1` | cross-platform paths |
 | `melos` (dev) | `^8.10.0` | workspace scripts and task runner |
 | `yaml` | `^3.1.4` | YAML decoding in core |
-| `args` | `^2.7.0` | CLI argument and command parsing |
+| `args` | `^2.7.0` | CLI and packaging-tool argument parsing |
 | `archive` | `^4.0.0` | streaming `.tar.gz`/`.zip` extraction for the runtime installer |
 | `crypto` | `^3.0.8` | SHA-256 of downloaded runtime archives; dev-only for the catalog digest |
 | `flutter_launcher_icons` (dev) | `^0.14.4` | Windows/macOS launcher icons |
@@ -95,6 +95,11 @@ The root also sets `dependency_overrides: cli_util: ^0.6.0`.
 `flutter_launcher_icons` only needs `cli_logging` (API-identical in
 0.4.2/0.5.0/0.6.0), while Melos 8 needs `BaseDirectories` from `cli_util`
 0.5.0+. `cli_util 0.6.0` satisfies both.
+
+`args` is also a **dev** dependency of `llama_pulse_core` for
+`packages/llama_pulse_core/tool/package_app.dart`. It was already resolved for
+the CLI, so the packager adds no package to the workspace and no new transitive
+dependency; `pubspec.lock` stays untracked either way.
 
 The server batch added no runtime dependency: HTTP, process launch and port
 probing use `dart:io` behind core gateways. `shelf` and `go_router` were
@@ -700,8 +705,9 @@ APIs, no `!` on nullable values, no empty `catch` blocks.
 
 From the root, `dart run melos test`. Melos picks `flutter test` for the app and
 `dart test` for core and CLI. Test the critical seams, not every line. Coverage
-is not a target. The suites hold 1199 tests today: 800 core (plus one
-env-gated skip), 233 CLI, 166 app.
+is not a target. The suites hold 1276 tests today: 877 core (plus two
+host/env-gated skips: `native_integration_test` and the real macOS `ditto`
+archive test), 233 CLI, 166 app.
 
 Must test today:
 
@@ -844,8 +850,14 @@ CI is `.github/workflows/ci.yml`, and it mirrors this gate rather than adding a
 second one: a Linux job runs `dart run melos run check`, fails on generated-file
 drift and builds the Linux desktop app; a `test` matrix runs analyze and the
 suites on Ubuntu, macOS and Windows; a standalone Windows job only compiles the
-CLI, with no analyze. It pins the Flutter baseline from section 3, not `stable`.
-Extend this workflow when a new platform gate is needed.
+CLI, with no analyze; and a `package` matrix builds, stages, archives and
+verifies the Windows and macOS bundles on `windows-latest` and `macos-latest`.
+The macOS job also asserts that the built app is not sandboxed. Packaging
+artifacts upload only for `main` and `workflow_dispatch`, not for pull requests.
+The Windows and macOS bundles are CI-verified only: the development workstation
+is Linux, so their layout, archive and runtime placement cannot be re-checked
+locally. It pins the Flutter baseline from section 3, not `stable`. Extend this
+workflow when a new platform gate is needed.
 
 ## 15. Extending
 
@@ -922,11 +934,28 @@ dart format lib test
 tool/build_llama_cpp.sh          # tag defaults to v0.8.0
 tool/build_llama_cpp.sh v0.8.0
 
-# Linux app bundle (release build by default)
-tool/package_linux.sh
-tool/package_linux.sh --runtime v0.8.0 cuda13
-tool/package_linux.sh --skip-build --bundle apps/llama_pulse/build/linux/x64/debug/bundle
+# desktop bundles: release build + README/LICENSE + optional runtime
+dart run melos run package:linux
+dart run melos run package:windows
+dart run melos run package:macos
+
+# equivalent direct entry point, for flags the scripts do not pass
+dart run packages/llama_pulse_core/tool/package_app.dart --os windows \
+  --runtime v0.8.0 cuda13
+dart run packages/llama_pulse_core/tool/package_app.dart --os macos \
+  --skip-build --check
 ```
+
+`package:linux|windows|macos` stage the target's Flutter release output, add
+`README.md`/`LICENSE`, copy one installed runtime when
+`--runtime <tag> <backend>` is given, then write and verify
+`dist/llama-pulse-<version>-<os>-<arch>.{tar.gz,zip}`. `--skip-build --check`
+stages an existing `--bundle` into a temporary directory and verifies its layout
+without writing an archive; CI runs exactly that before writing the real
+archive. `tool/package_linux.sh` is a compatibility shim that forwards to the
+Dart tool with `--os linux`. Run a target on its own host: `--os` is not a
+cross-compiler. The packager lives in core because `archive` and `path` already
+are core dependencies, and its `args` use is a dev dependency only (section 3).
 
 `dart run melos run check` runs gen, analyze, test, the format check and the CLI
 build. The multi-command scripts start with `set -e`, so it is a genuine gate; a
@@ -947,8 +976,8 @@ prints both exports. Never commit `.env` files, secrets or absolute local paths.
 
 - [ ] The workspace resolves with one lockfile (`flutter pub get` at the root).
 - [ ] `pubspec.lock` stays untracked.
-- [ ] `dart run melos run check` is green (1199 tests: 800 core, 233 CLI, 166
-  app; one core integration test is skipped without a native library).
+- [ ] `dart run melos run check` is green (1276 tests: 877 core plus two
+  host/env-gated skips, 233 CLI, 166 app).
 - [ ] `dart run melos run gen:catalog:check` is green, and the generated
   `llama_args.v0.8.0.yaml` and `parameter_catalog.generated.dart` are committed
   unchanged by a second generation.
@@ -968,8 +997,11 @@ prints both exports. Never commit `.env` files, secrets or absolute local paths.
   generation/cancel with the C shim) or skip cleanly without clang.
 - [ ] `dart run melos run gen` twice leaves `git status` clean.
 - [ ] The GitHub Actions run for the PR is green.
-- [ ] `tool/package_linux.sh --skip-build` still produces a valid archive (CI
-  runs it; see `docs/packaging.md`).
+- [ ] The desktop bundles still package: `dart run melos run package:linux`
+  (or `tool/package_linux.sh --skip-build`) produces a valid archive, and the
+  Windows/macOS `package` CI jobs are green. Windows and macOS bundles are
+  CI-verified only; do not claim a local check on the Linux workstation. See
+  `docs/packaging.md`.
 - [ ] Layers respected; no Flutter imports in core, no `dart:ffi` on the UI
   isolate.
 - [ ] Immutability rules from section 5 followed.
