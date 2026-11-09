@@ -381,7 +381,10 @@ void main() {
     expect(code, 0, reason: err.toString());
     expect(
       runner.invocations.any(
-        (invocation) => invocation.join(' ') == 'flutter build macos --release',
+        (invocation) =>
+            invocation.length > 1 &&
+            invocation.first == flutterExecutable() &&
+            invocation.skip(1).join(' ') == 'build macos --release',
       ),
       isTrue,
       reason: '${runner.invocations}',

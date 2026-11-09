@@ -504,7 +504,8 @@ void main() {
         skipBuild: true,
         arch: 'x64',
       );
-      final path = p.join(stageDir, entry.replaceFirst(RegExp(r'/$'), ''));
+      final relative = entry.replaceFirst(RegExp(r'/$'), '');
+      final path = p.joinAll(<String>[stageDir, ...relative.split('/')]);
       final type = FileSystemEntity.typeSync(path);
       if (type == FileSystemEntityType.directory) {
         await Directory(path).delete(recursive: true);
