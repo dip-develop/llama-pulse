@@ -1,6 +1,6 @@
 import 'dart:io';
 
-import 'package:archive/archive.dart';
+import 'package:archive/archive_io.dart';
 import 'package:path/path.dart' as p;
 
 import 'package_plan.dart';
@@ -140,10 +140,17 @@ List<String> _verifyZip({
   required RuntimeSelection? runtime,
 }) {
   final Archive archive;
+  // Decode from the file rather than a byte array: the central directory is
+  // read on demand, so a multi-hundred-MB Windows bundle never sits in RAM.
+  final input = InputFileStream(archivePath);
   try {
-    archive = ZipDecoder().decodeBytes(File(archivePath).readAsBytesSync());
+    archive = ZipDecoder().decodeStream(input);
   } on Object catch (error) {
     return <String>['cannot read $archivePath as a zip: $error'];
+  } finally {
+    // The reader keeps a file handle open; release it so Windows can delete
+    // or replace the archive afterwards.
+    input.closeSync();
   }
   final names = <String>[for (final file in archive) file.name];
   return _checkNames(
@@ -176,28 +183,32 @@ Future<List<String>> _verifyDitto({
             '${result.stderr}',
       ];
     }
-    if (!Platform.isMacOS) {
-      return const <String>[];
-    }
     final extracted = p.join(temp.path, stageName);
     final problems = verifyLayout(extracted, target, runtime: runtime);
     final executable = File(
       p.join(extracted, 'llama_pulse.app', 'Contents', 'MacOS', 'llama_pulse'),
     );
-    if (executable.existsSync() && !_isExecutable(executable.statSync().mode)) {
+    // Windows has no executable bit and reports mode 0, so only judge a mode
+    // that actually carries permission bits.
+    final mode = executable.existsSync() ? executable.statSync().mode : 0;
+    if (mode != 0 && !_isExecutable(mode)) {
       problems.add(
         '$extracted/llama_pulse.app/Contents/MacOS/llama_pulse '
         'is not executable',
       );
     }
-    final codesign = await runner.run('codesign', <String>[
-      '--verify',
-      '--deep',
-      '--strict',
-      p.join(extracted, 'llama_pulse.app'),
-    ]);
-    if (codesign.exitCode != 0) {
-      problems.add('codesign --verify failed: ${codesign.stderr}');
+    // `ditto -x` gives a real tree on any host, so the layout and mode checks
+    // always run; only the signature check needs Apple's `codesign`.
+    if (Platform.isMacOS) {
+      final codesign = await runner.run('codesign', <String>[
+        '--verify',
+        '--deep',
+        '--strict',
+        p.join(extracted, 'llama_pulse.app'),
+      ]);
+      if (codesign.exitCode != 0) {
+        problems.add('codesign --verify failed: ${codesign.stderr}');
+      }
     }
     return problems;
   } finally {
@@ -247,19 +258,25 @@ List<String> _lines(Object? output) => output
     .toList();
 
 void _writeZip(String stageDir, String stageName, String archivePath) {
-  final archive = Archive();
-  final root = Directory(stageDir);
-  for (final entity in root.listSync(recursive: true, followLinks: false)) {
-    if (entity is! File) {
-      continue;
+  // Stream each file into the archive. `ZipEncoder.encodeBytes` would buffer
+  // the whole Windows bundle in memory, which is several hundred MB once a
+  // CUDA runtime is included.
+  final encoder = ZipFileEncoder()..create(archivePath);
+  try {
+    for (final entity in Directory(
+      stageDir,
+    ).listSync(recursive: true, followLinks: false)) {
+      if (entity is! File) {
+        continue;
+      }
+      final relative = p
+          .relative(entity.path, from: stageDir)
+          .replaceAll(r'\', '/');
+      encoder.addFileSync(entity, '$stageName/$relative');
     }
-    final relative = p
-        .relative(entity.path, from: stageDir)
-        .replaceAll(r'\', '/');
-    final bytes = entity.readAsBytesSync();
-    archive.addFile(ArchiveFile.bytes('$stageName/$relative', bytes));
+  } finally {
+    encoder.closeSync();
   }
-  File(archivePath).writeAsBytesSync(ZipEncoder().encodeBytes(archive));
 }
 
 Future<void> _runChecked(

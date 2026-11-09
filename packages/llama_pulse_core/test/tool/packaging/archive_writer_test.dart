@@ -91,6 +91,9 @@ void main() {
     final stage = p.join(root.path, stageName);
     await _linuxStage(stage);
     final archive = p.join(root.path, 'out', '$stageName.tar.gz');
+    // The `tar -tzf` output is synthesised from `requiredEntries`, so this test
+    // pins the verifier's name-prefix handling, not real tar output. The Linux
+    // gate job runs the packager against a real bundle and so covers the gap.
     final listing = <String>[
       for (final entry in requiredEntries(PackageTarget.linux, stageName))
         '$stageName/$entry',
