@@ -363,6 +363,68 @@ void main() {
         lessThan(paths.indexOf(configLibrary)),
       );
     });
+
+    test('resolves a macOS bundle library under Contents/Resources', () {
+      final library = touch(
+        p.join(
+          'X.app',
+          'Contents',
+          'Resources',
+          'runtime',
+          'v0.8.0',
+          'metal',
+          'libllama.dylib',
+        ),
+      );
+      final executable = p.join(
+        temp.path,
+        'X.app',
+        'Contents',
+        'MacOS',
+        'llama_pulse',
+      );
+
+      final found = locator(
+        operatingSystem: 'macos',
+        executablePath: executable,
+      ).resolveExisting();
+
+      expect(found, library);
+    });
+
+    test('a config runtime wins over a macOS bundle library', () {
+      writeIndex(
+        indexWith(selectedTag: 'v0.8.0', selectedBackend: RuntimeBackend.cpu),
+      );
+      final configLibrary = touch(
+        p.join('config', 'runtime', 'v0.8.0', 'cpu', 'libllama.dylib'),
+      );
+      touch(
+        p.join(
+          'X.app',
+          'Contents',
+          'Resources',
+          'runtime',
+          'v0.8.0',
+          'metal',
+          'libllama.dylib',
+        ),
+      );
+      final executable = p.join(
+        temp.path,
+        'X.app',
+        'Contents',
+        'MacOS',
+        'llama_pulse',
+      );
+
+      final found = locator(
+        operatingSystem: 'macos',
+        executablePath: executable,
+      ).resolveExisting();
+
+      expect(found, configLibrary);
+    });
   });
 
   group('notFoundFailure', () {

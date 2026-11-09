@@ -411,6 +411,39 @@ void main() {
 
       expect(info.path, bundled.path);
     });
+
+    test('finds a macOS bundle runtime under Contents/Resources', () async {
+      final resourcesRuntime = p.join(
+        executableDirectory.path,
+        'X.app',
+        'Contents',
+        'Resources',
+        'runtime',
+        'v0.8.0',
+        'metal',
+      );
+      final bundled = await createExecutable(
+        p.join(resourcesRuntime, _binaryName),
+      );
+
+      final info = await ServerBinaryLocatorImpl(
+        paths: AppPaths(configDirectory: configDirectory.path),
+        executablePath: p.join(
+          executableDirectory.path,
+          'X.app',
+          'Contents',
+          'MacOS',
+          'llama_pulse',
+        ),
+        environment: const {'PATH': ''},
+        operatingSystem: 'macos',
+        versionReader: _fakeReader,
+        runtimeStore: store,
+      ).locate(ServerConfig.defaults());
+
+      expect(info.path, bundled.path);
+      expect(info.runtimeDirectory, p.normalize(resourcesRuntime));
+    });
   });
 
   test('throws binaryNotFound and lists every searched path', () async {

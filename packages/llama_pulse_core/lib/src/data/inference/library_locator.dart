@@ -56,7 +56,9 @@ final class LlamaLibraryLocator {
   /// `<config>/lib`, with the selected runtime first and the others newest
   /// first. A runtime shipped beside the executable
   /// (`<exeDir>/runtime/<tag>/<backend>`) is the fallback after those and
-  /// before `<config>/lib`. The last entry is the bare file name: it is never
+  /// before `<config>/lib`; a macOS bundle also looks in
+  /// `<exeDir>/../Resources/runtime/<tag>/<backend>`, which wins over
+  /// `<exeDir>/runtime`. The last entry is the bare file name: it is never
   /// checked for existence here because `dlopen` may still resolve it through
   /// the loader.
   List<String> get candidates {
@@ -108,6 +110,7 @@ final class LlamaLibraryLocator {
     if (executableDirectory != null) {
       for (final directory in BundledRuntimes.directories(
         executableDirectory,
+        macOsBundle: _isMacOs,
       )) {
         add(_path.join(directory, libraryFileName));
       }
@@ -160,6 +163,8 @@ final class LlamaLibraryLocator {
           'or place it next to the executable'
       ..details = candidates.join('\n'),
   );
+
+  bool get _isMacOs => _operatingSystem == 'macos';
 
   static String _requirePath(String path) {
     if (path.trim().isEmpty) {
