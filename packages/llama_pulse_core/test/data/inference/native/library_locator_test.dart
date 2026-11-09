@@ -31,12 +31,14 @@ void main() {
     String operatingSystem = 'linux',
     String? executablePath,
     String? configDirectory,
+    p.Context? pathContext,
   }) => LlamaLibraryLocator(
     explicitPath: explicitPath,
     environment: environment,
     operatingSystem: operatingSystem,
     executablePath: executablePath ?? p.join(temp.path, 'bin', 'llamapulse'),
     configDirectory: configDirectory ?? p.join(temp.path, 'config'),
+    pathContext: pathContext,
   );
 
   String exeDir() => p.join(temp.path, 'bin');
@@ -141,6 +143,45 @@ void main() {
       final paths = locator(operatingSystem: 'macos').candidates;
 
       expect(paths, everyElement(endsWith('libllama.dylib')));
+    });
+  });
+
+  group('path contexts', () {
+    test('lists Windows candidates with a Windows context', () {
+      const executable = r'C:\Program Files\LlamaPulse\llama_pulse.exe';
+      const config = r'C:\Users\you\AppData\Roaming\LlamaPulse';
+
+      final paths = locator(
+        operatingSystem: 'windows',
+        executablePath: executable,
+        configDirectory: config,
+        pathContext: p.Context(style: p.Style.windows),
+      ).candidates;
+
+      expect(paths.take(3), [
+        r'C:\Program Files\LlamaPulse\lib\llama.dll',
+        r'C:\Program Files\LlamaPulse\llama.dll',
+        r'C:\Program Files\Frameworks\llama.dll',
+      ]);
+      expect(
+        paths,
+        contains(r'C:\Users\you\AppData\Roaming\LlamaPulse\lib\llama.dll'),
+      );
+      expect(paths.last, 'llama.dll');
+    });
+
+    test('lists the macOS Frameworks dylib with a posix context', () {
+      const app = '/Applications/LlamaPulse.app';
+
+      final paths = locator(
+        operatingSystem: 'macos',
+        executablePath: '$app/Contents/MacOS/llama_pulse',
+        configDirectory: '/tmp/llama-pulse-config',
+        pathContext: p.Context(style: p.Style.posix),
+      ).candidates;
+
+      expect(paths, contains('$app/Contents/Frameworks/libllama.dylib'));
+      expect(paths.last, 'libllama.dylib');
     });
   });
 
