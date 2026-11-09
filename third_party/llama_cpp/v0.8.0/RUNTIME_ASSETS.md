@@ -14,6 +14,10 @@ Upstream publishes two kinds of release under the same tag:
   which names the nightly build the tag was cut from.
 - `b11960` — that nightly build. All binaries live here.
 
+The install tag remains `v0.8.0` (manifests, attestation and the runtime layout
+use it), but the archives are downloaded from `b11960`; `nightly-tag.txt` is the
+only asset under `v0.8.0`. `RuntimeAsset.assetTag` records that download release.
+
 `nightly-tag.txt` (7 bytes) contains `b11960`:
 
 | | |

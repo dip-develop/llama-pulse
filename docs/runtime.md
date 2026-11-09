@@ -21,9 +21,13 @@ and the code that mirrors them is
 | Source | https://github.com/ggml-org/llama.cpp |
 
 Upstream publishes the tag with a single `nightly-tag.txt` asset naming the
-nightly build (`b11960`); the binaries live on that nightly release. Nothing is
-resolved through the GitHub API at install time: the tag, build, commit, asset
-name, size and SHA-256 of every archive are constants in `RuntimeRelease.v080`.
+nightly build (`b11960`); the binaries live on that nightly release, so every
+archive is downloaded from `b11960`, not from `v0.8.0`. The install identity
+stays `v0.8.0`: manifests, attestation and the
+`<config>/runtime/<tag>/<backend>` layout use it, and `RuntimeAsset.assetTag`
+records the download release (`b11960`) separately. Nothing is resolved through
+the GitHub API at install time: the tag, build, commit, asset name, size and
+SHA-256 of every archive are constants in `RuntimeRelease.v080`.
 
 ## Backend matrix
 
