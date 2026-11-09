@@ -58,6 +58,11 @@ Both loaders accept a runtime beside the executable without any configuration:
 - `libllama`: `<exeDir>/runtime/<tag>/<backend>/libllama.so` (`.dylib`,
   `.dll` on the other platforms)
 
+A macOS `.app` may also keep the runtime under
+`<app>.app/Contents/Resources/runtime/<tag>/<backend>/`. The loaders check that
+root as well, and `Contents/Resources` wins over `Contents/MacOS` when both
+carry the same runtime.
+
 A runtime the user selected under `<config>/runtime/` still wins over the
 bundled one, so installing a newer or different backend later keeps working.
 The bundled one is the fallback that makes a fresh installation runnable before

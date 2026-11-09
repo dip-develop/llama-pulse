@@ -139,8 +139,11 @@ Both the server binary and the embedded library prefer managed runtimes.
 3. `<exeDir>/data/llama-server`, `<exeDir>/llama-server`
 4. installed runtimes, in `RuntimeIndex.resolutionOrder`: the selected backend
    first, then the other installs newest first
-5. `<config>/bin/llama-server`
-6. `PATH`
+5. bundled runtimes, `<exeDir>/runtime/<tag>/<backend>/llama-server`; a macOS
+   `.app` may also keep one at `<app>.app/Contents/Resources/runtime/<tag>/<backend>/`,
+   and `Contents/Resources` wins over `Contents/MacOS`
+6. `<config>/bin/llama-server`
+7. `PATH`
 
 `libllama` (`LlamaLibraryLocator`):
 
@@ -148,8 +151,9 @@ Both the server binary and the embedded library prefer managed runtimes.
 2. `LLAMA_PULSE_LIB`
 3. `<exeDir>/lib`, `<exeDir>`, `<exeDir>/../Frameworks`
 4. installed runtimes, same order as above
-5. `<config>/lib`
-6. the bare soname
+5. bundled runtimes, the same roots as for `llama-server`
+6. `<config>/lib`
+7. the bare soname
 
 A binary resolved from a runtime starts with that directory as its working
 directory and with `LD_LIBRARY_PATH`, `DYLD_LIBRARY_PATH` and `PATH` prefixed by
