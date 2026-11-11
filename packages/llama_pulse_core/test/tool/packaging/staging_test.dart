@@ -418,6 +418,26 @@ void main() {
       expect(result.problems, contains('invalid runtime tag: v0.8..0'));
     });
 
+    test('unknown tag', () async {
+      final result = await stage(
+        target: PackageTarget.linux,
+        bundleDir: p.join(root.path, 'unused'),
+        stageDir: p.join(root.path, 'dist', 'stage'),
+        repoRoot: repoRoot,
+        configDir: p.join(root.path, 'config'),
+        runtimeTag: 'v0.7.0',
+        runtimeBackend: 'cpu',
+        runner: runner,
+        skipBuild: true,
+        arch: 'x64',
+      );
+
+      expect(
+        result.problems.single,
+        'unknown runtime tag v0.7.0; this build packages v0.8.0',
+      );
+    });
+
     test('unknown backend', () async {
       final result = await stage(
         target: PackageTarget.linux,

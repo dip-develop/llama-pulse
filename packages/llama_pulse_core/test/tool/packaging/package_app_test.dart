@@ -298,6 +298,130 @@ void main() {
     );
   });
 
+  test('an unknown runtime tag exits 2 before the install check', () async {
+    final out = StringBuffer();
+    final err = StringBuffer();
+
+    final code = await run(
+      <String>[
+        '--os',
+        'linux',
+        '--runtime',
+        'v0.7.0',
+        'totallybogus',
+        '--skip-build',
+        '--bundle',
+        p.join(Directory.systemTemp.path, 'missing-bundle'),
+      ],
+      out: out,
+      err: err,
+    );
+
+    expect(code, 2);
+    expect(
+      err.toString(),
+      contains('unknown runtime tag v0.7.0; this build packages v0.8.0'),
+    );
+    expect(
+      err.toString(),
+      isNot(contains('install the runtime first')),
+      reason: 'a tag this build does not package is never an install problem',
+    );
+  });
+
+  test(
+    'a published runtime that is not installed exits 1 with the install hint',
+    () async {
+      final workspace = await Directory.systemTemp.createTemp(
+        'llama_pulse_missing_runtime_',
+      );
+      addTearDown(() async {
+        if (await workspace.exists()) {
+          await workspace.delete(recursive: true);
+        }
+      });
+      final bundle = await windowsBundle(workspace.path);
+      final configDir = p.join(workspace.path, 'config');
+      final out = StringBuffer();
+      final err = StringBuffer();
+
+      final code = await run(
+        <String>[
+          '--os',
+          'linux',
+          '--runtime',
+          'v0.8.0',
+          'cuda13',
+          '--config-dir',
+          configDir,
+          '--skip-build',
+          '--bundle',
+          bundle.path,
+          '--out',
+          p.join(workspace.path, 'dist'),
+          '--check',
+        ],
+        out: out,
+        err: err,
+      );
+
+      expect(code, 1, reason: err.toString());
+      expect(err.toString(), contains('install the runtime first'));
+      expect(
+        err.toString(),
+        contains('llamapulse runtime install --backend cuda13'),
+      );
+      expect(Directory(configDir).existsSync(), isFalse);
+      expect(Directory(p.join(workspace.path, 'dist')).existsSync(), isFalse);
+    },
+  );
+
+  test('an --out inside the bundle wins over a missing runtime', () async {
+    final workspace = await Directory.systemTemp.createTemp(
+      'llama_pulse_nested_out_runtime_',
+    );
+    addTearDown(() async {
+      if (await workspace.exists()) {
+        await workspace.delete(recursive: true);
+      }
+    });
+    final bundle = await windowsBundle(workspace.path);
+    final out = StringBuffer();
+    final err = StringBuffer();
+
+    final code = await run(
+      <String>[
+        '--os',
+        'linux',
+        '--runtime',
+        'v0.8.0',
+        'cuda13',
+        '--config-dir',
+        p.join(workspace.path, 'config'),
+        '--skip-build',
+        '--bundle',
+        bundle.path,
+        '--out',
+        bundle.path,
+        '--check',
+      ],
+      out: out,
+      err: err,
+    );
+
+    expect(
+      code,
+      2,
+      reason: 'the documented matrix promises exit 2 for a nested --out',
+    );
+    expect(err.toString(), contains('inside the bundle'));
+    expect(
+      err.toString(),
+      isNot(contains('install the runtime first')),
+      reason: 'the usage error is reported before the install check',
+    );
+  });
+
   test('empty --out or --bundle exits 2', () async {
     for (final option in <String>['--out', '--bundle']) {
       final out = StringBuffer();

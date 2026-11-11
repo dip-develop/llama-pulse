@@ -200,6 +200,17 @@ Future<int> runPackageApp(
     return 1;
   }
 
+  // A usage error wins over a missing runtime: the documented matrix promises
+  // exit 2 for a stage path inside the bundle, whatever else is wrong.
+  final stagePath = p.join(outDir, stageName(version, target, arch: arch));
+  if (p.equals(stagePath, bundleDir) || p.isWithin(bundleDir, stagePath)) {
+    err.writeln(
+      'error: --out resolves the stage to $stagePath, inside the bundle at '
+      '$bundleDir; choose an --out outside the bundle',
+    );
+    return 2;
+  }
+
   final configDir = _configDirectory(result.option('config-dir'));
   String? runtimeSource;
   if (runtimeTag != null && runtimeBackend != null) {
@@ -222,14 +233,6 @@ Future<int> runPackageApp(
     }
   }
 
-  final stagePath = p.join(outDir, stageName(version, target, arch: arch));
-  if (p.equals(stagePath, bundleDir) || p.isWithin(bundleDir, stagePath)) {
-    err.writeln(
-      'error: --out resolves the stage to $stagePath, inside the bundle at '
-      '$bundleDir; choose an --out outside the bundle',
-    );
-    return 2;
-  }
   final archive = p.join(outDir, archiveName(version, target, arch: arch));
   final runtime = runtimeTag == null || runtimeBackend == null
       ? null
@@ -311,9 +314,6 @@ Future<int> runPackageApp(
       ..writeln('created $archive (${_humanSize(size)}, verified)')
       ..writeln('run: ${_runHint(target, name, archive)}');
     return 0;
-  } on UnsupportedError catch (error) {
-    err.writeln('error: ${error.message}');
-    return 2;
   } on FileSystemException catch (error) {
     err.writeln('error: ${_fileSystemMessage(error)}');
     return 1;

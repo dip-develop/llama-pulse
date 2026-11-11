@@ -76,6 +76,12 @@ void main() {
       expect(release.totalSizeBytes, expected);
       expect(release.totalSizeBytes, greaterThan(0));
     });
+
+    test('releases lists the pin and forTag resolves only known tags', () {
+      expect(RuntimeRelease.releases, contains(release));
+      expect(RuntimeRelease.forTag('v0.8.0'), same(release));
+      expect(RuntimeRelease.forTag('v0.7.0'), isNull);
+    });
   });
 
   group('platform coverage', () {

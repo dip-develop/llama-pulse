@@ -155,29 +155,35 @@ List<String> runtimeSelectionProblems({
     return problems;
   }
 
-  if (runtimeTag != RuntimeRelease.v080.tag) {
+  final release = RuntimeRelease.forTag(runtimeTag);
+  if (release == null) {
+    problems.add(
+      'unknown runtime tag $runtimeTag; this build packages '
+      '${_packagedTags()}',
+    );
     return problems;
   }
   final backend = RuntimeBackend.fromId(runtimeBackend);
   if (backend == null) {
     problems
       ..add('unknown runtime backend: $runtimeBackend')
-      ..add('use one of: ${_publishedBackends(platform)}');
+      ..add('use one of: ${_publishedBackends(release, platform)}');
     return problems;
   }
-  if (RuntimeRelease.v080.forBackend(backend, platform) == null) {
+  if (release.forBackend(backend, platform) == null) {
     problems.add(
       'runtime backend $runtimeBackend is not published for '
-      '${platform.id}; use one of: ${_publishedBackends(platform)}',
+      '${platform.id}; use one of: ${_publishedBackends(release, platform)}',
     );
   }
   return problems;
 }
 
-String _publishedBackends(RuntimePlatform platform) => RuntimeRelease.v080
-    .backendsFor(platform)
-    .map((candidate) => candidate.id)
-    .join(', ');
+String _packagedTags() =>
+    RuntimeRelease.releases.map((release) => release.tag).join(', ');
+
+String _publishedBackends(RuntimeRelease release, RuntimePlatform platform) =>
+    release.backendsFor(platform).map((candidate) => candidate.id).join(', ');
 
 /// Resolves and validates the runtime selected for [target].
 ///

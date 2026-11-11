@@ -188,5 +188,23 @@ class RuntimeRelease {
     ],
   );
 
+  /// Every release this build knows about.
+  ///
+  /// A second pin is added here too; callers that only know a tag (the
+  /// packager's `--runtime`) resolve it through [forTag] instead of naming
+  /// [v080], so a new pin cannot silently bypass their validation.
+  static const List<RuntimeRelease> releases = <RuntimeRelease>[v080];
+
+  /// The pinned release with [tag], or `null` when this build does not package
+  /// that tag.
+  static RuntimeRelease? forTag(String tag) {
+    for (final release in releases) {
+      if (release.tag == tag) {
+        return release;
+      }
+    }
+    return null;
+  }
+
   static const String _tag = 'v0.8.0';
 }
