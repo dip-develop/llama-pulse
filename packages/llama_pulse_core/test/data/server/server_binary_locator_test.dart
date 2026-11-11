@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:built_collection/built_collection.dart';
 import 'package:llama_pulse_core/llama_pulse_core.dart';
+import 'package:llama_pulse_core/src/data/runtime/bundled_runtimes.dart';
 import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 
@@ -256,6 +257,105 @@ void main() {
 
     expect(info.path, bundled.path);
     expect(p.basename(info.path), 'llama-server.exe');
+  });
+
+  group('path contexts', () {
+    test('renders Windows candidates with a Windows context', () async {
+      final windows = p.Context(style: p.Style.windows);
+      const executable = r'C:\Program Files\LlamaPulse\llama_pulse.exe';
+
+      // Nothing exists on the POSIX host filesystem, so the failure lists the
+      // candidates the context rendered instead of resolving one.
+      final error = await capture(
+        () => ServerBinaryLocatorImpl(
+          paths: const AppPaths(
+            configDirectory: r'C:\Users\you\AppData\Roaming\LlamaPulse',
+          ),
+          executablePath: executable,
+          environment: const {'PATH': r'C:\Tools'},
+          operatingSystem: 'windows',
+          versionReader: _fakeReader,
+          pathContext: windows,
+        ).locate(ServerConfig.defaults()),
+      );
+
+      expect(error.failure.code, ServerFailureCode.binaryNotFound);
+      final searched = error.failure.details!.split('\n');
+      expect(
+        searched,
+        contains(r'C:\Program Files\LlamaPulse\data\llama-server.exe'),
+      );
+      expect(
+        searched,
+        contains(r'C:\Program Files\LlamaPulse\llama-server.exe'),
+      );
+      expect(
+        searched,
+        contains(
+          r'C:\Users\you\AppData\Roaming\LlamaPulse\bin\llama-server.exe',
+        ),
+      );
+      // The PATH entries are the last step and carry the bare `.exe` name.
+      expect(searched.last, r'C:\Tools\llama-server.exe');
+      expect(windows.basename(searched.last), 'llama-server.exe');
+      // A Windows exe directory cannot be enumerated by the POSIX filesystem,
+      // so the bundled-runtime root is only rendered, never walked here.
+      expect(
+        BundledRuntimes.rootFor(
+          windows.dirname(executable),
+          pathContext: windows,
+        ),
+        r'C:\Program Files\LlamaPulse\runtime',
+      );
+    });
+
+    test(
+      'finds the macOS Resources runtime with a posix context',
+      () async {
+        final posix = p.Context(style: p.Style.posix);
+        final app = p.join(root.path, 'Context.app');
+        final runtimeDirectory = p.join(
+          app,
+          'Contents',
+          'Resources',
+          'runtime',
+          'v0.8.0',
+          'metal',
+        );
+        final bundled = await createExecutable(
+          p.join(runtimeDirectory, 'llama-server'),
+        );
+
+        final info = await ServerBinaryLocatorImpl(
+          paths: AppPaths(configDirectory: configDirectory.path),
+          executablePath: p.join(app, 'Contents', 'MacOS', 'llama_pulse'),
+          environment: const {'PATH': ''},
+          operatingSystem: 'macos',
+          versionReader: _fakeReader,
+          pathContext: posix,
+        ).locate(ServerConfig.defaults());
+
+        expect(info.path, bundled.path);
+        expect(
+          info.path,
+          p.join(
+            app,
+            'Contents',
+            'Resources',
+            'runtime',
+            'v0.8.0',
+            'metal',
+            'llama-server',
+          ),
+        );
+        expect(info.runtimeDirectory, p.normalize(runtimeDirectory));
+      },
+      // The macOS locator applies the POSIX executability check, which Windows
+      // cannot reproduce (`chmod` is absent and the fixture has no `.exe`).
+      skip: Platform.isWindows
+          ? 'macOS locator uses the POSIX executability check'
+          : null,
+    );
   });
 
   group('managed runtimes', () {

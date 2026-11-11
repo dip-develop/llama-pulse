@@ -11,10 +11,10 @@ a snapshot and goes stale, so check `git branch -a`, `gh pr list` and
   pinned-commit check in `tool/build_llama_cpp.sh` are part of this branch.
 - Suite on `chore/packaging-windows-macos` after that merge, measured 2026-11-11
   after `flutter pub get` and `melos run gen` twice: `melos test` exit `0`,
-  **1291 tests** — 892 core (plus two host/env-gated skips:
+  **1293 tests** — 894 core (plus two host/env-gated skips:
   `native_integration_test`, and the real macOS `ditto` archive test on a
   non-macOS host), 233 CLI, 166 app.
-- `melos run check` (gen twice, catalog check, analyze, 1291 tests, format, CLI
+- `melos run check` (gen twice, catalog check, analyze, 1293 tests, format, CLI
   AOT) is green on this branch, as is `melos run format:check` and
   `gen:catalog:check` (362 parameters). The CI run for `8549e0e`, the merge
   commit, was green on all seven jobs: `Workspace gate`, the `test` matrix on
@@ -75,7 +75,7 @@ a snapshot and goes stale, so check `git branch -a`, `gh pr list` and
   the first run and 23.9–24.3 tok/s on repeats. CPU only, no GPU backend.
 - **CI (PR #24, Windows suites in PR #29).** `.github/workflows/ci.yml`: a
   Linux `Workspace gate` job runs `melos run check` (gen, catalog drift,
-  analyze, 1291 tests, format, CLI AOT), fails on generated-file drift, builds
+  analyze, 1293 tests, format, CLI AOT), fails on generated-file drift, builds
   the Linux desktop app and smoke-tests the packaging script; a `test` matrix
   runs analyze and the suites on Ubuntu, macOS and Windows (the C-shim and
   native-session tests skip where clang or a native library is missing), and a

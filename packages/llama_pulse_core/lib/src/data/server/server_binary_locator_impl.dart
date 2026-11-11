@@ -28,6 +28,12 @@ final class ServerBinaryLocatorImpl implements ServerBinaryLocator {
   /// [executablePath] is the running executable; its directory anchors the
   /// bundled candidates. [environment] and [operatingSystem] default to the
   /// current process. [versionReader] replaces version probing in tests.
+  ///
+  /// Tests may pass a [pathContext] for a foreign host to exercise Windows or
+  /// macOS candidate shapes on Linux; every path is rendered with it. Production
+  /// must leave it null so the host's path context is used; the file existence
+  /// and executability checks still run against the real filesystem and the
+  /// injected [operatingSystem].
   factory ServerBinaryLocatorImpl({
     required AppPaths paths,
     required String executablePath,
@@ -35,6 +41,7 @@ final class ServerBinaryLocatorImpl implements ServerBinaryLocator {
     String? operatingSystem,
     Future<ServerBinaryInfo> Function(String path)? versionReader,
     RuntimeStore? runtimeStore,
+    p.Context? pathContext,
   }) {
     final reader =
         versionReader ?? ServerVersionParser(const DartProcessExecutor()).parse;
@@ -45,6 +52,7 @@ final class ServerBinaryLocatorImpl implements ServerBinaryLocator {
       operatingSystem ?? Platform.operatingSystem,
       reader,
       runtimeStore ?? YamlRuntimeStore(paths: paths),
+      pathContext ?? p.context,
     );
   }
 
@@ -55,6 +63,7 @@ final class ServerBinaryLocatorImpl implements ServerBinaryLocator {
     this._operatingSystem,
     this._versionReader,
     this._runtimeStore,
+    this._path,
   );
 
   static const String _environmentVariable = 'LLAMA_PULSE_SERVER';
@@ -65,6 +74,7 @@ final class ServerBinaryLocatorImpl implements ServerBinaryLocator {
   final String _operatingSystem;
   final Future<ServerBinaryInfo> Function(String path) _versionReader;
   final RuntimeStore _runtimeStore;
+  final p.Context _path;
 
   bool get _isWindows => _operatingSystem == 'windows';
 
@@ -79,7 +89,7 @@ final class ServerBinaryLocatorImpl implements ServerBinaryLocator {
 
     final explicit = config.binaryPath.trim();
     if (explicit.isNotEmpty) {
-      final path = p.normalize(p.absolute(explicit));
+      final path = _path.normalize(_path.absolute(explicit));
       searched.add(path);
       if (!await _exists(path)) {
         throw _error(
@@ -101,11 +111,11 @@ final class ServerBinaryLocatorImpl implements ServerBinaryLocator {
     final fromEnvironment = _environment[_environmentVariable]?.trim() ?? '';
     if (fromEnvironment.isNotEmpty) {
       final List<String> candidates;
-      if (p.isAbsolute(fromEnvironment)) {
+      if (_path.isAbsolute(fromEnvironment)) {
         candidates = [fromEnvironment];
       } else if (fromEnvironment.contains('/') ||
           fromEnvironment.contains(r'\')) {
-        candidates = [p.absolute(fromEnvironment)];
+        candidates = [_path.absolute(fromEnvironment)];
       } else {
         candidates = _pathCandidates(fromEnvironment);
       }
@@ -115,11 +125,11 @@ final class ServerBinaryLocatorImpl implements ServerBinaryLocator {
       }
     }
 
-    final executableDirectory = p.dirname(p.absolute(_executablePath));
+    final executableDirectory = _path.dirname(_path.absolute(_executablePath));
     final bundled = await _firstRunnable(
       [
-        p.join(executableDirectory, 'data', _binaryName),
-        p.join(executableDirectory, _binaryName),
+        _path.join(executableDirectory, 'data', _binaryName),
+        _path.join(executableDirectory, _binaryName),
       ],
       searched,
       notExecutable,
@@ -143,7 +153,7 @@ final class ServerBinaryLocatorImpl implements ServerBinaryLocator {
     }
 
     final configured = await _firstRunnable(
-      [p.join(_paths.binDirectory, _binaryName)],
+      [_path.join(_paths.binDirectory, _binaryName)],
       searched,
       notExecutable,
     );
@@ -180,7 +190,7 @@ final class ServerBinaryLocatorImpl implements ServerBinaryLocator {
     List<String> notExecutable,
   ) async {
     for (final candidate in candidates) {
-      final path = p.normalize(p.absolute(candidate));
+      final path = _path.normalize(_path.absolute(candidate));
       searched.add(path);
       if (!await _exists(path)) {
         continue;
@@ -212,9 +222,10 @@ final class ServerBinaryLocatorImpl implements ServerBinaryLocator {
     for (final directory in BundledRuntimes.directories(
       executableDirectory,
       macOsBundle: _isMacOs,
+      pathContext: _path,
     )) {
       final path = await _firstRunnable(
-        [p.join(directory, _binaryName)],
+        [_path.join(directory, _binaryName)],
         searched,
         notExecutable,
       );
@@ -231,13 +242,13 @@ final class ServerBinaryLocatorImpl implements ServerBinaryLocator {
   ) async {
     final index = await _runtimeStore.index();
     for (final install in index.resolutionOrder) {
-      final directory = p.join(
+      final directory = _path.join(
         _paths.runtimeDirectory,
         install.tag,
         install.backend.id,
       );
       final path = await _firstRunnable(
-        [p.join(directory, _binaryName)],
+        [_path.join(directory, _binaryName)],
         searched,
         notExecutable,
       );
@@ -250,10 +261,12 @@ final class ServerBinaryLocatorImpl implements ServerBinaryLocator {
 
   List<String> _pathCandidates(String name) {
     final raw = _environment['PATH'] ?? '';
-    final separator = _isWindows ? ';' : ':';
+    // The PATH list separator follows the path context, not the injected OS:
+    // tests exercise a Windows-shaped list on a POSIX host.
+    final separator = _path.style == p.Style.windows ? ';' : ':';
     return [
       for (final entry in raw.split(separator))
-        if (entry.trim().isNotEmpty) p.join(_unquote(entry.trim()), name),
+        if (entry.trim().isNotEmpty) _path.join(_unquote(entry.trim()), name),
     ];
   }
 
