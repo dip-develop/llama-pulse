@@ -68,6 +68,8 @@ final class ServerBinaryLocatorImpl implements ServerBinaryLocator {
 
   bool get _isWindows => _operatingSystem == 'windows';
 
+  bool get _isMacOs => _operatingSystem == 'macos';
+
   String get _binaryName => _isWindows ? 'llama-server.exe' : 'llama-server';
 
   @override
@@ -196,7 +198,8 @@ final class ServerBinaryLocatorImpl implements ServerBinaryLocator {
   ///
   /// Runtime installs are tried in [RuntimeIndex.resolutionOrder]: the selected
   /// one first, then the rest newest first.
-  /// The first runtime shipped under `<exeDir>/runtime/<tag>/<backend>/`.
+  /// The first runtime shipped under `<exeDir>/runtime/<tag>/<backend>/` or,
+  /// for a macOS bundle, `<exeDir>/../Resources/runtime/<tag>/<backend>/`.
   ///
   /// The directories are tried in the order [BundledRuntimes.directories]
   /// returns; the binary is described with its directory so the supervisor
@@ -206,7 +209,10 @@ final class ServerBinaryLocatorImpl implements ServerBinaryLocator {
     List<String> searched,
     List<String> notExecutable,
   ) async {
-    for (final directory in BundledRuntimes.directories(executableDirectory)) {
+    for (final directory in BundledRuntimes.directories(
+      executableDirectory,
+      macOsBundle: _isMacOs,
+    )) {
       final path = await _firstRunnable(
         [p.join(directory, _binaryName)],
         searched,

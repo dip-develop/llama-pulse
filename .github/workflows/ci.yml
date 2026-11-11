@@ -108,3 +108,78 @@ jobs:
       - name: Compile the CLI
         working-directory: apps/llama_pulse_cli
         run: dart run tool/build_cli.dart
+
+  package:
+    name: Package (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: macos-latest, target: macos }
+          - { os: windows-latest, target: windows }
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+      - name: Install Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - name: Resolve the workspace
+        run: flutter pub get
+      - name: Build the desktop app
+        working-directory: apps/llama_pulse
+        run: flutter build ${{ matrix.target }} --release
+      - name: Check the bundle layout
+        # Stages into a temporary directory and verifies the required entries
+        # for the target without writing an archive.
+        run: >-
+          dart run packages/llama_pulse_core/tool/package_app.dart
+          --os ${{ matrix.target }} --skip-build --check --out dist
+      - name: Write the archive
+        run: >-
+          dart run packages/llama_pulse_core/tool/package_app.dart
+          --os ${{ matrix.target }} --skip-build --out dist
+      - name: Verify the archive (Windows)
+        if: matrix.target == 'windows'
+        shell: pwsh
+        run: |
+          $zip = Get-ChildItem dist/*.zip | Select-Object -First 1
+          Expand-Archive -Path $zip.FullName -DestinationPath dist/verify
+          $exe = Get-ChildItem dist/verify -Recurse -Filter llama_pulse.exe |
+            Select-Object -First 1
+          if (-not $exe) {
+            throw 'llama_pulse.exe is missing from the archive'
+          }
+      - name: Verify the archive (macOS)
+        if: matrix.target == 'macos'
+        run: |
+          ditto -x -k dist/*.zip dist/verify
+          app=$(find dist/verify -name llama_pulse.app -maxdepth 3 | head -n 1)
+          test -x "$app/Contents/MacOS/llama_pulse"
+          codesign --verify --deep --strict "$app"
+      - name: Check the app is not sandboxed (macOS)
+        if: matrix.target == 'macos'
+        run: |
+          built=apps/llama_pulse/build/macos/Build/Products/Release/llama_pulse.app
+          test -d "$built"
+          entitlements=$(codesign -d --entitlements :- "$built" 2>/dev/null) || {
+            echo "cannot read entitlements from $built" >&2
+            exit 1
+          }
+          if printf '%s' "$entitlements" | grep -q com.apple.security.app-sandbox; then
+            echo "the built app is still sandboxed" >&2
+            exit 1
+          fi
+      - name: Upload the archive
+        if: >-
+          github.ref == 'refs/heads/main' ||
+          github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: llama-pulse-${{ matrix.target }}
+          path: dist/*.zip
+          retention-days: 7
