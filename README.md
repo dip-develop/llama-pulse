@@ -117,7 +117,7 @@ Naming: app `llama_pulse`, CLI `llamapulse`, package `llama_pulse_core`.
   `PATH` are tried in that order. Builds below `b4000` warn, and an unknown or unreadable
   `llama-server --version` reports `supported: true` with a warning; nothing
   blocks a start on the version.
-- **1288 tests** across the three packages (889 core, 233 CLI, 166 app); two
+- **1291 tests** across the three packages (892 core, 233 CLI, 166 app); two
   further tests are skipped: the core integration test unless a native library
   and model are set, and the real macOS `ditto` archive test unless the host is
   macOS.

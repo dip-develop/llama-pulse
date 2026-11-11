@@ -12,7 +12,10 @@ cmake --build llama.cpp/build -j
 
 `tool/build_llama_cpp.sh` runs exactly these steps in one command
 (`tool/build_llama_cpp.sh [tag]`, default `v0.8.0`) and builds into
-`build/llama.cpp-<tag>`; keep the two in sync.
+`build/llama.cpp-<tag>`; keep the two in sync. For the pinned tag the script
+does not trust the tag alone: it reads the commit from `LlamaVersionPin`,
+checks the checkout out at that commit (fetching it if needed) and fails when it
+cannot, so a moved tag cannot silently build different source.
 
 `-DLLAMA_BUILD_IS_DEV=OFF` makes `llama_version()` return exactly `0.8.0`.
 A default build reports `0.8.0-dev`; `LlamaVersionPin.matches` compares the

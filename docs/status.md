@@ -1,22 +1,25 @@
-# Project status — 2026-11-09
+# Project status — 2026-11-11
 
 A resume point for a fresh session. Facts below were measured on the commit
 named here, not copied from memory. The rules live in `AGENT.md`; this file is
 a snapshot and goes stale, so check `git branch -a`, `gh pr list` and
 `gh issue list` before trusting it. Its GitHub mirror is the pinned issue #16.
 
-- Baseline: `origin/main` = `77f9db2` ("Merge pull request #35 from
-  dip-develop/feature/chat-transcript", 2026-11-09), the base of
-  `chore/packaging-windows-macos` (PR #40, issue #39).
-- Suite on `chore/packaging-windows-macos`, measured 2026-11-11 after `flutter
-  pub get` and `melos run gen` twice: `melos test` exit `0`, **1288 tests** —
-  889 core (plus two host/env-gated skips: `native_integration_test`, and the
-  real macOS `ditto` archive test on a non-macOS host), 233 CLI, 166 app.
-- `melos run check` (gen twice, catalog check, analyze, 1288 tests, format, CLI
+- Baseline: `origin/main` = `c72c5ec` ("Merge pull request #38 from
+  dip-develop/fix/runtime-asset-url", 2026-11-11). `chore/packaging-windows-macos`
+  (PR #40, issue #39) merges that commit in, so the runtime archive fix and the
+  pinned-commit check in `tool/build_llama_cpp.sh` are part of this branch.
+- Suite on `chore/packaging-windows-macos` after that merge, measured 2026-11-11
+  after `flutter pub get` and `melos run gen` twice: `melos test` exit `0`,
+  **1291 tests** — 892 core (plus two host/env-gated skips:
+  `native_integration_test`, and the real macOS `ditto` archive test on a
+  non-macOS host), 233 CLI, 166 app.
+- `melos run check` (gen twice, catalog check, analyze, 1291 tests, format, CLI
   AOT) is green on this branch, as is `melos run format:check` and
   `gen:catalog:check` (362 parameters). The CI run for `4365352`, the branch
-  head before the docs slice, was green on every job, including `Package
-  (macos)` and `Package (windows)`. A push of the docs slice starts a new run.
+  head before the docs slice and the merge, was green on every job, including
+  `Package (macos)` and `Package (windows)`. A push of the merge starts a new
+  run.
 
 ## Shipped
 
@@ -72,7 +75,7 @@ a snapshot and goes stale, so check `git branch -a`, `gh pr list` and
   the first run and 23.9–24.3 tok/s on repeats. CPU only, no GPU backend.
 - **CI (PR #24, Windows suites in PR #29).** `.github/workflows/ci.yml`: a
   Linux `Workspace gate` job runs `melos run check` (gen, catalog drift,
-  analyze, 1288 tests, format, CLI AOT), fails on generated-file drift, builds
+  analyze, 1291 tests, format, CLI AOT), fails on generated-file drift, builds
   the Linux desktop app and smoke-tests the packaging script; a `test` matrix
   runs analyze and the suites on Ubuntu, macOS and Windows (the C-shim and
   native-session tests skip where clang or a native library is missing), and a
@@ -124,10 +127,20 @@ a snapshot and goes stale, so check `git branch -a`, `gh pr list` and
   that is a no-op while a turn is running; the form gained a `system-prompt`
   field saved by the existing Save action, blank meaning null. The test-strength
   follow-up shipped in PR #35, merged as `77f9db2`.
+- **Runtime archive URLs (PR #38, issue #37).** Merged into `main` as
+  `c72c5ec`. Upstream's `v0.8.0` release carries only `nightly-tag.txt`; the
+  archives live on the nightly build it names (`b11960`). `RuntimeAsset`
+  gained `assetTag`, so `tag` stays the install identity (`v0.8.0`: manifests,
+  attestation, `<config>/runtime/<tag>/<backend>`) while every pinned asset
+  downloads from `.../releases/download/b11960/<asset>`. The same PR made
+  `tool/build_llama_cpp.sh` read the commit from `LlamaVersionPin` and check
+  the pinned tag's checkout out at it, fetching the commit when the tag moved.
 - **Build helper.** `tool/build_llama_cpp.sh [tag]` (default `v0.8.0`) clones,
   configures with `-DBUILD_SHARED_LIBS=ON -DLLAMA_BUILD_IS_DEV=OFF
   -DLLAMA_BUILD_APP=OFF -DGGML_NATIVE=ON`, builds and prints the
-  `LLAMA_PULSE_LIB` / `LD_LIBRARY_PATH` exports. `BUILD.md` records the recipe.
+  `LLAMA_PULSE_LIB` / `LD_LIBRARY_PATH` exports. For the pinned tag it also
+  verifies the checkout against `LlamaVersionPin.commit`. `BUILD.md` records
+  the recipe.
   `melos run build:cli` goes through `apps/llama_pulse_cli/tool/build_cli.dart`,
   so it works in PowerShell and writes `llamapulse.exe` on Windows.
 
@@ -136,23 +149,22 @@ a snapshot and goes stale, so check `git branch -a`, `gh pr list` and
 - **Windows/macOS packaging (PR #40, issue #39).** Steps 1–9 are on
   `chore/packaging-windows-macos`: the path seams, unsandboxed macOS build, the
   cross-platform packager, the Linux shim, the melos scripts, the CI `package`
-  jobs and the documentation. It is open until the operator merges it.
+  jobs and the documentation, plus a merge of `origin/main` that keeps the
+  runtime asset tag. It is open until the operator merges it.
 - **Packaging follow-ups (from #27).** Icons and artwork, installers and
   signing/notarisation stayed out of this track.
-- **Runtime archive URLs (#37, PR #38).** A separate fix branch changes the
-  pinned archive download source; unrelated to packaging.
 
-## Open issues (2026-11-09)
+## Open issues (2026-11-11)
 
 - #16 — pinned status checkpoint (this file mirrors it; refresh after PR #40).
 - #39 — Windows/macOS desktop bundles; open until PR #40 merges. Two checklist
   items stay open for a follow-up: the `ServerBinaryLocatorImpl` `pathContext`
   seam, and CI verification of a runtime-bearing macOS bundle.
-- #37 — runtime archives from the nightly release (PR #38).
-- #33 is closed after PR #35 merged; #27 (packaging), #25 (stop `--json`), #23
-  (Windows test portability), #22 (CI), #15 (runtime) and #13 (catalog) are
-  closed; #28 (Linux bundle), #29 (Windows suites), #31 (multi-message prompts),
-  #34 (chat transcript) and #35 are merged.
+- #37 is closed after PR #38 merged as `c72c5ec`; #33 is closed after PR #35
+  merged; #27 (packaging), #25 (stop `--json`), #23 (Windows test portability),
+  #22 (CI), #15 (runtime) and #13 (catalog) are closed; #28 (Linux bundle), #29
+  (Windows suites), #31 (multi-message prompts), #34 (chat transcript) and #35
+  are merged.
 
 ## Decisions already made — do not relitigate
 
@@ -259,7 +271,7 @@ a snapshot and goes stale, so check `git branch -a`, `gh pr list` and
 git fetch origin
 git branch -a                  # merged feature/fix branches may linger locally
 gh pr list                     # PR #40 (Windows/macOS packaging)
-gh issue list                  # #16 (pinned status), #39 (until #40 merges), #37
+gh issue list                  # #16 (pinned status), #39 (until #40 merges)
 ```
 
 Then read `AGENT.md`, this file and pinned issue #16, and run

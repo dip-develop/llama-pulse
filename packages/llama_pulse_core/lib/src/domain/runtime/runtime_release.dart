@@ -77,6 +77,7 @@ class RuntimeRelease {
       // Linux x64.
       RuntimeAsset(
         tag: _tag,
+        assetTag: _assetTag,
         backend: RuntimeBackend.cpu,
         platform: RuntimePlatform.linuxX64,
         assetName: 'llama-b11960-bin-ubuntu-x64.tar.gz',
@@ -86,6 +87,7 @@ class RuntimeRelease {
       ),
       RuntimeAsset(
         tag: _tag,
+        assetTag: _assetTag,
         backend: RuntimeBackend.cuda12,
         platform: RuntimePlatform.linuxX64,
         assetName: 'llama-b11960-bin-ubuntu-cuda-12.8-x64.tar.gz',
@@ -94,6 +96,7 @@ class RuntimeRelease {
         sizeBytes: 182524002,
         cudartAsset: RuntimeAsset(
           tag: _tag,
+          assetTag: _assetTag,
           backend: RuntimeBackend.cuda12,
           platform: RuntimePlatform.linuxX64,
           assetName: 'cudart-llama-b11960-bin-ubuntu-cuda-12.8-x64.tar.gz',
@@ -103,6 +106,7 @@ class RuntimeRelease {
       ),
       RuntimeAsset(
         tag: _tag,
+        assetTag: _assetTag,
         backend: RuntimeBackend.cuda13,
         platform: RuntimePlatform.linuxX64,
         assetName: 'llama-b11960-bin-ubuntu-cuda-13.4-x64.tar.gz',
@@ -111,6 +115,7 @@ class RuntimeRelease {
         sizeBytes: 163957335,
         cudartAsset: RuntimeAsset(
           tag: _tag,
+          assetTag: _assetTag,
           backend: RuntimeBackend.cuda13,
           platform: RuntimePlatform.linuxX64,
           assetName: 'cudart-llama-b11960-bin-ubuntu-cuda-13.4-x64.tar.gz',
@@ -120,6 +125,7 @@ class RuntimeRelease {
       ),
       RuntimeAsset(
         tag: _tag,
+        assetTag: _assetTag,
         backend: RuntimeBackend.vulkan,
         platform: RuntimePlatform.linuxX64,
         assetName: 'llama-b11960-bin-ubuntu-vulkan-x64.tar.gz',
@@ -129,6 +135,7 @@ class RuntimeRelease {
       ),
       RuntimeAsset(
         tag: _tag,
+        assetTag: _assetTag,
         backend: RuntimeBackend.rocm,
         platform: RuntimePlatform.linuxX64,
         assetName: 'llama-b11960-bin-ubuntu-rocm-10.0-x64.tar.gz',
@@ -140,6 +147,7 @@ class RuntimeRelease {
       // macOS arm64: one archive, built for Metal, carrying the CPU backend too.
       RuntimeAsset(
         tag: _tag,
+        assetTag: _assetTag,
         backend: RuntimeBackend.metal,
         platform: RuntimePlatform.macosArm64,
         assetName: 'llama-b11960-bin-macos-arm64.tar.gz',
@@ -152,6 +160,7 @@ class RuntimeRelease {
       // Windows x64.
       RuntimeAsset(
         tag: _tag,
+        assetTag: _assetTag,
         backend: RuntimeBackend.cpu,
         platform: RuntimePlatform.windowsX64,
         assetName: 'llama-b11960-bin-win-cpu-x64.zip',
@@ -161,6 +170,7 @@ class RuntimeRelease {
       ),
       RuntimeAsset(
         tag: _tag,
+        assetTag: _assetTag,
         backend: RuntimeBackend.cuda13,
         platform: RuntimePlatform.windowsX64,
         assetName: 'llama-b11960-bin-win-cuda-13.4-x64.zip',
@@ -169,6 +179,7 @@ class RuntimeRelease {
         sizeBytes: 164986387,
         cudartAsset: RuntimeAsset(
           tag: _tag,
+          assetTag: _assetTag,
           backend: RuntimeBackend.cuda13,
           platform: RuntimePlatform.windowsX64,
           assetName: 'cudart-llama-bin-win-cuda-13.4-x64.zip',
@@ -178,6 +189,7 @@ class RuntimeRelease {
       ),
       RuntimeAsset(
         tag: _tag,
+        assetTag: _assetTag,
         backend: RuntimeBackend.vulkan,
         platform: RuntimePlatform.windowsX64,
         assetName: 'llama-b11960-bin-win-vulkan-x64.zip',
@@ -206,5 +218,13 @@ class RuntimeRelease {
     return null;
   }
 
+  /// The install identity of the pinned release.
   static const String _tag = 'v0.8.0';
+
+  /// The upstream release that physically carries the pinned archives.
+  ///
+  /// `v0.8.0` itself only publishes `nightly-tag.txt`; the binaries live on the
+  /// nightly build it names. [RuntimeAsset.assetTag] carries this, so URLs point
+  /// here while manifests and the install layout keep [_tag].
+  static const String _assetTag = 'b11960';
 }
