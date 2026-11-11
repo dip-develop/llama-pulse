@@ -233,23 +233,29 @@ unless you have a reason not to.
 |---|---|---|
 | Linux x64 | On the Linux development workstation | Earlier check (PR #28, not re-run on this branch): archive extracted, app launched with an empty `LLAMA_PULSE_CONFIG_DIR`, bundled runtime reported by the dashboard. This branch re-produces and extracts the archive only. |
 | Windows x64 | CI, `windows-latest` | CI: `Expand-Archive`, `llama_pulse.exe` present; no interactive launch |
-| macOS arm64 | CI, `macos-latest` | CI: `ditto -x -k`, executable bit, `codesign --verify --deep --strict`, and an assertion that the built app is not sandboxed |
+| macOS arm64 | CI, `macos-latest` | CI, runtime-free and runtime-bearing bundles: `ditto -x -k`, executable bit, `codesign --verify --deep --strict`, and an assertion that the app is not sandboxed; the runtime-bearing bundle must also carry `Contents/Resources/runtime/v0.8.0/metal/` |
 
-CI packages **runtime-free** bundles on both CI hosts: it invokes the packager
-without `--runtime`. A macOS bundle that carries a runtime is therefore not
-covered yet. Its `llama-server` and dylibs live under `Contents/Resources` and
-are not signed by Flutter; whether `codesign --force --deep` signs them and
-`codesign --verify --deep --strict` then passes is unproven. The same gap does
-not exist for Linux because the runtime is a plain file tree under the stage
-root, and Windows runtimes are unsigned DLLs/EXEs already.
+CI packages a **runtime-free** bundle on both CI hosts: it invokes the packager
+without `--runtime`. On macOS it also packages a **runtime-bearing** bundle,
+but with a **fixture** runtime built in the job: a compiled Mach-O
+`libllama.dylib` (plus a `libggml-metal.dylib` copy, so `codesign --deep` signs
+nested code rather than only a resource), a scripted `llama-server` and a
+realistic `runtime.yaml`. That check extracts the archive with `ditto`, asserts
+the runtime files under `Contents/Resources`, the executable bit and
+`codesign --verify --deep --strict`, and re-reads the entitlements. It proves
+`codesign --force --deep` covers the added runtime code; it does not prove a
+**downloaded production** Metal runtime works, and Windows FFI loading of a
+bundled runtime remains unexercised. The same gap does not exist for Linux
+because the runtime is a plain file tree under the stage root, and Windows
+runtimes are unsigned DLLs/EXEs already.
 
 macOS archive correctness cannot be verified on the Linux workstation: `ditto`
 and `codesign` do not exist there, and the real-ditto test skips unless the host
 is macOS. Consequently the macOS archive layout and signature are covered by CI
-on `macos-latest` (runtime-free bundles), and the `Contents/Resources` runtime
-placement only by unit tests until a runtime-bearing bundle is built there.
-GPU backends are never exercised by packaging; they need real hardware and are
-validated separately.
+on `macos-latest`, for runtime-free bundles and for a fixture runtime-bearing
+bundle; the production dylibs from the pinned archive are still covered only by
+unit tests. GPU backends are never exercised by packaging; they need real
+hardware and are validated separately.
 
 ## Verification limits
 
@@ -258,10 +264,11 @@ validated separately.
   either a hardened runtime with
   `com.apple.security.cs.disable-library-validation` or signatures on every
   runtime dylib, and notarisation for macOS; Windows needs Authenticode.
-- The archive verifier checks structure, not execution. For runtime-free
-  bundles, CI proves the bundles unpack and the macOS signature verifies; it
-  does not start a GUI, load a model or run a GPU backend. A runtime-bearing
-  macOS bundle is not yet built or verified in CI.
+- The archive verifier checks structure, not execution. CI proves the bundles
+  unpack and the macOS signature verifies, including a fixture runtime-bearing
+  macOS bundle; it does not start a GUI, load a model, load a downloaded
+  production runtime or run a GPU backend, and it does not exercise Windows FFI
+  loading of a bundled runtime.
 - Icons and desktop entries. Every bundle carries Flutter's default icon;
   `flutter_launcher_icons` is a dev dependency but has no artwork wired up.
 - Installers (`.deb`, AppImage, MSIX, `.dmg`). These need new tooling and

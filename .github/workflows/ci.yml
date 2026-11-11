@@ -174,6 +174,68 @@ jobs:
             echo "the built app is still sandboxed" >&2
             exit 1
           fi
+      - name: Build a fixture runtime (macOS)
+        # A real Mach-O dylib makes `codesign --deep` sign nested code, not
+        # just a resource; the layout and runtime.yaml mirror a managed
+        # install. This is a deterministic fixture, not a downloaded archive.
+        if: matrix.target == 'macos'
+        run: |
+          fixture="$RUNNER_TEMP/llama-pulse-fixture-runtime"
+          runtime="$fixture/runtime/v0.8.0/metal"
+          mkdir -p "$runtime"
+          printf 'int llama_fixture;\n' |
+            clang -dynamiclib -x c - -o "$runtime/libllama.dylib"
+          cp "$runtime/libllama.dylib" "$runtime/libggml-metal.dylib"
+          printf '#!/bin/sh\nexit 0\n' > "$runtime/llama-server"
+          chmod +x "$runtime/llama-server"
+          cat > "$runtime/runtime.yaml" <<'YAML'
+          schemaVersion: 1
+          tag: v0.8.0
+          build: b11960
+          commit: 8642541b255bfb5dc39cd351a178be09013a55d6
+          backend: metal
+          platform: macos-arm64
+          assetName: llama-b11960-bin-macos-arm64.tar.gz
+          sha256: 58e5a5e1d7c2bf66cedd9c29e0323f3e570660a70a1e2156d32eed08f4cc1e3c
+          sizeBytes: 16465074
+          installedAtEpochMs: 1767225600000
+          llamaVersion: 0.8.0-dev
+          buildNumber: 11960
+          files: 12
+          YAML
+      - name: Package a runtime-bearing bundle (macOS)
+        if: matrix.target == 'macos'
+        run: >-
+          dart run packages/llama_pulse_core/tool/package_app.dart
+          --os macos --skip-build
+          --config-dir "$RUNNER_TEMP/llama-pulse-fixture-runtime"
+          --runtime v0.8.0 metal
+          --out dist-runtime
+      - name: Verify the runtime-bearing bundle (macOS)
+        if: matrix.target == 'macos'
+        run: |
+          ditto -x -k dist-runtime/*.zip dist-runtime/verify
+          app=$(find dist-runtime/verify -name llama_pulse.app -maxdepth 3 | head -n 1)
+          test -n "$app"
+          runtime="$app/Contents/Resources/runtime/v0.8.0/metal"
+          for file in llama-server libllama.dylib libggml-metal.dylib runtime.yaml; do
+            test -f "$runtime/$file" || {
+              echo "missing $runtime/$file in the runtime-bearing bundle" >&2
+              exit 1
+            }
+          done
+          test -x "$app/Contents/MacOS/llama_pulse"
+          codesign --verify --deep --strict "$app"
+          entitlements=$(codesign -d --entitlements :- "$app" 2>/dev/null) || {
+            echo "cannot read entitlements from $app" >&2
+            exit 1
+          }
+          if printf '%s' "$entitlements" | grep -q com.apple.security.app-sandbox; then
+            echo "the runtime-bearing app is still sandboxed" >&2
+            exit 1
+          fi
+          echo "runtime-bearing bundle verified: $app"
+          ls -l "$runtime"
       - name: Upload the archive
         if: >-
           github.ref == 'refs/heads/main' ||
