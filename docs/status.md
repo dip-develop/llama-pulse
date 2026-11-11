@@ -16,10 +16,10 @@ a snapshot and goes stale, so check `git branch -a`, `gh pr list` and
   non-macOS host), 233 CLI, 166 app.
 - `melos run check` (gen twice, catalog check, analyze, 1291 tests, format, CLI
   AOT) is green on this branch, as is `melos run format:check` and
-  `gen:catalog:check` (362 parameters). The CI run for `4365352`, the branch
-  head before the docs slice and the merge, was green on every job, including
-  `Package (macos)` and `Package (windows)`. A push of the merge starts a new
-  run.
+  `gen:catalog:check` (362 parameters). The CI run for `8549e0e`, the merge
+  commit, was green on all seven jobs: `Workspace gate`, the `test` matrix on
+  Ubuntu, macOS and Windows, `Compile the CLI (Windows)`, `Package (macos)` and
+  `Package (windows)`.
 
 ## Shipped
 
