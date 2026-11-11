@@ -705,7 +705,7 @@ APIs, no `!` on nullable values, no empty `catch` blocks.
 
 From the root, `dart run melos test`. Melos picks `flutter test` for the app and
 `dart test` for core and CLI. Test the critical seams, not every line. Coverage
-is not a target. The suites hold 1282 tests today: 883 core (plus two
+is not a target. The suites hold 1288 tests today: 889 core (plus two
 host/env-gated skips: `native_integration_test` and the real macOS `ditto`
 archive test), 233 CLI, 166 app.
 
@@ -976,7 +976,7 @@ prints both exports. Never commit `.env` files, secrets or absolute local paths.
 
 - [ ] The workspace resolves with one lockfile (`flutter pub get` at the root).
 - [ ] `pubspec.lock` stays untracked.
-- [ ] `dart run melos run check` is green (1282 tests: 883 core plus two
+- [ ] `dart run melos run check` is green (1288 tests: 889 core plus two
   host/env-gated skips, 233 CLI, 166 app).
 - [ ] `dart run melos run gen:catalog:check` is green, and the generated
   `llama_args.v0.8.0.yaml` and `parameter_catalog.generated.dart` are committed

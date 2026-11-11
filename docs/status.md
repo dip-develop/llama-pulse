@@ -9,10 +9,10 @@ a snapshot and goes stale, so check `git branch -a`, `gh pr list` and
   dip-develop/feature/chat-transcript", 2026-11-09), the base of
   `chore/packaging-windows-macos` (PR #40, issue #39).
 - Suite on `chore/packaging-windows-macos`, measured 2026-11-11 after `flutter
-  pub get` and `melos run gen` twice: `melos test` exit `0`, **1282 tests** —
-  883 core (plus two host/env-gated skips: `native_integration_test`, and the
+  pub get` and `melos run gen` twice: `melos test` exit `0`, **1288 tests** —
+  889 core (plus two host/env-gated skips: `native_integration_test`, and the
   real macOS `ditto` archive test on a non-macOS host), 233 CLI, 166 app.
-- `melos run check` (gen twice, catalog check, analyze, 1282 tests, format, CLI
+- `melos run check` (gen twice, catalog check, analyze, 1288 tests, format, CLI
   AOT) is green on this branch, as is `melos run format:check` and
   `gen:catalog:check` (362 parameters). The CI run for `4365352`, the branch
   head before the docs slice, was green on every job, including `Package
@@ -72,7 +72,7 @@ a snapshot and goes stale, so check `git branch -a`, `gh pr list` and
   the first run and 23.9–24.3 tok/s on repeats. CPU only, no GPU backend.
 - **CI (PR #24, Windows suites in PR #29).** `.github/workflows/ci.yml`: a
   Linux `Workspace gate` job runs `melos run check` (gen, catalog drift,
-  analyze, 1282 tests, format, CLI AOT), fails on generated-file drift, builds
+  analyze, 1288 tests, format, CLI AOT), fails on generated-file drift, builds
   the Linux desktop app and smoke-tests the packaging script; a `test` matrix
   runs analyze and the suites on Ubuntu, macOS and Windows (the C-shim and
   native-session tests skip where clang or a native library is missing), and a
@@ -145,9 +145,9 @@ a snapshot and goes stale, so check `git branch -a`, `gh pr list` and
 ## Open issues (2026-11-09)
 
 - #16 — pinned status checkpoint (this file mirrors it; refresh after PR #40).
-- #39 — Windows/macOS desktop bundles; open until PR #40 merges. Its last
-  checklist item, the `ServerBinaryLocatorImpl` `pathContext` seam, is still
-  open.
+- #39 — Windows/macOS desktop bundles; open until PR #40 merges. Two checklist
+  items stay open for a follow-up: the `ServerBinaryLocatorImpl` `pathContext`
+  seam, and CI verification of a runtime-bearing macOS bundle.
 - #37 — runtime archives from the nightly release (PR #38).
 - #33 is closed after PR #35 merged; #27 (packaging), #25 (stop `--json`), #23
   (Windows test portability), #22 (CI), #15 (runtime) and #13 (catalog) are
@@ -186,10 +186,12 @@ a snapshot and goes stale, so check `git branch -a`, `gh pr list` and
    dependencies), and macOS signing/notarisation (Developer ID, hardened
    runtime plus `com.apple.security.cs.disable-library-validation` or signed
    runtime dylibs).
-3. **Finish issue #39's last checklist item**: give `ServerBinaryLocatorImpl`
-   the same injectable `pathContext` seam as `LlamaLibraryLocator`; the
-   bundled-runtime roots are context-aware, but the binary locator still renders
-   with the host context.
+3. **Finish issue #39's two open checklist items**: give
+   `ServerBinaryLocatorImpl` the same injectable `pathContext` seam as
+   `LlamaLibraryLocator` (the bundled-runtime roots are context-aware, but the
+   binary locator still renders with the host context), and build a
+   runtime-bearing macOS bundle in CI so the `Contents/Resources` placement and
+   the ad-hoc signature over the added dylibs are actually verified.
 4. **Jinja chat templates** for the embedded path: the built-in, named, `none`
    and per-message rendering already ship (PR #31, issue #33); a Jinja engine
    is the remaining template work.
@@ -208,9 +210,10 @@ a snapshot and goes stale, so check `git branch -a`, `gh pr list` and
   design for both, not just the entitlement.
 - **macOS archives are not verifiable on this workstation.** The development
   host is Linux; `ditto` and `codesign` are macOS-only and the real-ditto test
-  skips elsewhere. The archive layout, ad-hoc signature and
-  `Contents/Resources` runtime placement are covered by CI on `macos-latest`
-  only, so a local green run says nothing about them.
+  skips elsewhere. CI on `macos-latest` packages a runtime-free bundle, so only
+  that layout and the ad-hoc signature are covered there; the
+  `Contents/Resources` runtime placement is unit-tested but has not yet been
+  verified with a real runtime-bearing bundle (issue #39).
 - **No signing or notarisation.** The macOS app is ad-hoc signed and the
   Windows binaries are unsigned. A downloaded macOS app hits Gatekeeper's
   quarantine block (right-click → Open or `xattr -dr com.apple.quarantine`);

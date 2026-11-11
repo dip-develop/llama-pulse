@@ -52,24 +52,30 @@ from the repo root, not from the caller's working directory.
 |---|---|
 | 0 | Success, including `--help` and `--check` |
 | 1 | Missing bundle or runtime, a failed build, a filesystem error (unwritable or occupied `--out`), or a layout/archive verification problem |
-| 2 | Usage or validation error: unknown OS, empty `--bundle`/`--out`, a stage path inside the bundle, an unsupported ABI, an invalid tag, or an unknown/unpublished backend |
+| 2 | Usage or validation error: unknown OS, empty `--bundle`/`--out`, a stage path inside the bundle, an unsupported ABI, an unknown or invalid tag, or an unknown/unpublished backend |
 
 The runtime must already be installed (`llamapulse runtime install --backend
 <id>`) and must contain `llama-server` (`llama-server.exe` on Windows) plus
-`runtime.yaml`. Before it looks for an installed runtime, the tool rejects an
-invalid tag or an unknown/unpublished backend and lists the backends actually
-published for the target (exit 2); only a valid backend that is not installed
-reaches the "install the runtime first" message (exit 1). It copies the runtime
-verbatim; it never generates or rewrites `runtime.yaml`, so the attested
-`0.8.0-dev` gate works for a bundled install exactly as it does for a
-downloaded one. A CUDA runtime is several hundred megabytes and needs the
-matching NVIDIA driver, so bundle it only when you know the target.
+`runtime.yaml`. Before it looks for an installed runtime, the tool rejects a tag
+this build does not package (`unknown runtime tag v0.7.0; this build packages
+v0.8.0`), an invalid tag, or an unknown/unpublished backend, and lists the
+backends actually published for the target (exit 2); only a valid backend that
+is not installed reaches the "install the runtime first" message (exit 1). The
+same precedence holds for the other usage errors: an `--out` that resolves the
+stage inside the bundle is reported (exit 2) even when the runtime is also
+missing. It copies the runtime verbatim; it never generates or rewrites
+`runtime.yaml`, so the attested `0.8.0-dev` gate works for a bundled install
+exactly as it does for a downloaded one. A CUDA runtime is several hundred
+megabytes and needs the matching NVIDIA driver, so bundle it only when you know
+the target.
 
 Archives are written in the platform's format: `tar.gz` on Linux, `zip` on
 Windows and macOS. macOS uses `ditto --sequesterRsrc --keepParent` so framework
 symlinks and extended attributes survive; Windows uses a Dart ZIP written and
 re-read as a stream, so a bundle with a large CUDA runtime is never held in
-memory in one piece. Before the tool reports success it re-reads the archive it
+memory in one piece, and each entry's file handle is closed before the next one
+opens. A failed write deletes the truncated archive instead of leaving it at the
+final path. Before the tool reports success it re-reads the archive it
 just wrote and compares every required entry with the staged tree; on macOS it
 extracts the archive with
 `ditto` and re-checks the layout, the executable bit and the ad-hoc signature
@@ -239,9 +245,10 @@ root, and Windows runtimes are unsigned DLLs/EXEs already.
 
 macOS archive correctness cannot be verified on the Linux workstation: `ditto`
 and `codesign` do not exist there, and the real-ditto test skips unless the host
-is macOS. Consequently the macOS archive layout, signature and
-`Contents/Resources` runtime placement are covered by tests and CI only. GPU
-backends are never exercised by packaging; they need real hardware and are
+is macOS. Consequently the macOS archive layout and signature are covered by CI
+on `macos-latest` (runtime-free bundles), and the `Contents/Resources` runtime
+placement only by unit tests until a runtime-bearing bundle is built there.
+GPU backends are never exercised by packaging; they need real hardware and are
 validated separately.
 
 ## Verification limits
