@@ -48,7 +48,7 @@ Future<void> writeArchive({
         stageName,
       ], 'tar');
     case PackageTarget.windows:
-      _writeZip(stageDir, stageName, archivePath);
+      await _writeZip(stageDir, stageName, archivePath);
     case PackageTarget.macos:
       await _runChecked(runner, 'ditto', <String>[
         '-c',
@@ -258,11 +258,19 @@ List<String> _lines(Object? output) => output
     .where((line) => line.isNotEmpty)
     .toList();
 
-void _writeZip(String stageDir, String stageName, String archivePath) {
+Future<void> _writeZip(
+  String stageDir,
+  String stageName,
+  String archivePath,
+) async {
   // Stream each file into the archive. `ZipEncoder.encodeBytes` would buffer
   // the whole Windows bundle in memory, which is several hundred MB once a
-  // CUDA runtime is included.
+  // CUDA runtime is included. `addFile` (not `addFileSync`) closes the
+  // per-entry `InputFileStream` it opens; the sync variant leaks one handle per
+  // file, which a runtime-bearing bundle with thousands of files exhausts.
   final encoder = ZipFileEncoder()..create(archivePath);
+  var complete = false;
+  Object? closeError;
   try {
     for (final entity in Directory(
       stageDir,
@@ -273,10 +281,27 @@ void _writeZip(String stageDir, String stageName, String archivePath) {
       final relative = p
           .relative(entity.path, from: stageDir)
           .replaceAll(r'\', '/');
-      encoder.addFileSync(entity, '$stageName/$relative');
+      await encoder.addFile(entity, '$stageName/$relative');
     }
+    complete = true;
   } finally {
-    encoder.closeSync();
+    try {
+      await encoder.close();
+    } on Object catch (error) {
+      closeError = error;
+      complete = false;
+    }
+    if (!complete) {
+      // A half-written archive must never sit at the final path: a later run
+      // would verify a truncated file, and a user could pick it up.
+      final truncated = File(archivePath);
+      if (truncated.existsSync()) {
+        truncated.deleteSync();
+      }
+    }
+  }
+  if (closeError != null) {
+    throw ArchiveException('cannot finish writing $archivePath: $closeError');
   }
 }
 

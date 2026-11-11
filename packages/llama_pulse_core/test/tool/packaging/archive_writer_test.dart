@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
 import 'package:path/path.dart' as p;
@@ -85,6 +86,41 @@ void main() {
     );
     expect(problems, isEmpty, reason: '$problems');
   });
+
+  test(
+    'round-trips a zero-byte and a multi-buffer ZIP entry byte for byte',
+    () async {
+      const stageName = 'llama-pulse-0.1.0-windows-x64';
+      final stage = p.join(root.path, stageName);
+      await _windowsStage(stage);
+      await _file(p.join(stage, 'data', 'runtime', 'empty.bin'));
+      // 5 MiB crosses the encoder's internal buffer a few times, so a
+      // per-entry stream that is closed too early loses the tail.
+      final big = Uint8List.fromList(
+        List<int>.generate(5 * 1024 * 1024, (index) => index % 251),
+      );
+      await File(p.join(stage, 'data', 'runtime', 'big.bin'))
+          .writeAsBytes(big, flush: true);
+      final archive = p.join(root.path, 'out', '$stageName.zip');
+
+      await writeArchive(
+        target: PackageTarget.windows,
+        stageDir: stage,
+        archivePath: archive,
+      );
+
+      final decoded = ZipDecoder().decodeBytes(File(archive).readAsBytesSync());
+      final empty = decoded.findFile('$stageName/data/runtime/empty.bin');
+      expect(empty, isNotNull);
+      expect(empty!.size, 0);
+      expect(empty.readBytes(), isEmpty);
+
+      final large = decoded.findFile('$stageName/data/runtime/big.bin');
+      expect(large, isNotNull);
+      expect(large!.size, big.length);
+      expect(large.readBytes(), big);
+    },
+  );
 
   test('Linux writes with tar -C and verifies with tar -tzf', () async {
     const stageName = 'llama-pulse-0.1.0-linux-x64';
