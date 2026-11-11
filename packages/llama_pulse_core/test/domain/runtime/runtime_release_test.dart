@@ -48,17 +48,46 @@ void main() {
       expect(names.toSet(), hasLength(names.length));
     });
 
-    test('every url points at the pinned tag and its asset name', () {
+    test('every url points at the nightly release and its asset name', () {
       for (final asset in allAssets()) {
         expect(
           asset.url,
           startsWith(
-            'https://github.com/ggml-org/llama.cpp/releases/download/v0.8.0/',
+            'https://github.com/ggml-org/llama.cpp/releases/download/b11960/',
           ),
           reason: asset.assetName,
         );
         expect(asset.url, endsWith('/${asset.assetName}'));
       }
+    });
+
+    test('the install tag stays v0.8.0 while archives come from b11960', () {
+      for (final asset in allAssets()) {
+        expect(asset.tag, 'v0.8.0', reason: asset.assetName);
+        expect(asset.assetTag, 'b11960', reason: asset.assetName);
+      }
+    });
+
+    test('no url downloads from the v0.8.0 release', () {
+      for (final asset in allAssets()) {
+        expect(
+          asset.url,
+          isNot(contains('/download/v0.8.0/')),
+          reason: asset.assetName,
+        );
+      }
+    });
+
+    test('the Linux CPU url is the pinned nightly asset', () {
+      final asset = release.forBackend(
+        RuntimeBackend.cpu,
+        RuntimePlatform.linuxX64,
+      )!;
+      expect(
+        asset.url,
+        'https://github.com/ggml-org/llama.cpp/releases/download/b11960/'
+        'llama-b11960-bin-ubuntu-x64.tar.gz',
+      );
     });
 
     test('unpacked size estimates the archive at 2.5x', () {
