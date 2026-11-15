@@ -135,8 +135,18 @@ a snapshot and goes stale, so check `git branch -a`, `gh pr list` and
   downloads from `.../releases/download/b11960/<asset>`. The same PR made
   `tool/build_llama_cpp.sh` read the commit from `LlamaVersionPin` and check
   the pinned tag's checkout out at it, fetching the commit when the tag moved.
-- **Build helper.** `tool/build_llama_cpp.sh [tag]` (default `v0.8.0`) clones,
-  configures with `-DBUILD_SHARED_LIBS=ON -DLLAMA_BUILD_IS_DEV=OFF
+- **Localized desktop UI (issue #43).** The app now runs on Flutter's
+  `gen_l10n`: `apps/llama_pulse/lib/l10n/app_en.arb` holds every user-facing
+  message, `MaterialApp` installs the `Global*Localizations` delegates, and
+  `melos run gen` also runs `flutter gen-l10n` (the generated files are
+  committed). The blocs no longer write English sentences into their state:
+  `ServerFailureCode` and `InferenceFailureCode` gained the app-authored
+  categories, the runtime bloc reports `RuntimeErrorCode` /
+  `RuntimeNoticeCode`, and the UI renders the localized headline with the
+  technical detail below it. The generated llama.cpp catalog and the free-text
+  detail of core stay English on purpose. `docs/localization.md` records the
+  policy; the app suite grew to 175 tests.
+- **Build helper.** `tool/build_llama_cpp.sh [tag]` (default `v0.8.0`) clones,  configures with `-DBUILD_SHARED_LIBS=ON -DLLAMA_BUILD_IS_DEV=OFF
   -DLLAMA_BUILD_APP=OFF -DGGML_NATIVE=ON`, builds and prints the
   `LLAMA_PULSE_LIB` / `LD_LIBRARY_PATH` exports. For the pinned tag it also
   verifies the checkout against `LlamaVersionPin.commit`. `BUILD.md` records

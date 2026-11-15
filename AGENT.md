@@ -81,6 +81,8 @@ Pins are deliberate; do not loosen them without reproducing the resolution:
 | `injectable` | `^3.0.0` | annotations for app-owned registrations |
 | `ffi` | `^2.2.0` | native bindings; `Utf8`, `calloc`, dynamic symbol lookup |
 | `path` | `^1.9.1` | cross-platform paths |
+| `flutter_localizations` | SDK | the `Global*Localizations` delegates the app installs |
+| `intl` | `^0.20.3` | imported by the generated `AppLocalizations` |
 | `melos` (dev) | `^8.10.0` | workspace scripts and task runner |
 | `yaml` | `^3.1.4` | YAML decoding in core |
 | `args` | `^2.7.0` | CLI and packaging-tool argument parsing |
@@ -122,11 +124,13 @@ must leave the tree clean when run twice.
 apps/llama_pulse/
   lib/main.dart
   lib/app/          bootstrap.dart, app.dart, di/, platform/, theme/
+  lib/l10n/         app_en.arb (the editable messages) and the generated
+                    app_localizations*.dart
   lib/presentation/home/        shell: rail/nav bar and the three tabs
   lib/presentation/server/      dashboard, bloc/, widgets/
   lib/presentation/runtime/     Runtime tab, RuntimeCard, bloc/, widgets/
   lib/presentation/inference/   experimental chat screen, bloc/, widgets/
-  test/             app/, presentation/, support/
+  test/             app/, l10n/, presentation/, support/
 apps/llama_pulse_cli/
   bin/llamapulse.dart
   lib/src/          command_runner.dart, commands/, inference/, runtime/,
@@ -691,6 +695,14 @@ params; primary constructors only on plain classes, never on `built_value`.
 
 Formatting: `dart format`, 80 columns, single quotes, trailing commas.
 
+Localization: no user-facing literal in `apps/llama_pulse/lib` — every label,
+button, tooltip, hint, banner, empty state and dialog text comes from
+`AppLocalizations` (`lib/l10n/app_en.arb`). A bloc never writes an English
+sentence into its state: it reports a structured code and the technical detail,
+and the UI renders the localized headline. The generated llama.cpp catalog and
+the free-text detail of core stay English on purpose; see
+`docs/localization.md`.
+
 YAML output: strings with newlines or control characters are emitted
 double-quoted with escapes; everything else stays plain or single-quoted. The
 YAML layer must round-trip through `YamlDecoder`; the tests enforce it.
@@ -705,9 +717,9 @@ APIs, no `!` on nullable values, no empty `catch` blocks.
 
 From the root, `dart run melos test`. Melos picks `flutter test` for the app and
 `dart test` for core and CLI. Test the critical seams, not every line. Coverage
-is not a target. The suites hold 1293 tests today: 894 core (plus two
+is not a target. The suites hold 1302 tests today: 894 core (plus two
 host/env-gated skips: `native_integration_test` and the real macOS `ditto`
-archive test), 233 CLI, 166 app.
+archive test), 233 CLI, 175 app.
 
 Must test today:
 
@@ -795,6 +807,9 @@ Must test today:
   for `ConversationView`: role-labelled bubbles (`You`/`Assistant`), the
   in-flight draft under `output-text`, the empty state and the clear action.
 - Screen layout: wide and narrow windows, and the two-tab shell.
+- Localization: the delegate loads for every supported locale, the template
+  carries a non-empty message for every key, the plural messages pick the
+  right form, and the shell resolves its labels through `AppLocalizations`.
 
 Supervisor, bloc and UI tests use fakes for process launch, HTTP, signals and
 the port probe. A few core tests do exercise the real launcher, a localhost
@@ -817,13 +832,13 @@ never-ending fake streams. Every PR touches tests or states why not.
 ## 13. Codegen
 
 Run `dart run melos run gen` from the root. It runs build_runner in core, then
-in the app. Never pass the removed conflicting-outputs flag: build_runner 2.16
-deleted it. The CLI has no codegen.
+in the app, then `flutter gen-l10n` in the app. Never pass the removed
+conflicting-outputs flag: build_runner 2.16 deleted it. The CLI has no codegen.
 
 Every `built_value`/`EnumClass` file has `part '<file>.g.dart';` next to it.
-Generated files (`.g.dart`, `.config.dart`) are committed and never edited by
-hand. A change is not done until codegen is re-run and a second run leaves
-`git status` clean.
+Generated files (`.g.dart`, `.config.dart`, `lib/l10n/app_localizations*.dart`)
+are committed and never edited by hand. A change is not done until codegen is
+re-run and a second run leaves `git status` clean.
 
 `serializers.dart` uses `StandardJsonPlugin`. The YAML layer sits above it and
 stores plain collections — no `TypeAdapter`s, no freezed.
