@@ -31,6 +31,33 @@ class InferenceFailureCode extends EnumClass {
   static const InferenceFailureCode libraryVersionMismatch =
       _$libraryVersionMismatch;
 
+  /// The stored parameters could not be read.
+  static const InferenceFailureCode paramsLoadFailed = _$paramsLoadFailed;
+
+  /// The parameters could not be written.
+  static const InferenceFailureCode paramsSaveFailed = _$paramsSaveFailed;
+
+  /// No model path is configured.
+  static const InferenceFailureCode modelPathRequired = _$modelPathRequired;
+
+  /// The model could not be loaded.
+  static const InferenceFailureCode modelLoadFailed = _$modelLoadFailed;
+
+  /// The prompt is empty.
+  static const InferenceFailureCode promptRequired = _$promptRequired;
+
+  /// No model is loaded, so a request cannot run.
+  static const InferenceFailureCode modelNotReady = _$modelNotReady;
+
+  /// The running request could not be cancelled.
+  static const InferenceFailureCode cancelFailed = _$cancelFailed;
+
+  /// The model could not be unloaded.
+  static const InferenceFailureCode unloadFailed = _$unloadFailed;
+
+  /// The engine closed its stream without a terminal event.
+  static const InferenceFailureCode streamEnded = _$streamEnded;
+
   /// The failure could not be classified.
   static const InferenceFailureCode unknown = _$unknown;
 

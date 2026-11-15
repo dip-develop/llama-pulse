@@ -29,6 +29,33 @@ const InferenceFailureCode _$libraryNotFound = const InferenceFailureCode._(
 );
 const InferenceFailureCode _$libraryVersionMismatch =
     const InferenceFailureCode._('libraryVersionMismatch');
+const InferenceFailureCode _$paramsLoadFailed = const InferenceFailureCode._(
+  'paramsLoadFailed',
+);
+const InferenceFailureCode _$paramsSaveFailed = const InferenceFailureCode._(
+  'paramsSaveFailed',
+);
+const InferenceFailureCode _$modelPathRequired = const InferenceFailureCode._(
+  'modelPathRequired',
+);
+const InferenceFailureCode _$modelLoadFailed = const InferenceFailureCode._(
+  'modelLoadFailed',
+);
+const InferenceFailureCode _$promptRequired = const InferenceFailureCode._(
+  'promptRequired',
+);
+const InferenceFailureCode _$modelNotReady = const InferenceFailureCode._(
+  'modelNotReady',
+);
+const InferenceFailureCode _$cancelFailed = const InferenceFailureCode._(
+  'cancelFailed',
+);
+const InferenceFailureCode _$unloadFailed = const InferenceFailureCode._(
+  'unloadFailed',
+);
+const InferenceFailureCode _$streamEnded = const InferenceFailureCode._(
+  'streamEnded',
+);
 const InferenceFailureCode _$unknown = const InferenceFailureCode._('unknown');
 
 InferenceFailureCode _$valueOf(String name) {
@@ -49,6 +76,24 @@ InferenceFailureCode _$valueOf(String name) {
       return _$libraryNotFound;
     case 'libraryVersionMismatch':
       return _$libraryVersionMismatch;
+    case 'paramsLoadFailed':
+      return _$paramsLoadFailed;
+    case 'paramsSaveFailed':
+      return _$paramsSaveFailed;
+    case 'modelPathRequired':
+      return _$modelPathRequired;
+    case 'modelLoadFailed':
+      return _$modelLoadFailed;
+    case 'promptRequired':
+      return _$promptRequired;
+    case 'modelNotReady':
+      return _$modelNotReady;
+    case 'cancelFailed':
+      return _$cancelFailed;
+    case 'unloadFailed':
+      return _$unloadFailed;
+    case 'streamEnded':
+      return _$streamEnded;
     case 'unknown':
       return _$unknown;
     default:
@@ -66,6 +111,15 @@ final BuiltSet<InferenceFailureCode> _$values = BuiltSet<InferenceFailureCode>(
     _$nativeError,
     _$libraryNotFound,
     _$libraryVersionMismatch,
+    _$paramsLoadFailed,
+    _$paramsSaveFailed,
+    _$modelPathRequired,
+    _$modelLoadFailed,
+    _$promptRequired,
+    _$modelNotReady,
+    _$cancelFailed,
+    _$unloadFailed,
+    _$streamEnded,
     _$unknown,
   ],
 );
