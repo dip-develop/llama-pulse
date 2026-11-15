@@ -76,9 +76,13 @@ A new session needs four things before it changes anything:
    them.
 4. Packaging v1 (Linux bundle, PR #28), Windows test portability (PR #29) and
    multi-message prompts in core and the CLI (PR #31) have shipped. The Chat tab
-   transcript and stored system prompt shipped in PR #34 (issue #33), with the
-   test-strength follow-up in PR #35; next are the packaging follow-ups (icons,
-   installers, Windows/macOS bundles).
+   transcript and stored system prompt shipped in PR #34, with the review
+   follow-up in PR #35. The Windows and macOS bundles shipped in PR #40 and
+   PR #41 (issue #39, closed). Issue #43 (the localized desktop UI) is open
+   until PR #44 merges. Next are the packaging follow-ups: icons and artwork
+   (need operator artwork), installers (need new tooling and dependencies),
+   Windows/macOS signing and notarisation, and GPU validation (needs real
+   hardware).
 
 Rules for this repo: never merge, tag, force-push or delete branches — the
 operator does those, and no PR goes to anything but `main`. Before opening a

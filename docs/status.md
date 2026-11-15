@@ -1,25 +1,25 @@
-# Project status — 2026-11-11
+# Project status — 2026-11-15
 
 A resume point for a fresh session. Facts below were measured on the commit
 named here, not copied from memory. The rules live in `AGENT.md`; this file is
 a snapshot and goes stale, so check `git branch -a`, `gh pr list` and
 `gh issue list` before trusting it. Its GitHub mirror is the pinned issue #16.
 
-- Baseline: `origin/main` = `c72c5ec` ("Merge pull request #38 from
-  dip-develop/fix/runtime-asset-url", 2026-11-11). `chore/packaging-windows-macos`
-  (PR #40, issue #39) merges that commit in, so the runtime archive fix and the
-  pinned-commit check in `tool/build_llama_cpp.sh` are part of this branch.
-- Suite on `chore/packaging-windows-macos` after that merge, measured 2026-11-11
-  after `flutter pub get` and `melos run gen` twice: `melos test` exit `0`,
-  **1293 tests** — 894 core (plus two host/env-gated skips:
-  `native_integration_test`, and the real macOS `ditto` archive test on a
-  non-macOS host), 233 CLI, 166 app.
+- Baseline: `origin/main` = `10c0369` ("Merge pull request #41 from
+  dip-develop/chore/packaging-followups", 2026-11-11), which merged the two
+  open items of issue #39: the injectable path context of the server binary
+  locator and the runtime-bearing macOS bundle in CI.
+- Suite on `origin/main`, measured 2026-11-11 after `flutter pub get` and
+  `melos run gen` twice: `melos test` exit `0`, **1293 tests** — 894 core (plus
+  two host/env-gated skips: `native_integration_test`, and the real macOS
+  `ditto` archive test on a non-macOS host), 233 CLI, 166 app. PR #44
+  (localization) adds 9 app tests on top of that: 1302 in total.
 - `melos run check` (gen twice, catalog check, analyze, 1293 tests, format, CLI
-  AOT) is green on this branch, as is `melos run format:check` and
-  `gen:catalog:check` (362 parameters). The CI run for `8549e0e`, the merge
-  commit, was green on all seven jobs: `Workspace gate`, the `test` matrix on
-  Ubuntu, macOS and Windows, `Compile the CLI (Windows)`, `Package (macos)` and
-  `Package (windows)`.
+  AOT) is green on `origin/main`, as is `melos run format:check` and
+  `gen:catalog:check` (362 parameters). The CI run for `10c0369` was green on
+  all seven jobs: `Workspace gate`, the `test` matrix on Ubuntu, macOS and
+  Windows, `Compile the CLI (Windows)`, `Package (macos)` and `Package
+  (windows)`.
 
 ## Shipped
 
@@ -106,7 +106,11 @@ a snapshot and goes stale, so check `git branch -a`, `gh pr list` and
   `macos-latest`/`windows-latest` that builds, checks, archives, extracts and
   verifies, asserts the macOS app is unsandboxed, and uploads artifacts only on
   `main`/`workflow_dispatch`. `docs/packaging.md` documents all three trees,
-  flags, exit codes and what was verified where.
+  flags, exit codes and what was verified where. PR #41 (issue #39) then closed
+  the two open items: the server binary locator takes the same injectable
+  `package:path` context, and CI packages a runtime-bearing macOS bundle and
+  verifies the `Contents/Resources` placement and the ad-hoc signature over the
+  added dylibs.
 - **Multi-message chat prompts (PR #31, issue #30).** `ChatMessage`,
   `GenerationRequest.messages` and `WorkerRequest` carry a conversation; the
   native session renders every message through `llama_chat_apply_template`,
@@ -156,25 +160,28 @@ a snapshot and goes stale, so check `git branch -a`, `gh pr list` and
 
 ## In flight
 
-- **Windows/macOS packaging (PR #40, issue #39).** Steps 1–9 are on
-  `chore/packaging-windows-macos`: the path seams, unsandboxed macOS build, the
-  cross-platform packager, the Linux shim, the melos scripts, the CI `package`
-  jobs and the documentation, plus a merge of `origin/main` that keeps the
-  runtime asset tag. It is open until the operator merges it.
+- **Windows/macOS packaging (PR #40 and PR #41, issue #39).** PR #40 shipped the
+  bundles; PR #41 closed the two open checklist items and merged into `main`
+  as `10c0369`.
+- **Checkpoint refresh (PR #42).** This branch: it merges `origin/main` and
+  brings the checkpoint up to date.
+- **Localized desktop UI (PR #44, issue #43).** The app moves onto Flutter's
+  `gen_l10n`: the message catalog lives in `apps/llama_pulse/lib/l10n/`, the
+  blocs report structured codes instead of English sentences, and
+  `docs/localization.md` records the policy. The English output is unchanged.
 - **Packaging follow-ups (from #27).** Icons and artwork, installers and
   signing/notarisation stayed out of this track.
 
-## Open issues (2026-11-11)
+## Open issues (2026-11-15)
 
-- #16 — pinned status checkpoint (this file mirrors it; refresh after PR #40).
-- #39 — Windows/macOS desktop bundles; open until PR #40 merges. Two checklist
-  items stay open for a follow-up: the `ServerBinaryLocatorImpl` `pathContext`
-  seam, and CI verification of a runtime-bearing macOS bundle.
-- #37 is closed after PR #38 merged as `c72c5ec`; #33 is closed after PR #35
-  merged; #27 (packaging), #25 (stop `--json`), #23 (Windows test portability),
-  #22 (CI), #15 (runtime) and #13 (catalog) are closed; #28 (Linux bundle), #29
-  (Windows suites), #31 (multi-message prompts), #34 (chat transcript) and #35
-  are merged.
+- #16 — pinned status checkpoint (this file mirrors it).
+- #43 — localize the desktop app UI; open until PR #44 merges.
+- #39 is closed after PR #40 and PR #41 merged as `10c0369`; #37 is closed
+  after PR #38 merged as `c72c5ec`; #33 is closed after PR #35 merged; #27
+  (packaging), #25 (stop `--json`), #23 (Windows test portability), #22 (CI),
+  #15 (runtime) and #13 (catalog) are closed; #28 (Linux bundle), #29 (Windows
+  suites), #31 (multi-message prompts), #34 (chat transcript) and #35 are
+  merged.
 
 ## Decisions already made — do not relitigate
 
@@ -201,27 +208,20 @@ a snapshot and goes stale, so check `git branch -a`, `gh pr list` and
 
 ## Remaining plan, in order
 
-1. **Operator: merge PR #40** (issue #39), close #39 and refresh this
-   checkpoint and pinned #16. Do not touch #16 before the merge.
+1. **Operator: merge PR #44** (issue #43), close #43 and refresh pinned #16.
 2. **Packaging follow-ups** (from #27): icons and artwork (needs operator
    artwork), installers (`.deb`, AppImage, MSIX, `.dmg`; needs new tooling and
    dependencies), and macOS signing/notarisation (Developer ID, hardened
    runtime plus `com.apple.security.cs.disable-library-validation` or signed
    runtime dylibs).
-3. **Finish issue #39's two open checklist items**: give
-   `ServerBinaryLocatorImpl` the same injectable `pathContext` seam as
-   `LlamaLibraryLocator` (the bundled-runtime roots are context-aware, but the
-   binary locator still renders with the host context), and build a
-   runtime-bearing macOS bundle in CI so the `Contents/Resources` placement and
-   the ad-hoc signature over the added dylibs are actually verified.
-4. **Jinja chat templates** for the embedded path: the built-in, named, `none`
-   and per-message rendering already ship (PR #31, issue #33); a Jinja engine
+3. **Jinja chat templates** for the embedded path: the built-in, named, `none`
+   and per-message rendering already ship (PR #31, issue #30); a Jinja engine
    is the remaining template work.
-5. **Windows and macOS validation** of the supervisor and embedded paths, and
+4. **Windows and macOS validation** of the supervisor and embedded paths, and
    **GPU smoke tests** on CUDA, Vulkan, ROCm and Metal (needs real hardware).
-6. **Watch the CI flake**: the supervisor test that failed once under parallel
+5. **Watch the CI flake**: the supervisor test that failed once under parallel
    load now runs on every PR.
-7. **Out of scope for now**: a server "router mode" (multi-model proxy).
+6. **Out of scope for now**: a server "router mode" (multi-model proxy).
 
 ## Open landmines
 
@@ -280,13 +280,13 @@ a snapshot and goes stale, so check `git branch -a`, `gh pr list` and
 ```sh
 git fetch origin
 git branch -a                  # merged feature/fix branches may linger locally
-gh pr list                     # PR #40 (Windows/macOS packaging)
-gh issue list                  # #16 (pinned status), #39 (until #40 merges)
+gh pr list                     # PR #42 (checkpoint), PR #44 (localization)
+gh issue list                  # #16 (pinned status), #43 (until #44 merges)
 ```
 
 Then read `AGENT.md`, this file and pinned issue #16, and run
 `dart run melos run check` on a fresh branch cut from `origin/main`. The next
-concrete step is the operator merging PR #40, closing #39 and refreshing
+concrete step is the operator merging PR #44, closing #43 and refreshing
 checkpoint #16 and this file, then the packaging follow-ups (icons, installers,
-macOS notarisation), the last #39 locator seam, Jinja templates and
-Windows/macOS/GPU validation. The pinned checkpoint mirror is #16.
+macOS notarisation), Jinja templates and Windows/macOS/GPU validation. The
+pinned checkpoint mirror is #16.
