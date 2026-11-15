@@ -24,8 +24,12 @@ dependencies:
   flutter:
     sdk: flutter
   flutter_bloc: ^9.1.1
+  flutter_localizations:
+    sdk: flutter
   get_it: ^9.3.0
   injectable: ^3.0.0
+  # Generated Flutter localizations format dates, numbers and plurals with it.
+  intl: ^0.20.3
   llama_pulse_core:
     path: ../../packages/llama_pulse_core
 
@@ -41,3 +45,5 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  # `flutter gen-l10n` refuses to run without this flag.
+  generate: true

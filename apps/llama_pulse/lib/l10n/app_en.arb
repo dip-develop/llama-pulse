@@ -1,0 +1,554 @@
+{
+  "@@locale": "en",
+  "appTitle": "LlamaPulse",
+  "homeTitleServer": "LlamaPulse — Server",
+  "homeTitleChat": "LlamaPulse — Chat",
+  "homeTitleRuntime": "LlamaPulse — Runtime",
+  "navServer": "Server",
+  "navChat": "Chat",
+  "navRuntime": "Runtime",
+  "navChatExperimental": "Chat (experimental)",
+  "chatExperimentalBanner": "Experimental — embedded chat. The server is the primary path.",
+  "serverDemoBanner": "Demo server — no llama-server process is started.",
+  "serverStatusTitle": "Server",
+  "serverStatusHealth": "Health",
+  "serverStatusSupervisorPid": "Supervisor pid",
+  "serverStatusServerPid": "Server pid",
+  "serverStatusModel": "Model",
+  "serverStatusBinary": "Binary",
+  "serverStatusBinaryNotLocated": "not located",
+  "serverStatusVersion": "Version",
+  "serverStatusExternalRun": "Started outside this app — stop it with llamapulse stop.",
+  "serverStatusUptime": "Uptime",
+  "serverStatusLastExitCode": "Last exit code",
+  "serverStatusLastFailure": "Last failure",
+  "serverStatusStart": "Start",
+  "serverStatusStop": "Stop",
+  "serverPhaseRunning": "Running",
+  "serverPhaseStarting": "Starting",
+  "serverPhaseStopping": "Stopping",
+  "serverPhaseFailed": "Failed",
+  "serverPhaseStopped": "Stopped",
+  "serverEndpointTitle": "Endpoint",
+  "serverEndpointCopy": "Copy",
+  "serverEndpointTesting": "Testing…",
+  "serverEndpointTestConnection": "Test connection",
+  "serverEndpointConnected": "Connected ({latencyMs} ms)",
+  "@serverEndpointConnected": {
+    "placeholders": {
+      "latencyMs": {
+        "type": "int"
+      }
+    }
+  },
+  "serverMetricsTitle": "Metrics",
+  "serverMetricsEmpty": "Metrics appear once the server is running.",
+  "serverMetricsGeneration": "Generation",
+  "serverMetricsPrompt": "Prompt",
+  "serverMetricsActiveSlots": "Active slots",
+  "serverMetricsRequests": "Requests",
+  "serverMetricsRequestsValue": "{processing} processing · {deferred} deferred",
+  "@serverMetricsRequestsValue": {
+    "placeholders": {
+      "processing": {
+        "type": "int"
+      },
+      "deferred": {
+        "type": "int"
+      }
+    }
+  },
+  "serverMetricsPredictedTokens": "Predicted tokens",
+  "serverMetricsContextUsage": "Context usage",
+  "serverMetricsContextNotExposed": "not exposed",
+  "serverLogTitle": "Log",
+  "serverLogClear": "Clear",
+  "serverLogEmpty": "No log lines yet.",
+  "serverConfigTitle": "Server configuration",
+  "serverConfigUnsavedChanges": "Unsaved changes",
+  "serverConfigApplyOnNextStart": "Changes apply on the next start.",
+  "serverConfigModelPath": "Model path",
+  "modelPathExample": "/models/model.gguf",
+  "serverConfigBinaryPath": "llama-server binary",
+  "serverConfigBinaryPathHint": "auto-detected when empty",
+  "serverConfigHost": "Host",
+  "serverConfigPort": "Port",
+  "serverConfigContextSize": "Context size",
+  "serverConfigThreads": "Threads",
+  "serverConfigGpuLayers": "GPU layers",
+  "serverConfigParallelSlots": "Parallel slots",
+  "serverConfigModelAlias": "Model alias",
+  "serverConfigApiKey": "API key",
+  "serverConfigApiKeyHint": "empty disables authentication",
+  "serverConfigReveal": "Reveal",
+  "serverConfigHide": "Hide",
+  "serverConfigFlashAttention": "Flash attention",
+  "serverConfigMlockSubtitle": "Lock the model in RAM",
+  "serverConfigMmapSubtitle": "Memory-map the model file",
+  "serverConfigExtraArgs": "Extra arguments",
+  "serverConfigExtraArgsHint": "one argument per line",
+  "serverConfigStartupTimeout": "Startup timeout (s)",
+  "saveAction": "Save",
+  "reloadAction": "Reload",
+  "browseAction": "Browse",
+  "paramsTitleServer": "Server parameters",
+  "paramsSubtitleServer": "Every other llama-server flag. The essentials stay in the form above and are saved with them.",
+  "paramsSearchHint": "Search parameters",
+  "paramsModifiedOnly": "Modified only",
+  "paramsExpandAll": "Expand all",
+  "paramsCollapseAll": "Collapse all",
+  "paramsEmpty": "No parameters match",
+  "paramsCount": "{modified} modified / {available} available",
+  "@paramsCount": {
+    "placeholders": {
+      "modified": {
+        "type": "int"
+      },
+      "available": {
+        "type": "int"
+      }
+    }
+  },
+  "paramsUndo": "Undo",
+  "paramsResetParameter": "Reset {name}",
+  "@paramsResetParameter": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "paramsResetGroup": "{count, plural, =1{Reset 1 parameter in {group}} other{Reset {count} parameters in {group}}}",
+  "@paramsResetGroup": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "group": {
+        "type": "String"
+      }
+    }
+  },
+  "paramsResetToDefault": "Reset to default",
+  "paramsEffectiveValue": "Effective value: {value}",
+  "@paramsEffectiveValue": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "paramsUseReplacement": "Use {replacement} instead.",
+  "@paramsUseReplacement": {
+    "placeholders": {
+      "replacement": {
+        "type": "String"
+      }
+    }
+  },
+  "paramsResetGroupTooltip": "Reset this group",
+  "paramsDefaultHint": "default",
+  "paramsManagedBy": "Managed by {owner}.",
+  "@paramsManagedBy": {
+    "placeholders": {
+      "owner": {
+        "type": "String"
+      }
+    }
+  },
+  "paramsUnsupportedReason": "llama-server does not accept this parameter.",
+  "paramsRemovedReason": "llama.cpp removed this parameter.",
+  "paramsSelectFile": "Select {name}",
+  "@paramsSelectFile": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "paramTooltipNegated": "Negated form: {flag}",
+  "@paramTooltipNegated": {
+    "placeholders": {
+      "flag": {
+        "type": "String"
+      }
+    }
+  },
+  "paramTooltipType": "Type: {valueType}",
+  "@paramTooltipType": {
+    "placeholders": {
+      "valueType": {
+        "type": "String"
+      }
+    }
+  },
+  "paramTooltipDefault": "Default: {value}",
+  "@paramTooltipDefault": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "paramTooltipDynamic": "dynamic",
+  "paramTooltipRange": "Range: {range}",
+  "@paramTooltipRange": {
+    "placeholders": {
+      "range": {
+        "type": "String"
+      }
+    }
+  },
+  "paramTooltipEnvironment": "Environment: {variable}",
+  "@paramTooltipEnvironment": {
+    "placeholders": {
+      "variable": {
+        "type": "String"
+      }
+    }
+  },
+  "paramTooltipWarning": "Warning: {warning}",
+  "@paramTooltipWarning": {
+    "placeholders": {
+      "warning": {
+        "type": "String"
+      }
+    }
+  },
+  "paramTooltipNote": "Note: {reason}",
+  "@paramTooltipNote": {
+    "placeholders": {
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
+  "paramTooltipReplacedBy": "Replaced by: {replacement}",
+  "@paramTooltipReplacedBy": {
+    "placeholders": {
+      "replacement": {
+        "type": "String"
+      }
+    }
+  },
+  "paramTypeTwoValues": "two values on separate lines",
+  "paramTypeSwitch": "switch",
+  "paramTypeInteger": "integer",
+  "paramTypeNumber": "number",
+  "paramTypeOneOf": "one of: {values}",
+  "@paramTypeOneOf": {
+    "placeholders": {
+      "values": {
+        "type": "String"
+      }
+    }
+  },
+  "paramTypePath": "path",
+  "paramTypeText": "text",
+  "paramTypeOnePerLine": "{valueType}, one per line",
+  "@paramTypeOnePerLine": {
+    "placeholders": {
+      "valueType": {
+        "type": "String"
+      }
+    }
+  },
+  "paramTypeCommaSeparated": "{valueType}, comma separated",
+  "@paramTypeCommaSeparated": {
+    "placeholders": {
+      "valueType": {
+        "type": "String"
+      }
+    }
+  },
+  "paramRangeStep": "step {step}",
+  "@paramRangeStep": {
+    "placeholders": {
+      "step": {
+        "type": "String"
+      }
+    }
+  },
+  "paramRangeSteps": "{bounds} in steps of {step}",
+  "@paramRangeSteps": {
+    "placeholders": {
+      "bounds": {
+        "type": "String"
+      },
+      "step": {
+        "type": "String"
+      }
+    }
+  },
+  "chatDemoBanner": "Demo engine — output is synthetic.",
+  "chatStatusIdle": "Idle",
+  "chatStatusLoadingModel": "Loading model",
+  "chatStatusReady": "Ready",
+  "chatStatusGenerating": "Generating",
+  "chatStatusCancelling": "Cancelling",
+  "chatStatusError": "Error",
+  "chatPromptLabel": "Prompt",
+  "chatPromptHint": "Ask the model something…",
+  "chatGenerate": "Generate",
+  "cancelAction": "Cancel",
+  "unloadAction": "Unload",
+  "chatConversationTitle": "Conversation",
+  "chatClearConversation": "Clear conversation",
+  "chatNoMessages": "No messages yet.",
+  "chatRoleYou": "You",
+  "chatRoleAssistant": "Assistant",
+  "chatRoleTool": "Tool",
+  "chatMetricsTitle": "Metrics",
+  "chatMetricsEmpty": "Metrics appear here after a generation.",
+  "chatMetricsTokensPerSecond": "Tokens/sec",
+  "chatMetricsPromptEval": "Prompt eval",
+  "chatMetricsGeneratedTokens": "Generated tokens",
+  "chatMetricsPromptTokens": "Prompt tokens",
+  "chatMetricsTimeToFirstToken": "Time to first token",
+  "chatMetricsReports": "Reports",
+  "chatMetricsReportsValue": "{count, plural, one{1 sample} other{{count} samples}}",
+  "@chatMetricsReportsValue": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "chatModelParamsTitle": "Model parameters",
+  "chatModelParamsHint": "Changes apply to the next load.",
+  "chatModelPath": "Model path",
+  "chatContextSize": "Context size",
+  "chatGpuLayers": "GPU layers",
+  "chatThreads": "Threads",
+  "chatTemperature": "Temperature",
+  "chatTopP": "Top-p",
+  "chatTopK": "Top-k",
+  "chatMaxTokens": "Max tokens",
+  "chatTemplateLabel": "Chat template",
+  "chatTemplateHint": "Model default, a built-in name, or \"none\"",
+  "chatSystemPrompt": "System prompt",
+  "chatSystemPromptHint": "Prepended as the system message of each chat request",
+  "chatApplyTemplate": "Apply chat template",
+  "chatApplyTemplateSubtitle": "Off sends the raw prompt even when a template is set.",
+  "chatLoadModel": "Load model",
+  "chatParamsTitle": "Chat parameters",
+  "chatParamsSubtitle": "Every other llama-cli flag for this session. The essentials stay in the form above and are saved with them.",
+  "chatManagedGroupName": "Set in the essentials form",
+  "chatServerOnlyGroupName": "Not available in the embedded engine",
+  "chatServerOnlyReason": "embedded engine cannot honor this parameter yet",
+  "chatManagedGroupReason": "Set by the essentials form above; edit it there and save once for both.",
+  "runtimeTitle": "Runtime",
+  "runtimeRefresh": "Refresh",
+  "runtimeDetectingHost": "Detecting the host…",
+  "runtimeDetecting": "Detecting…",
+  "runtimeRecommended": "Recommended",
+  "runtimeRecommendedBackend": "Recommended: {backend}",
+  "@runtimeRecommendedBackend": {
+    "placeholders": {
+      "backend": {
+        "type": "String"
+      }
+    }
+  },
+  "runtimeRecommendedReason": "Recommended: {backend} — {reason}",
+  "@runtimeRecommendedReason": {
+    "placeholders": {
+      "backend": {
+        "type": "String"
+      },
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
+  "runtimeUnsupportedHost": "The pinned release has no archive for this host.",
+  "runtimeInstalling": "Installing {backend}",
+  "@runtimeInstalling": {
+    "placeholders": {
+      "backend": {
+        "type": "String"
+      }
+    }
+  },
+  "runtimeInstallingProgress": "Installing {backend}: {percent}%",
+  "@runtimeInstallingProgress": {
+    "placeholders": {
+      "backend": {
+        "type": "String"
+      },
+      "percent": {
+        "type": "int"
+      }
+    }
+  },
+  "runtimeProgressValue": "{percent}% · {received} of {total}",
+  "@runtimeProgressValue": {
+    "placeholders": {
+      "percent": {
+        "type": "int"
+      },
+      "received": {
+        "type": "String"
+      },
+      "total": {
+        "type": "String"
+      }
+    }
+  },
+  "runtimeProgressRate": "{rate}/s",
+  "@runtimeProgressRate": {
+    "placeholders": {
+      "rate": {
+        "type": "String"
+      }
+    }
+  },
+  "runtimeAvailableBackends": "Available backends",
+  "runtimeNoBackendAvailable": "No backend is available for this host.",
+  "runtimeInstalled": "Installed",
+  "runtimeInstall": "Install",
+  "runtimeReinstall": "Reinstall",
+  "runtimeSelect": "Select",
+  "runtimeSelected": "Selected",
+  "runtimeRemove": "Remove",
+  "runtimeRemoveTitle": "Remove {id}?",
+  "@runtimeRemoveTitle": {
+    "placeholders": {
+      "id": {
+        "type": "String"
+      }
+    }
+  },
+  "runtimeRemoveMessage": "The runtime directory and its manifest are deleted.",
+  "runtimeNoRuntimesInstalled": "No runtimes installed yet.",
+  "runtimeGateLabel": "Gate",
+  "runtimeGateValue": "{verdict} — {reason}",
+  "@runtimeGateValue": {
+    "placeholders": {
+      "verdict": {
+        "type": "String"
+      },
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
+  "runtimeGateSummary": "Gate: {verdict} — {reason}",
+  "@runtimeGateSummary": {
+    "placeholders": {
+      "verdict": {
+        "type": "String"
+      },
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
+  "runtimeUnavailable": "Unavailable: {reason}",
+  "@runtimeUnavailable": {
+    "placeholders": {
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
+  "runtimeHardware": "Hardware",
+  "runtimeNone": "none",
+  "runtimeInstallRuntime": "Install runtime",
+  "runtimeInstallTitle": "Install {backend}",
+  "@runtimeInstallTitle": {
+    "placeholders": {
+      "backend": {
+        "type": "String"
+      }
+    }
+  },
+  "runtimeDownload": "Download",
+  "runtimeCudaRuntime": "CUDA runtime",
+  "runtimePlatform": "Platform",
+  "runtimeUnsupported": "unsupported",
+  "runtimeDriverRequirement": "Driver requirement: {requirement}",
+  "@runtimeDriverRequirement": {
+    "placeholders": {
+      "requirement": {
+        "type": "String"
+      }
+    }
+  },
+  "runtimeCudaNote": "The CUDA runtime is a second archive bundled only when you install a CUDA backend.",
+  "runtimeUnknownSize": "unknown",
+  "runtimeNoGpuDetected": "no GPU detected",
+  "runtimeUnsupportedHostShort": "unsupported host",
+  "serverFailureBinaryNotFound": "llama-server was not found",
+  "serverFailureBinaryNotExecutable": "llama-server cannot be executed",
+  "serverFailureUnsupportedVersion": "Unsupported llama.cpp build",
+  "serverFailurePortInUse": "The port is already in use",
+  "serverFailureModelNotFound": "The model file was not found",
+  "serverFailureInvalidConfig": "The configuration is invalid",
+  "serverFailureStartupTimeout": "The server did not start in time",
+  "serverFailureProcessExited": "llama-server exited",
+  "serverFailureHealthCheckFailed": "The health check failed",
+  "serverFailureHttpError": "The HTTP request failed",
+  "serverFailureStateUnreadable": "The server state could not be read",
+  "serverFailureConfigLoadFailed": "Could not load the server configuration",
+  "serverFailureConfigSaveFailed": "Could not save the server configuration",
+  "serverFailureBinaryInspectionFailed": "Could not inspect llama-server",
+  "serverFailureStartFailed": "Could not start llama-server",
+  "serverFailureStopFailed": "Could not stop llama-server",
+  "serverFailureStreamEnded": "The server controller closed its stream",
+  "serverFailureExternalRun": "The server was started outside this app",
+  "serverFailureUnknown": "Unexpected error",
+  "inferenceFailureEngineUnavailable": "No inference engine is available",
+  "inferenceFailureModelNotFound": "The model file was not found",
+  "inferenceFailureInvalidParams": "The parameters are invalid",
+  "inferenceFailureEngineBusy": "The engine is busy",
+  "inferenceFailureCancelled": "The generation was cancelled",
+  "inferenceFailureNativeError": "The native engine reported an error",
+  "inferenceFailureLibraryNotFound": "No llama.cpp library was found",
+  "inferenceFailureLibraryVersionMismatch": "The llama.cpp library is not the pinned version",
+  "inferenceFailureParamsLoadFailed": "Could not load the stored parameters",
+  "inferenceFailureParamsSaveFailed": "Could not save the parameters",
+  "inferenceFailureModelPathRequired": "A model path is required",
+  "inferenceFailureModelLoadFailed": "Could not load the model",
+  "inferenceFailurePromptRequired": "A prompt is required",
+  "inferenceFailureModelNotReady": "The model is not ready",
+  "inferenceFailureCancelFailed": "Could not cancel the generation",
+  "inferenceFailureUnloadFailed": "Could not unload the model",
+  "inferenceFailureStreamEnded": "The engine closed the stream without a result",
+  "inferenceFailureUnknown": "Unexpected error",
+  "runtimeErrorStatusReadFailed": "Could not read the runtime status",
+  "runtimeErrorUnavailableOnHost": "This backend is not available on this host",
+  "runtimeErrorInstallFailed": "The install failed",
+  "runtimeErrorActionFailed": "The action failed",
+  "runtimeNoticeCancelling": "Cancelling the download…",
+  "runtimeNoticeInstallCancelled": "The install was cancelled.",
+  "runtimeNoticeInstalled": "Installed {backend}.",
+  "@runtimeNoticeInstalled": {
+    "placeholders": {
+      "backend": {
+        "type": "String"
+      }
+    }
+  },
+  "runtimeNoticeSelected": "Selected {id}.",
+  "@runtimeNoticeSelected": {
+    "placeholders": {
+      "id": {
+        "type": "String"
+      }
+    }
+  },
+  "runtimeNoticeRemoved": "Removed {id}.",
+  "@runtimeNoticeRemoved": {
+    "placeholders": {
+      "id": {
+        "type": "String"
+      }
+    }
+  },
+  "runtimeGateNotInstalled": "not installed",
+  "runtimeGateExact": "exact",
+  "runtimeGateAttested": "attested",
+  "runtimeGateUnknown": "unknown",
+  "runtimeGateRejected": "rejected"
+}
