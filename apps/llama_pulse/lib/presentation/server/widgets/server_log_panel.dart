@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:llama_pulse_core/llama_pulse_core.dart';
 
+import '../../../l10n/app_localizations.dart';
 import '../bloc/server_bloc.dart';
 import '../bloc/server_dashboard_state.dart';
 import '../bloc/server_event.dart';
@@ -40,6 +41,7 @@ class _ServerLogPanelState extends State<ServerLogPanel> {
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
+    final AppLocalizations l10n = AppLocalizations.of(context)!;
     return BlocListener<ServerBloc, ServerDashboardState>(
       listenWhen: (
         ServerDashboardState previous,
@@ -61,14 +63,17 @@ class _ServerLogPanelState extends State<ServerLogPanel> {
               Row(
                 children: [
                   Expanded(
-                    child: Text('Log', style: theme.textTheme.titleMedium),
+                    child: Text(
+                      l10n.serverLogTitle,
+                      style: theme.textTheme.titleMedium,
+                    ),
                   ),
                   TextButton(
                     key: const ValueKey('server-clear-logs'),
                     onPressed: () => context.read<ServerBloc>().add(
                       const ServerLogsCleared(),
                     ),
-                    child: const Text('Clear'),
+                    child: Text(l10n.serverLogClear),
                   ),
                 ],
               ),
@@ -89,7 +94,7 @@ class _ServerLogPanelState extends State<ServerLogPanel> {
                               return Align(
                                 alignment: Alignment.topLeft,
                                 child: Text(
-                                  'No log lines yet.',
+                                  l10n.serverLogEmpty,
                                   style: theme.textTheme.bodyMedium?.copyWith(
                                     color: theme.colorScheme.onSurfaceVariant,
                                   ),

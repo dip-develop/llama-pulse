@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:llama_pulse/presentation/runtime/bloc/runtime_bloc.dart';
 import 'package:llama_pulse/presentation/runtime/bloc/runtime_event.dart';
+import 'package:llama_pulse/presentation/runtime/bloc/runtime_messages.dart';
 import 'package:llama_pulse/presentation/runtime/bloc/runtime_state.dart';
 import 'package:llama_pulse_core/llama_pulse_core.dart';
 
@@ -88,7 +89,8 @@ void main() {
     await _waitUntil(() => !bloc.state.loading);
 
     final RuntimeState state = bloc.state;
-    expect(state.hardwareSummary, contains('RTX 4090'));
+    expect(state.gpuSummary, contains('RTX 4090'));
+    expect(state.hasGpu, isTrue);
     expect(state.platform, RuntimePlatform.linuxX64);
     expect(state.recommendedBackend, RuntimeBackend.cuda13);
     expect(
@@ -124,8 +126,9 @@ void main() {
     await _drain();
 
     expect(installer.installedBackends, <RuntimeBackend>[RuntimeBackend.cpu]);
-    expect(bloc.state.errorMessage, isNull);
-    expect(bloc.state.noticeMessage, contains('Installed CPU'));
+    expect(bloc.state.errorCode, isNull);
+    expect(bloc.state.noticeCode, RuntimeNoticeCode.installed);
+    expect(bloc.state.noticeDetail, 'CPU');
     expect(bloc.state.installed, hasLength(1));
     expect(bloc.state.progressFraction, 1);
   });
@@ -161,8 +164,8 @@ void main() {
     await _waitUntil(() => !bloc.state.installing);
     await _drain();
 
-    expect(bloc.state.noticeMessage, contains('cancelled'));
-    expect(bloc.state.errorMessage, isNull);
+    expect(bloc.state.noticeCode, RuntimeNoticeCode.installCancelled);
+    expect(bloc.state.errorCode, isNull);
   });
 
   test('a failed install surfaces its message', () async {
@@ -182,7 +185,8 @@ void main() {
     await _waitUntil(() => !bloc.state.installing);
     await _drain();
 
-    expect(bloc.state.errorMessage, contains('SHA-256'));
+    expect(bloc.state.errorCode, RuntimeErrorCode.installFailed);
+    expect(bloc.state.errorDetail, contains('SHA-256'));
   });
 
   test('select and remove drive the store', () async {
@@ -200,7 +204,8 @@ void main() {
     await _waitUntil(() => store.removeCalls == 1 && !bloc.state.busy);
     await _drain();
     expect(bloc.state.installed, isEmpty);
-    expect(bloc.state.noticeMessage, contains('Removed'));
+    expect(bloc.state.noticeCode, RuntimeNoticeCode.removed);
+    expect(bloc.state.noticeDetail, 'v0.8.0/cpu');
   });
 
   test(
@@ -214,7 +219,8 @@ void main() {
       await _drain();
 
       expect(installer.installedBackends, isEmpty);
-      expect(bloc.state.errorMessage, contains('not available'));
+      expect(bloc.state.errorCode, RuntimeErrorCode.unavailableOnHost);
+      expect(bloc.state.errorDetail, 'CPU');
     },
   );
 }

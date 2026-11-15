@@ -6,9 +6,11 @@ import '../../app/platform/clipboard_service.dart';
 import '../../app/platform/file_picker.dart';
 import '../../app/platform/model_path_picker.dart';
 import '../../app/platform/server_binary_picker.dart';
+import '../../l10n/app_localizations.dart';
 import '../runtime/widgets/runtime_card.dart';
 import 'bloc/server_bloc.dart';
 import 'bloc/server_dashboard_state.dart';
+import 'server_failure_labels.dart';
 import 'widgets/server_config_form.dart';
 import 'widgets/server_endpoint_card.dart';
 import 'widgets/server_log_panel.dart';
@@ -160,12 +162,13 @@ class _DemoServerBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
+    final AppLocalizations l10n = AppLocalizations.of(context)!;
     return Container(
       key: const ValueKey('demo-server-banner'),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       color: theme.colorScheme.tertiaryContainer,
       child: Text(
-        'Demo server — no llama-server process is started.',
+        l10n.serverDemoBanner,
         style: theme.textTheme.bodySmall?.copyWith(
           color: theme.colorScheme.onTertiaryContainer,
         ),
@@ -186,6 +189,7 @@ class _ServerFailureBanner extends StatelessWidget {
           return const SizedBox.shrink();
         }
         final ThemeData theme = Theme.of(context);
+        final AppLocalizations l10n = AppLocalizations.of(context)!;
         final String? details = failure.details;
         return Padding(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
@@ -210,11 +214,21 @@ class _ServerFailureBanner extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        '${failure.code.name}: ${failure.message}',
+                        serverFailureLabel(l10n, failure.code),
                         style: theme.textTheme.bodyMedium?.copyWith(
                           color: theme.colorScheme.onErrorContainer,
                         ),
                       ),
+                      if (failure.message.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Text(
+                            failure.message,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: theme.colorScheme.onErrorContainer,
+                            ),
+                          ),
+                        ),
                       if (details != null)
                         Padding(
                           padding: const EdgeInsets.only(top: 4),

@@ -28,6 +28,8 @@ class _$RuntimeStateSerializer implements StructuredSerializer<RuntimeState> {
       ),
       'busy',
       serializers.serialize(object.busy, specifiedType: const FullType(bool)),
+      'hasGpu',
+      serializers.serialize(object.hasGpu, specifiedType: const FullType(bool)),
       'supports',
       serializers.serialize(
         object.supports,
@@ -66,10 +68,18 @@ class _$RuntimeStateSerializer implements StructuredSerializer<RuntimeState> {
       ),
     ];
     Object? value;
-    value = object.hardwareSummary;
+    value = object.operatingSystem;
     if (value != null) {
       result
-        ..add('hardwareSummary')
+        ..add('operatingSystem')
+        ..add(
+          serializers.serialize(value, specifiedType: const FullType(String)),
+        );
+    }
+    value = object.gpuSummary;
+    if (value != null) {
+      result
+        ..add('gpuSummary')
         ..add(
           serializers.serialize(value, specifiedType: const FullType(String)),
         );
@@ -161,18 +171,40 @@ class _$RuntimeStateSerializer implements StructuredSerializer<RuntimeState> {
           ),
         );
     }
-    value = object.errorMessage;
+    value = object.errorCode;
     if (value != null) {
       result
-        ..add('errorMessage')
+        ..add('errorCode')
+        ..add(
+          serializers.serialize(
+            value,
+            specifiedType: const FullType(RuntimeErrorCode),
+          ),
+        );
+    }
+    value = object.errorDetail;
+    if (value != null) {
+      result
+        ..add('errorDetail')
         ..add(
           serializers.serialize(value, specifiedType: const FullType(String)),
         );
     }
-    value = object.noticeMessage;
+    value = object.noticeCode;
     if (value != null) {
       result
-        ..add('noticeMessage')
+        ..add('noticeCode')
+        ..add(
+          serializers.serialize(
+            value,
+            specifiedType: const FullType(RuntimeNoticeCode),
+          ),
+        );
+    }
+    value = object.noticeDetail;
+    if (value != null) {
+      result
+        ..add('noticeDetail')
         ..add(
           serializers.serialize(value, specifiedType: const FullType(String)),
         );
@@ -210,11 +242,25 @@ class _$RuntimeStateSerializer implements StructuredSerializer<RuntimeState> {
                   )!
                   as bool;
           break;
-        case 'hardwareSummary':
-          result.hardwareSummary = serializers.deserialize(
+        case 'operatingSystem':
+          result.operatingSystem = serializers.deserialize(
             value,
             specifiedType: const FullType(String),
           ) as String?;
+          break;
+        case 'gpuSummary':
+          result.gpuSummary = serializers.deserialize(
+            value,
+            specifiedType: const FullType(String),
+          ) as String?;
+          break;
+        case 'hasGpu':
+          result.hasGpu =
+              serializers.deserialize(
+                    value,
+                    specifiedType: const FullType(bool),
+                  )!
+                  as bool;
           break;
         case 'platform':
           result.platform = serializers.deserialize(
@@ -327,14 +373,26 @@ class _$RuntimeStateSerializer implements StructuredSerializer<RuntimeState> {
                   )!
                   as double;
           break;
-        case 'errorMessage':
-          result.errorMessage = serializers.deserialize(
+        case 'errorCode':
+          result.errorCode = serializers.deserialize(
+            value,
+            specifiedType: const FullType(RuntimeErrorCode),
+          ) as RuntimeErrorCode?;
+          break;
+        case 'errorDetail':
+          result.errorDetail = serializers.deserialize(
             value,
             specifiedType: const FullType(String),
           ) as String?;
           break;
-        case 'noticeMessage':
-          result.noticeMessage = serializers.deserialize(
+        case 'noticeCode':
+          result.noticeCode = serializers.deserialize(
+            value,
+            specifiedType: const FullType(RuntimeNoticeCode),
+          ) as RuntimeNoticeCode?;
+          break;
+        case 'noticeDetail':
+          result.noticeDetail = serializers.deserialize(
             value,
             specifiedType: const FullType(String),
           ) as String?;
@@ -352,7 +410,11 @@ class _$RuntimeState extends RuntimeState {
   @override
   final bool busy;
   @override
-  final String? hardwareSummary;
+  final String? operatingSystem;
+  @override
+  final String? gpuSummary;
+  @override
+  final bool hasGpu;
   @override
   final RuntimePlatform? platform;
   @override
@@ -384,9 +446,13 @@ class _$RuntimeState extends RuntimeState {
   @override
   final double bytesPerSecond;
   @override
-  final String? errorMessage;
+  final RuntimeErrorCode? errorCode;
   @override
-  final String? noticeMessage;
+  final String? errorDetail;
+  @override
+  final RuntimeNoticeCode? noticeCode;
+  @override
+  final String? noticeDetail;
 
   factory _$RuntimeState([void Function(RuntimeStateBuilder)? updates]) =>
       (RuntimeStateBuilder()..update(updates))._build();
@@ -394,7 +460,9 @@ class _$RuntimeState extends RuntimeState {
   _$RuntimeState._({
     required this.loading,
     required this.busy,
-    this.hardwareSummary,
+    this.operatingSystem,
+    this.gpuSummary,
+    required this.hasGpu,
     this.platform,
     required this.supports,
     this.recommendedBackend,
@@ -410,8 +478,10 @@ class _$RuntimeState extends RuntimeState {
     required this.progressReceived,
     required this.progressTotal,
     required this.bytesPerSecond,
-    this.errorMessage,
-    this.noticeMessage,
+    this.errorCode,
+    this.errorDetail,
+    this.noticeCode,
+    this.noticeDetail,
   }) : super._();
   @override
   RuntimeState rebuild(void Function(RuntimeStateBuilder) updates) =>
@@ -426,7 +496,9 @@ class _$RuntimeState extends RuntimeState {
     return other is RuntimeState &&
         loading == other.loading &&
         busy == other.busy &&
-        hardwareSummary == other.hardwareSummary &&
+        operatingSystem == other.operatingSystem &&
+        gpuSummary == other.gpuSummary &&
+        hasGpu == other.hasGpu &&
         platform == other.platform &&
         supports == other.supports &&
         recommendedBackend == other.recommendedBackend &&
@@ -442,8 +514,10 @@ class _$RuntimeState extends RuntimeState {
         progressReceived == other.progressReceived &&
         progressTotal == other.progressTotal &&
         bytesPerSecond == other.bytesPerSecond &&
-        errorMessage == other.errorMessage &&
-        noticeMessage == other.noticeMessage;
+        errorCode == other.errorCode &&
+        errorDetail == other.errorDetail &&
+        noticeCode == other.noticeCode &&
+        noticeDetail == other.noticeDetail;
   }
 
   @override
@@ -451,7 +525,9 @@ class _$RuntimeState extends RuntimeState {
     var _$hash = 0;
     _$hash = $jc(_$hash, loading.hashCode);
     _$hash = $jc(_$hash, busy.hashCode);
-    _$hash = $jc(_$hash, hardwareSummary.hashCode);
+    _$hash = $jc(_$hash, operatingSystem.hashCode);
+    _$hash = $jc(_$hash, gpuSummary.hashCode);
+    _$hash = $jc(_$hash, hasGpu.hashCode);
     _$hash = $jc(_$hash, platform.hashCode);
     _$hash = $jc(_$hash, supports.hashCode);
     _$hash = $jc(_$hash, recommendedBackend.hashCode);
@@ -467,8 +543,10 @@ class _$RuntimeState extends RuntimeState {
     _$hash = $jc(_$hash, progressReceived.hashCode);
     _$hash = $jc(_$hash, progressTotal.hashCode);
     _$hash = $jc(_$hash, bytesPerSecond.hashCode);
-    _$hash = $jc(_$hash, errorMessage.hashCode);
-    _$hash = $jc(_$hash, noticeMessage.hashCode);
+    _$hash = $jc(_$hash, errorCode.hashCode);
+    _$hash = $jc(_$hash, errorDetail.hashCode);
+    _$hash = $jc(_$hash, noticeCode.hashCode);
+    _$hash = $jc(_$hash, noticeDetail.hashCode);
     _$hash = $jf(_$hash);
     return _$hash;
   }
@@ -478,7 +556,9 @@ class _$RuntimeState extends RuntimeState {
     return (newBuiltValueToStringHelper(r'RuntimeState')
           ..add('loading', loading)
           ..add('busy', busy)
-          ..add('hardwareSummary', hardwareSummary)
+          ..add('operatingSystem', operatingSystem)
+          ..add('gpuSummary', gpuSummary)
+          ..add('hasGpu', hasGpu)
           ..add('platform', platform)
           ..add('supports', supports)
           ..add('recommendedBackend', recommendedBackend)
@@ -494,8 +574,10 @@ class _$RuntimeState extends RuntimeState {
           ..add('progressReceived', progressReceived)
           ..add('progressTotal', progressTotal)
           ..add('bytesPerSecond', bytesPerSecond)
-          ..add('errorMessage', errorMessage)
-          ..add('noticeMessage', noticeMessage))
+          ..add('errorCode', errorCode)
+          ..add('errorDetail', errorDetail)
+          ..add('noticeCode', noticeCode)
+          ..add('noticeDetail', noticeDetail))
         .toString();
   }
 }
@@ -512,10 +594,18 @@ class RuntimeStateBuilder
   bool? get busy => _$this._busy;
   set busy(bool? busy) => _$this._busy = busy;
 
-  String? _hardwareSummary;
-  String? get hardwareSummary => _$this._hardwareSummary;
-  set hardwareSummary(String? hardwareSummary) =>
-      _$this._hardwareSummary = hardwareSummary;
+  String? _operatingSystem;
+  String? get operatingSystem => _$this._operatingSystem;
+  set operatingSystem(String? operatingSystem) =>
+      _$this._operatingSystem = operatingSystem;
+
+  String? _gpuSummary;
+  String? get gpuSummary => _$this._gpuSummary;
+  set gpuSummary(String? gpuSummary) => _$this._gpuSummary = gpuSummary;
+
+  bool? _hasGpu;
+  bool? get hasGpu => _$this._hasGpu;
+  set hasGpu(bool? hasGpu) => _$this._hasGpu = hasGpu;
 
   RuntimePlatform? _platform;
   RuntimePlatform? get platform => _$this._platform;
@@ -592,14 +682,22 @@ class RuntimeStateBuilder
   set bytesPerSecond(double? bytesPerSecond) =>
       _$this._bytesPerSecond = bytesPerSecond;
 
-  String? _errorMessage;
-  String? get errorMessage => _$this._errorMessage;
-  set errorMessage(String? errorMessage) => _$this._errorMessage = errorMessage;
+  RuntimeErrorCode? _errorCode;
+  RuntimeErrorCode? get errorCode => _$this._errorCode;
+  set errorCode(RuntimeErrorCode? errorCode) => _$this._errorCode = errorCode;
 
-  String? _noticeMessage;
-  String? get noticeMessage => _$this._noticeMessage;
-  set noticeMessage(String? noticeMessage) =>
-      _$this._noticeMessage = noticeMessage;
+  String? _errorDetail;
+  String? get errorDetail => _$this._errorDetail;
+  set errorDetail(String? errorDetail) => _$this._errorDetail = errorDetail;
+
+  RuntimeNoticeCode? _noticeCode;
+  RuntimeNoticeCode? get noticeCode => _$this._noticeCode;
+  set noticeCode(RuntimeNoticeCode? noticeCode) =>
+      _$this._noticeCode = noticeCode;
+
+  String? _noticeDetail;
+  String? get noticeDetail => _$this._noticeDetail;
+  set noticeDetail(String? noticeDetail) => _$this._noticeDetail = noticeDetail;
 
   RuntimeStateBuilder();
 
@@ -608,7 +706,9 @@ class RuntimeStateBuilder
     if ($v != null) {
       _loading = $v.loading;
       _busy = $v.busy;
-      _hardwareSummary = $v.hardwareSummary;
+      _operatingSystem = $v.operatingSystem;
+      _gpuSummary = $v.gpuSummary;
+      _hasGpu = $v.hasGpu;
       _platform = $v.platform;
       _supports = $v.supports.toBuilder();
       _recommendedBackend = $v.recommendedBackend;
@@ -624,8 +724,10 @@ class RuntimeStateBuilder
       _progressReceived = $v.progressReceived;
       _progressTotal = $v.progressTotal;
       _bytesPerSecond = $v.bytesPerSecond;
-      _errorMessage = $v.errorMessage;
-      _noticeMessage = $v.noticeMessage;
+      _errorCode = $v.errorCode;
+      _errorDetail = $v.errorDetail;
+      _noticeCode = $v.noticeCode;
+      _noticeDetail = $v.noticeDetail;
       _$v = null;
     }
     return this;
@@ -660,7 +762,13 @@ class RuntimeStateBuilder
               r'RuntimeState',
               'busy',
             ),
-            hardwareSummary: hardwareSummary,
+            operatingSystem: operatingSystem,
+            gpuSummary: gpuSummary,
+            hasGpu: BuiltValueNullFieldError.checkNotNull(
+              hasGpu,
+              r'RuntimeState',
+              'hasGpu',
+            ),
             platform: platform,
             supports: supports.build(),
             recommendedBackend: recommendedBackend,
@@ -688,8 +796,10 @@ class RuntimeStateBuilder
               r'RuntimeState',
               'bytesPerSecond',
             ),
-            errorMessage: errorMessage,
-            noticeMessage: noticeMessage,
+            errorCode: errorCode,
+            errorDetail: errorDetail,
+            noticeCode: noticeCode,
+            noticeDetail: noticeDetail,
           );
     } catch (_) {
       late String _$failedField;

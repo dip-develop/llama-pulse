@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../../../l10n/app_localizations.dart';
 import '../bloc/inference_bloc.dart';
 import '../bloc/inference_event.dart';
 import '../bloc/inference_state.dart';
@@ -40,6 +41,7 @@ class _PromptEditorState extends State<PromptEditor> {
 
   @override
   Widget build(BuildContext context) {
+    final AppLocalizations l10n = AppLocalizations.of(context)!;
     return BlocListener<InferenceBloc, InferenceState>(
       listenWhen: (InferenceState previous, InferenceState current) =>
           previous.prompt != current.prompt,
@@ -54,9 +56,9 @@ class _PromptEditorState extends State<PromptEditor> {
         focusNode: _focus,
         minLines: 2,
         maxLines: 3,
-        decoration: const InputDecoration(
-          labelText: 'Prompt',
-          hintText: 'Ask the model something…',
+        decoration: InputDecoration(
+          labelText: l10n.chatPromptLabel,
+          hintText: l10n.chatPromptHint,
           alignLabelWithHint: true,
         ),
         onChanged: (String text) =>
@@ -84,6 +86,7 @@ class GenerationControls extends StatelessWidget {
   Widget build(BuildContext context) {
     final bool canGenerate =
         status == InferenceStatus.modelReady && prompt.trim().isNotEmpty;
+    final AppLocalizations l10n = AppLocalizations.of(context)!;
     return Wrap(
       spacing: 8,
       runSpacing: 8,
@@ -97,7 +100,7 @@ class GenerationControls extends StatelessWidget {
                 )
               : null,
           icon: const Icon(Icons.play_arrow),
-          label: const Text('Generate'),
+          label: Text(l10n.chatGenerate),
         ),
         if (status == InferenceStatus.generating)
           OutlinedButton.icon(
@@ -106,7 +109,7 @@ class GenerationControls extends StatelessWidget {
               const InferenceCancelRequested(),
             ),
             icon: const Icon(Icons.stop),
-            label: const Text('Cancel'),
+            label: Text(l10n.cancelAction),
           ),
         TextButton(
           key: const ValueKey('unload-generation'),
@@ -115,7 +118,7 @@ class GenerationControls extends StatelessWidget {
                   const InferenceUnloadRequested(),
                 )
               : null,
-          child: const Text('Unload'),
+          child: Text(l10n.unloadAction),
         ),
       ],
     );

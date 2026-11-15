@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:llama_pulse/l10n/app_localizations.dart';
 import 'package:llama_pulse/presentation/inference/bloc/inference_bloc.dart';
 import 'package:llama_pulse/presentation/inference/bloc/inference_event.dart';
 import 'package:llama_pulse/presentation/inference/bloc/inference_status.dart';
@@ -20,6 +21,8 @@ ModelParams _validParams() =>
     ModelParams.defaults().copyWith(modelPath: '/models/model.gguf');
 
 Widget _buildView(InferenceBloc bloc) => MaterialApp(
+  localizationsDelegates: AppLocalizations.localizationsDelegates,
+  supportedLocales: AppLocalizations.supportedLocales,
   home: Scaffold(
     body: SizedBox(
       height: 320,

@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:llama_pulse_core/llama_pulse_core.dart';
 
 import '../../../app/platform/file_picker.dart';
+import '../../../l10n/app_localizations.dart';
 import '../../common/parameters/parameter_filter.dart';
 import '../../common/parameters/parameter_panel.dart';
 import '../bloc/inference_bloc.dart';
@@ -29,24 +30,6 @@ const String chatManagedGroupId = 'chat-managed';
 
 /// Group id of the locked container for flags without an embedded equivalent.
 const String chatServerOnlyGroupId = 'chat-server-only';
-
-/// Exact explanation shown for every server-only row.
-const String chatServerOnlyReason =
-    'embedded engine cannot honor this parameter yet';
-
-const ParameterGroupSpec _managedGroup = ParameterGroupSpec(
-  id: chatManagedGroupId,
-  name: 'Set in the essentials form',
-  order: 900,
-  defaultOpen: false,
-);
-
-const ParameterGroupSpec _serverOnlyGroup = ParameterGroupSpec(
-  id: chatServerOnlyGroupId,
-  name: 'Not available in the embedded engine',
-  order: 999,
-  defaultOpen: false,
-);
 
 /// Rows the chat panel edits directly: embedded, configurable and not owned by
 /// a typed field of the essentials form.
@@ -86,18 +69,29 @@ List<ParameterSpec> chatServerOnlyParameters() => [
 /// set" for the values the session actually uses, and the count would silently
 /// disagree with the rows. They stay read-only because the essentials form owns
 /// the only editable control for each one.
-List<LockedParameterGroup> chatLockedParameterGroups() => [
+///
+/// The container names and reasons belong to the app, so they are localized;
+/// the rows they hold keep the catalog text.
+List<LockedParameterGroup> chatLockedParameterGroups(AppLocalizations l10n) => [
   LockedParameterGroup(
-    spec: _managedGroup,
+    spec: ParameterGroupSpec(
+      id: chatManagedGroupId,
+      name: l10n.chatManagedGroupName,
+      order: 900,
+      defaultOpen: false,
+    ),
     parameters: chatOwnedParameters(),
-    reason:
-        'Set by the essentials form above; edit it there and save once for '
-        'both.',
+    reason: l10n.chatManagedGroupReason,
   ),
   LockedParameterGroup(
-    spec: _serverOnlyGroup,
+    spec: ParameterGroupSpec(
+      id: chatServerOnlyGroupId,
+      name: l10n.chatServerOnlyGroupName,
+      order: 999,
+      defaultOpen: false,
+    ),
     parameters: chatServerOnlyParameters(),
-    reason: chatServerOnlyReason,
+    reason: l10n.chatServerOnlyReason,
     showValue: false,
   ),
 ];
@@ -117,6 +111,7 @@ class ChatParametersCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final AppLocalizations l10n = AppLocalizations.of(context)!;
     return Card(
       key: const ValueKey('chat-params-panel'),
       child: Padding(
@@ -129,13 +124,11 @@ class ChatParametersCard extends StatelessWidget {
               params: params.params,
               filePicker: filePicker,
               editable: chatEditableParameters(),
-              lockedGroups: chatLockedParameterGroups(),
+              lockedGroups: chatLockedParameterGroups(l10n),
               valueForLocked: (ParameterSpec spec) =>
                   ParameterValues.valueForModel(params, spec.id),
-              title: 'Chat parameters',
-              subtitle:
-                  'Every other llama-cli flag for this session. The essentials '
-                  'stay in the form above and are saved with them.',
+              title: l10n.chatParamsTitle,
+              subtitle: l10n.chatParamsSubtitle,
               keyPrefix: 'chat-params',
               rowKeyPrefix: 'chat-param',
               onChanged: (String id, String? value) =>

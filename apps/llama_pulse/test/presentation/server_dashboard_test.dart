@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:llama_pulse/app/di/injection.dart';
+import 'package:llama_pulse/l10n/app_localizations.dart';
 import 'package:llama_pulse/presentation/server/bloc/server_bloc.dart';
+import 'package:llama_pulse/presentation/server/server_phase_labels.dart';
 import 'package:llama_pulse_core/llama_pulse_core.dart';
 
 import '../support/fake_clipboard_service.dart';
@@ -61,6 +63,73 @@ void main() {
     );
     expect(find.text('No log lines yet.'), findsOneWidget);
     expect(find.text('http://127.0.0.1:8080/v1'), findsOneWidget);
+  });
+
+  testWidgets('labels the cards through the localization delegate', (
+    tester,
+  ) async {
+    await pumpLlamaPulse(
+      tester,
+      serverController: FakeServerController(),
+      locale: const Locale('en'),
+    );
+    final AppLocalizations l10n = AppLocalizations.of(
+      tester.element(find.byKey(const ValueKey('server-screen'))),
+    )!;
+
+    expect(
+      _cardText(tester, 'server-status-card', l10n.serverStatusTitle),
+      findsOneWidget,
+    );
+    expect(
+      _cardText(tester, 'server-status-card', l10n.serverStatusHealth),
+      findsOneWidget,
+    );
+    expect(
+      _cardText(tester, 'server-status-card', l10n.serverStatusSupervisorPid),
+      findsOneWidget,
+    );
+    expect(
+      _cardText(tester, 'server-status-card', l10n.serverStatusUptime),
+      findsOneWidget,
+    );
+    expect(
+      _cardText(tester, 'server-status-card', l10n.serverStatusStart),
+      findsOneWidget,
+    );
+    expect(
+      _cardText(tester, 'server-status-card', l10n.serverStatusStop),
+      findsOneWidget,
+    );
+    expect(
+      _chipText(tester, serverPhaseLabel(l10n, ServerPhase.stopped)),
+      findsOneWidget,
+    );
+    expect(find.text(l10n.serverEndpointTitle), findsOneWidget);
+    expect(
+      _cardText(tester, 'server-metrics-card', l10n.serverMetricsTitle),
+      findsOneWidget,
+    );
+    expect(
+      _cardText(tester, 'server-metrics-card', l10n.serverMetricsEmpty),
+      findsOneWidget,
+    );
+    expect(
+      _cardText(tester, 'server-log-panel', l10n.serverLogTitle),
+      findsOneWidget,
+    );
+    expect(
+      _cardText(tester, 'server-log-panel', l10n.serverLogClear),
+      findsOneWidget,
+    );
+    expect(
+      _cardText(tester, 'server-log-panel', l10n.serverLogEmpty),
+      findsOneWidget,
+    );
+    expect(
+      _cardText(tester, 'server-log-panel', 'No log lines yet.'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('starts and stops through the controller', (tester) async {
@@ -472,3 +541,11 @@ double _left(WidgetTester tester, String key) =>
 
 double _top(WidgetTester tester, String key) =>
     tester.getTopLeft(find.byKey(ValueKey(key))).dy;
+
+Finder _cardText(WidgetTester tester, String key, String text) =>
+    find.descendant(of: find.byKey(ValueKey(key)), matching: find.text(text));
+
+Finder _chipText(WidgetTester tester, String label) => find.descendant(
+  of: find.byKey(const ValueKey('server-status-chip')),
+  matching: find.textContaining(label),
+);

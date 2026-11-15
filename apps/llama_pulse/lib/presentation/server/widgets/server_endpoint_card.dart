@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../app/platform/clipboard_service.dart';
+import '../../../l10n/app_localizations.dart';
 import '../bloc/server_bloc.dart';
 import '../bloc/server_dashboard_state.dart';
 import '../bloc/server_event.dart';
@@ -58,12 +59,12 @@ class _Card extends StatelessWidget {
   final bool testing;
   final ClipboardService clipboard;
 
-  String? get _result {
+  String? _result(AppLocalizations l10n) {
     if (latencyMs == null && message == null) {
       return null;
     }
     if (message == null || message == 'ok') {
-      return 'Connected (${latencyMs ?? 0} ms)';
+      return l10n.serverEndpointConnected(latencyMs ?? 0);
     }
     return latencyMs == null ? message : '$message ($latencyMs ms)';
   }
@@ -73,14 +74,15 @@ class _Card extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
-    final String? result = _result;
+    final AppLocalizations l10n = AppLocalizations.of(context)!;
+    final String? result = _result(l10n);
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Endpoint', style: theme.textTheme.titleMedium),
+            Text(l10n.serverEndpointTitle, style: theme.textTheme.titleMedium),
             const SizedBox(height: 12),
             SelectableText(
               endpoint,
@@ -98,7 +100,7 @@ class _Card extends StatelessWidget {
                   key: const ValueKey('server-copy-endpoint'),
                   onPressed: () => unawaited(clipboard.setText(endpoint)),
                   icon: const Icon(Icons.copy, size: 18),
-                  label: const Text('Copy'),
+                  label: Text(l10n.serverEndpointCopy),
                 ),
                 FilledButton.tonalIcon(
                   key: const ValueKey('server-test-connection'),
@@ -108,7 +110,11 @@ class _Card extends StatelessWidget {
                           const ServerTestConnectionRequested(),
                         ),
                   icon: const Icon(Icons.network_check, size: 18),
-                  label: Text(testing ? 'Testing…' : 'Test connection'),
+                  label: Text(
+                    testing
+                        ? l10n.serverEndpointTesting
+                        : l10n.serverEndpointTestConnection,
+                  ),
                 ),
               ],
             ),

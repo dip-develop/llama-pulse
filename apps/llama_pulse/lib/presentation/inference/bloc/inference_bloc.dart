@@ -64,7 +64,7 @@ class InferenceBloc extends Bloc<InferenceEvent, InferenceState> {
       }
       _emit(emit, state.rebuild((b) => b..params.replace(params)));
     } on Object catch (error) {
-      _reportUnexpected(emit, error, 'Could not load the stored parameters.');
+      _reportUnexpected(emit, error, InferenceFailureCode.paramsLoadFailed);
     }
   }
 
@@ -213,7 +213,7 @@ class InferenceBloc extends Bloc<InferenceEvent, InferenceState> {
       await _saveParams(state.params);
       _emit(emit, state.rebuild((b) => b..failure = null));
     } on Object catch (error) {
-      _reportUnexpected(emit, error, 'Could not save the parameters.');
+      _reportUnexpected(emit, error, InferenceFailureCode.paramsSaveFailed);
     }
   }
 
@@ -231,18 +231,12 @@ class InferenceBloc extends Bloc<InferenceEvent, InferenceState> {
       return;
     }
     if (state.params.modelPath.trim().isEmpty) {
-      _emit(
-        emit,
-        _failed(InferenceFailureCode.invalidParams, 'modelPath is required'),
-      );
+      _emit(emit, _failed(InferenceFailureCode.modelPathRequired, ''));
       return;
     }
     final LlamaEngine? engine = _engine;
     if (engine == null) {
-      _emit(
-        emit,
-        _failed(InferenceFailureCode.engineUnavailable, 'no inference engine'),
-      );
+      _emit(emit, _failed(InferenceFailureCode.engineUnavailable, ''));
       return;
     }
 
@@ -276,7 +270,7 @@ class InferenceBloc extends Bloc<InferenceEvent, InferenceState> {
         ),
       );
     } on Object catch (error) {
-      _reportUnexpected(emit, error, 'Could not load the model.');
+      _reportUnexpected(emit, error, InferenceFailureCode.modelLoadFailed);
     }
   }
 
@@ -286,10 +280,7 @@ class InferenceBloc extends Bloc<InferenceEvent, InferenceState> {
   ) async {
     final LlamaEngine? engine = _engine;
     if (engine == null) {
-      _emit(
-        emit,
-        _failed(InferenceFailureCode.engineUnavailable, 'no inference engine'),
-      );
+      _emit(emit, _failed(InferenceFailureCode.engineUnavailable, ''));
       return;
     }
     final List<String> violations = _validator.validate(state.params);
@@ -301,17 +292,11 @@ class InferenceBloc extends Bloc<InferenceEvent, InferenceState> {
       return;
     }
     if (state.prompt.trim().isEmpty) {
-      _emit(
-        emit,
-        _failed(InferenceFailureCode.invalidParams, 'prompt is required'),
-      );
+      _emit(emit, _failed(InferenceFailureCode.promptRequired, ''));
       return;
     }
     if (state.status != InferenceStatus.modelReady) {
-      _emit(
-        emit,
-        _failed(InferenceFailureCode.engineBusy, 'the model is not ready'),
-      );
+      _emit(emit, _failed(InferenceFailureCode.modelNotReady, ''));
       return;
     }
 
@@ -395,7 +380,7 @@ class InferenceBloc extends Bloc<InferenceEvent, InferenceState> {
     try {
       await engine.cancel(requestId);
     } on Object catch (error) {
-      _reportUnexpected(emit, error, 'Could not cancel the generation.');
+      _reportUnexpected(emit, error, InferenceFailureCode.cancelFailed);
     }
   }
 
@@ -415,7 +400,7 @@ class InferenceBloc extends Bloc<InferenceEvent, InferenceState> {
               InferenceFailure(
                 (f) => f
                   ..code = InferenceFailureCode.engineBusy
-                  ..message = 'cancel the running generation first',
+                  ..message = '',
               ),
             ),
         ),
@@ -425,7 +410,7 @@ class InferenceBloc extends Bloc<InferenceEvent, InferenceState> {
     try {
       await _engine?.unload();
     } on Object catch (error) {
-      _reportUnexpected(emit, error, 'Could not unload the model.');
+      _reportUnexpected(emit, error, InferenceFailureCode.unloadFailed);
       return;
     }
     _emit(
@@ -513,7 +498,7 @@ class InferenceBloc extends Bloc<InferenceEvent, InferenceState> {
             ? InferenceFailure(
                 (b) => b
                   ..code = InferenceFailureCode.cancelled
-                  ..message = 'generation cancelled',
+                  ..message = '',
               )
             : null;
         _finish(
@@ -534,7 +519,7 @@ class InferenceBloc extends Bloc<InferenceEvent, InferenceState> {
             InferenceFailure(
               (b) => b
                 ..code = InferenceFailureCode.unknown
-                ..message = 'the engine reported a failure',
+                ..message = '',
             );
         _finishWithFailure(emit, failure.code, failure.message);
     }
@@ -550,10 +535,8 @@ class InferenceBloc extends Bloc<InferenceEvent, InferenceState> {
     final Object? error = event.error;
     _finishWithFailure(
       emit,
-      InferenceFailureCode.unknown,
-      error == null
-          ? 'the engine closed the stream without a terminal event'
-          : '$error',
+      InferenceFailureCode.streamEnded,
+      error == null ? '' : '$error',
     );
   }
 
@@ -651,9 +634,9 @@ class InferenceBloc extends Bloc<InferenceEvent, InferenceState> {
   void _reportUnexpected(
     Emitter<InferenceState> emit,
     Object error,
-    String message,
+    InferenceFailureCode code,
   ) {
-    _emit(emit, _failed(InferenceFailureCode.unknown, '$message $error'));
+    _emit(emit, _failed(code, '$error'));
   }
 
   void _emit(Emitter<InferenceState> emit, InferenceState next) {

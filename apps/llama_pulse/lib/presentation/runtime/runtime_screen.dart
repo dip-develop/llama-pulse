@@ -2,9 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:llama_pulse_core/llama_pulse_core.dart';
 
+import '../../l10n/app_localizations.dart';
 import 'bloc/runtime_bloc.dart';
 import 'bloc/runtime_event.dart';
+import 'bloc/runtime_messages.dart';
 import 'bloc/runtime_state.dart';
+import 'runtime_hardware_summary.dart';
 import 'widgets/runtime_install_dialog.dart';
 
 /// Runtime tab: detected hardware, the pinned backends and installed runtimes.
@@ -21,6 +24,7 @@ class RuntimeScreen extends StatelessWidget {
       key: const ValueKey('runtime-screen'),
       child: BlocBuilder<RuntimeBloc, RuntimeState>(
         builder: (BuildContext context, RuntimeState state) {
+          final AppLocalizations l10n = AppLocalizations.of(context)!;
           return SingleChildScrollView(
             padding: const EdgeInsets.all(24),
             child: Column(
@@ -31,19 +35,27 @@ class RuntimeScreen extends StatelessWidget {
                   const SizedBox(height: 16),
                   _Progress(state: state),
                 ],
-                if (state.errorMessage != null) ...[
+                if (state.errorCode != null) ...[
                   const SizedBox(height: 16),
                   _Banner(
                     key: const ValueKey('runtime-tab-error'),
-                    message: state.errorMessage!,
+                    message: runtimeErrorText(
+                      l10n,
+                      state.errorCode!,
+                      state.errorDetail ?? '',
+                    ),
                     error: true,
                   ),
                 ],
-                if (state.noticeMessage != null) ...[
+                if (state.noticeCode != null) ...[
                   const SizedBox(height: 16),
                   _Banner(
                     key: const ValueKey('runtime-tab-notice'),
-                    message: state.noticeMessage!,
+                    message: runtimeNoticeText(
+                      l10n,
+                      state.noticeCode!,
+                      state.noticeDetail ?? '',
+                    ),
                     error: false,
                   ),
                 ],
@@ -68,6 +80,7 @@ class _Header extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
+    final AppLocalizations l10n = AppLocalizations.of(context)!;
     return Card(
       key: const ValueKey('runtime-hardware-card'),
       child: Padding(
@@ -78,7 +91,10 @@ class _Header extends StatelessWidget {
             Row(
               children: [
                 Expanded(
-                  child: Text('Runtime', style: theme.textTheme.titleMedium),
+                  child: Text(
+                    l10n.runtimeTitle,
+                    style: theme.textTheme.titleMedium,
+                  ),
                 ),
                 if (state.loading)
                   const SizedBox(
@@ -88,7 +104,7 @@ class _Header extends StatelessWidget {
                   ),
                 IconButton(
                   key: const ValueKey('runtime-refresh'),
-                  tooltip: 'Refresh',
+                  tooltip: l10n.runtimeRefresh,
                   onPressed: state.busy
                       ? null
                       : () => context.read<RuntimeBloc>().add(
@@ -100,7 +116,7 @@ class _Header extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             Text(
-              state.hardwareSummary ?? 'Detecting the host…',
+              runtimeHardwareSummary(l10n, state),
               key: const ValueKey('runtime-hardware-summary'),
               style: theme.textTheme.bodyMedium,
             ),
@@ -108,8 +124,10 @@ class _Header extends StatelessWidget {
               Padding(
                 padding: const EdgeInsets.only(top: 8),
                 child: Text(
-                  'Recommended: ${state.recommendedBackend!.displayName} — '
-                  '${state.recommendationReason ?? ''}',
+                  l10n.runtimeRecommendedReason(
+                    state.recommendedBackend!.displayName,
+                    state.recommendationReason ?? '',
+                  ),
                   key: const ValueKey('runtime-recommendation'),
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: theme.colorScheme.primary,
@@ -120,7 +138,7 @@ class _Header extends StatelessWidget {
               Padding(
                 padding: const EdgeInsets.only(top: 8),
                 child: Text(
-                  'The pinned release has no archive for this host.',
+                  l10n.runtimeUnsupportedHost,
                   key: const ValueKey('runtime-unsupported'),
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: theme.colorScheme.error,
@@ -142,6 +160,7 @@ class _Progress extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
+    final AppLocalizations l10n = AppLocalizations.of(context)!;
     final RuntimeBackend backend = state.installingBackend!;
     return Card(
       key: const ValueKey('runtime-tab-progress'),
@@ -151,7 +170,7 @@ class _Progress extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Installing ${backend.displayName}',
+              l10n.runtimeInstalling(backend.displayName),
               style: theme.textTheme.titleSmall,
             ),
             const SizedBox(height: 12),
@@ -161,10 +180,7 @@ class _Progress extends StatelessWidget {
               children: [
                 Expanded(
                   child: Text(
-                    '${(state.progressFraction * 100).floor()}% · '
-                    '${_formatBytes(state.progressReceived)} of '
-                    '${_formatBytes(state.progressTotal)}'
-                    '${state.bytesPerSecond <= 0 ? '' : ' · ${_formatBytes(state.bytesPerSecond.round())}/s'}',
+                    _progressText(l10n),
                     style: theme.textTheme.bodySmall,
                   ),
                 ),
@@ -173,7 +189,7 @@ class _Progress extends StatelessWidget {
                   onPressed: () => context.read<RuntimeBloc>().add(
                     const RuntimeCancelRequested(),
                   ),
-                  child: const Text('Cancel'),
+                  child: Text(l10n.cancelAction),
                 ),
               ],
             ),
@@ -181,6 +197,20 @@ class _Progress extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  /// The progress line: the percentage, the transferred bytes and, while the
+  /// transfer runs, the current rate.
+  String _progressText(AppLocalizations l10n) {
+    final String base = l10n.runtimeProgressValue(
+      (state.progressFraction * 100).floor(),
+      _formatBytes(state.progressReceived),
+      _formatBytes(state.progressTotal),
+    );
+    if (state.bytesPerSecond <= 0) {
+      return base;
+    }
+    return '$base · ${l10n.runtimeProgressRate(_formatBytes(state.bytesPerSecond.round()))}';
   }
 }
 
@@ -192,6 +222,7 @@ class _Backends extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
+    final AppLocalizations l10n = AppLocalizations.of(context)!;
     return Card(
       key: const ValueKey('runtime-backends-card'),
       child: Padding(
@@ -199,10 +230,13 @@ class _Backends extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Available backends', style: theme.textTheme.titleSmall),
+            Text(
+              l10n.runtimeAvailableBackends,
+              style: theme.textTheme.titleSmall,
+            ),
             const SizedBox(height: 12),
             if (state.offeredBackends.isEmpty)
-              Text('No backend is available for this host.')
+              Text(l10n.runtimeNoBackendAvailable)
             else
               for (final backend in state.offeredBackends)
                 _BackendRow(state: state, backend: backend),
@@ -222,6 +256,7 @@ class _BackendRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
+    final AppLocalizations l10n = AppLocalizations.of(context)!;
     final BackendSupport? support = state.supportFor(backend);
     final bool supported = state.isSupported(backend);
     final bool installed = state.installed.any(
@@ -247,14 +282,14 @@ class _BackendRow extends StatelessWidget {
                     if (recommended) ...[
                       const SizedBox(width: 8),
                       Chip(
-                        label: const Text('Recommended'),
+                        label: Text(l10n.runtimeRecommended),
                         visualDensity: VisualDensity.compact,
                       ),
                     ],
                     if (installed) ...[
                       const SizedBox(width: 8),
                       Chip(
-                        label: const Text('Installed'),
+                        label: Text(l10n.runtimeInstalled),
                         visualDensity: VisualDensity.compact,
                       ),
                     ],
@@ -263,7 +298,9 @@ class _BackendRow extends StatelessWidget {
                 Text(
                   supported
                       ? (support?.reason ?? backend.requires)
-                      : 'Unavailable: ${support?.reason ?? backend.requires}',
+                      : l10n.runtimeUnavailable(
+                          support?.reason ?? backend.requires,
+                        ),
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: supported
                         ? theme.colorScheme.onSurfaceVariant
@@ -279,7 +316,9 @@ class _BackendRow extends StatelessWidget {
             onPressed: !supported || state.busy || state.installing
                 ? null
                 : () => _install(context),
-            child: Text(installed ? 'Reinstall' : 'Install'),
+            child: Text(
+              installed ? l10n.runtimeReinstall : l10n.runtimeInstall,
+            ),
           ),
         ],
       ),
@@ -312,6 +351,7 @@ class _Installed extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
+    final AppLocalizations l10n = AppLocalizations.of(context)!;
     return Card(
       key: const ValueKey('runtime-installed-card'),
       child: Padding(
@@ -319,10 +359,10 @@ class _Installed extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Installed', style: theme.textTheme.titleSmall),
+            Text(l10n.runtimeInstalled, style: theme.textTheme.titleSmall),
             const SizedBox(height: 12),
             if (state.installed.isEmpty)
-              const Text('No runtimes installed yet.')
+              Text(l10n.runtimeNoRuntimesInstalled)
             else
               for (final install in state.installed)
                 _InstalledRow(state: state, install: install),
@@ -330,8 +370,10 @@ class _Installed extends StatelessWidget {
               Padding(
                 padding: const EdgeInsets.only(top: 12),
                 child: Text(
-                  'Gate: ${state.gateVerdict!.name}'
-                  '${state.gateReason == null ? '' : ' — ${state.gateReason}'}',
+                  l10n.runtimeGateSummary(
+                    runtimeGateVerdictLabel(l10n, state.gateVerdict!),
+                    state.gateReason ?? '',
+                  ),
                   key: const ValueKey('runtime-gate'),
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: state.gateAccepted
@@ -356,6 +398,7 @@ class _InstalledRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bool selected = state.selectedId == install.id;
+    final AppLocalizations l10n = AppLocalizations.of(context)!;
     return Padding(
       key: ValueKey('runtime-installed-${install.tag}-${install.backend.id}'),
       padding: const EdgeInsets.only(bottom: 8),
@@ -376,14 +419,14 @@ class _InstalledRow extends StatelessWidget {
                 : () => context.read<RuntimeBloc>().add(
                     RuntimeSelectRequested(install.tag, install.backend),
                   ),
-            child: Text(selected ? 'Selected' : 'Select'),
+            child: Text(selected ? l10n.runtimeSelected : l10n.runtimeSelect),
           ),
           TextButton(
             key: ValueKey('runtime-remove-${install.backend.id}'),
             onPressed: state.busy
                 ? null
                 : () => _confirmRemove(context, install),
-            child: const Text('Remove'),
+            child: Text(l10n.runtimeRemove),
           ),
         ],
       ),
@@ -395,23 +438,22 @@ class _InstalledRow extends StatelessWidget {
     RuntimeInstallRef install,
   ) async {
     final RuntimeBloc bloc = context.read<RuntimeBloc>();
+    final AppLocalizations l10n = AppLocalizations.of(context)!;
     final bool? confirmed = await showDialog<bool>(
       context: context,
       builder: (BuildContext context) => AlertDialog(
         key: const ValueKey('runtime-remove-dialog'),
-        title: Text('Remove ${install.id}?'),
-        content: const Text(
-          'The runtime directory and its manifest are deleted.',
-        ),
+        title: Text(l10n.runtimeRemoveTitle(install.id)),
+        content: Text(l10n.runtimeRemoveMessage),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
+            child: Text(l10n.cancelAction),
           ),
           FilledButton(
             key: const ValueKey('runtime-remove-confirm'),
             onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Remove'),
+            child: Text(l10n.runtimeRemove),
           ),
         ],
       ),

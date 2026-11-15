@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:llama_pulse_core/llama_pulse_core.dart';
 
+import '../../../l10n/app_localizations.dart';
 import '../bloc/inference_bloc.dart';
 import '../bloc/inference_state.dart';
 
@@ -13,6 +14,7 @@ class MetricsPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
+    final AppLocalizations l10n = AppLocalizations.of(context)!;
     return Card(
       key: const ValueKey('metrics-card'),
       child: Padding(
@@ -20,7 +22,7 @@ class MetricsPanel extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Metrics', style: theme.textTheme.titleMedium),
+            Text(l10n.chatMetricsTitle, style: theme.textTheme.titleMedium),
             const SizedBox(height: 12),
             Expanded(
               child:
@@ -41,10 +43,7 @@ class MetricsPanel extends StatelessWidget {
                             int? timeToFirstTokenMs,
                           ) = data;
                           if (history.isEmpty) {
-                            return const _EmptyState(
-                              message:
-                                  'Metrics appear here after a generation.',
-                            );
+                            return _EmptyState(message: l10n.chatMetricsEmpty);
                           }
                           final GenerationMetrics metrics = history.last;
                           return SingleChildScrollView(
@@ -52,31 +51,33 @@ class MetricsPanel extends StatelessWidget {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 _MetricRow(
-                                  label: 'Tokens/sec',
+                                  label: l10n.chatMetricsTokensPerSecond,
                                   value:
                                       '${metrics.tokensPerSecond.toStringAsFixed(1)}'
                                       ' tok/s',
                                 ),
                                 _MetricRow(
-                                  label: 'Prompt eval',
+                                  label: l10n.chatMetricsPromptEval,
                                   value: '${metrics.promptEvalMs} ms',
                                 ),
                                 _MetricRow(
-                                  label: 'Generated tokens',
+                                  label: l10n.chatMetricsGeneratedTokens,
                                   value: '${metrics.generatedTokenCount}',
                                 ),
                                 _MetricRow(
-                                  label: 'Prompt tokens',
+                                  label: l10n.chatMetricsPromptTokens,
                                   value: '${metrics.promptTokenCount}',
                                 ),
                                 if (timeToFirstTokenMs != null)
                                   _MetricRow(
-                                    label: 'Time to first token',
+                                    label: l10n.chatMetricsTimeToFirstToken,
                                     value: '$timeToFirstTokenMs ms',
                                   ),
                                 _MetricRow(
-                                  label: 'Reports',
-                                  value: '${history.length} samples',
+                                  label: l10n.chatMetricsReports,
+                                  value: l10n.chatMetricsReportsValue(
+                                    history.length,
+                                  ),
                                 ),
                               ],
                             ),

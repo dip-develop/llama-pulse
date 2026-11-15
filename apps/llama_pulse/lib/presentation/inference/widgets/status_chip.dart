@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../../../l10n/app_localizations.dart';
 import '../bloc/inference_bloc.dart';
 import '../bloc/inference_state.dart';
 import '../bloc/inference_status.dart';
@@ -15,7 +16,9 @@ class StatusChip extends StatelessWidget {
       selector: (InferenceState state) => state.status,
       builder: (BuildContext context, InferenceStatus status) {
         final ThemeData theme = Theme.of(context);
+        final AppLocalizations l10n = AppLocalizations.of(context)!;
         final _ChipAppearance appearance = _appearance(
+          l10n,
           status,
           theme.colorScheme,
         );
@@ -36,44 +39,48 @@ class StatusChip extends StatelessWidget {
     );
   }
 
-  _ChipAppearance _appearance(InferenceStatus status, ColorScheme scheme) {
+  _ChipAppearance _appearance(
+    AppLocalizations l10n,
+    InferenceStatus status,
+    ColorScheme scheme,
+  ) {
     if (status == InferenceStatus.loadingModel) {
       return _ChipAppearance(
-        'Loading model',
+        l10n.chatStatusLoadingModel,
         scheme.tertiaryContainer,
         scheme.onTertiaryContainer,
       );
     }
     if (status == InferenceStatus.modelReady) {
       return _ChipAppearance(
-        'Ready',
+        l10n.chatStatusReady,
         scheme.primaryContainer,
         scheme.onPrimaryContainer,
       );
     }
     if (status == InferenceStatus.generating) {
       return _ChipAppearance(
-        'Generating',
+        l10n.chatStatusGenerating,
         scheme.secondaryContainer,
         scheme.onSecondaryContainer,
       );
     }
     if (status == InferenceStatus.cancelling) {
       return _ChipAppearance(
-        'Cancelling',
+        l10n.chatStatusCancelling,
         scheme.tertiaryContainer,
         scheme.onTertiaryContainer,
       );
     }
     if (status == InferenceStatus.failure) {
       return _ChipAppearance(
-        'Error',
+        l10n.chatStatusError,
         scheme.errorContainer,
         scheme.onErrorContainer,
       );
     }
     return _ChipAppearance(
-      'Idle',
+      l10n.chatStatusIdle,
       scheme.surfaceContainerHighest,
       scheme.onSurfaceVariant,
     );
