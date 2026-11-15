@@ -2,9 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:llama_pulse_core/llama_pulse_core.dart';
 
+import '../../../l10n/app_localizations.dart';
 import '../bloc/runtime_bloc.dart';
 import '../bloc/runtime_event.dart';
+import '../bloc/runtime_messages.dart';
 import '../bloc/runtime_state.dart';
+import '../runtime_hardware_summary.dart';
 import 'runtime_install_dialog.dart';
 
 /// Compact runtime summary shown under the dashboard status card.
@@ -16,6 +19,7 @@ class RuntimeCard extends StatelessWidget {
     return BlocBuilder<RuntimeBloc, RuntimeState>(
       builder: (BuildContext context, RuntimeState state) {
         final ThemeData theme = Theme.of(context);
+        final AppLocalizations l10n = AppLocalizations.of(context)!;
         final RuntimeBackend? recommended = state.recommendedBackend;
         final RuntimeBackend? installing = state.installingBackend;
         return Card(
@@ -30,31 +34,41 @@ class RuntimeCard extends StatelessWidget {
                   runSpacing: 4,
                   crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
-                    Text('Runtime', style: theme.textTheme.titleMedium),
+                    Text(l10n.runtimeTitle, style: theme.textTheme.titleMedium),
                     if (recommended != null)
                       Chip(
                         key: const ValueKey('runtime-recommended-chip'),
-                        label: Text('Recommended: ${recommended.displayName}'),
+                        label: Text(
+                          l10n.runtimeRecommendedBackend(
+                            recommended.displayName,
+                          ),
+                        ),
                       ),
                   ],
                 ),
                 const SizedBox(height: 12),
-                _row(theme, 'Hardware', state.hardwareSummary ?? 'Detecting…'),
                 _row(
                   theme,
-                  'Selected',
+                  l10n.runtimeHardware,
+                  runtimeHardwareSummary(l10n, state),
+                ),
+                _row(
+                  theme,
+                  l10n.runtimeSelected,
                   state.selectedId == null
-                      ? 'none'
+                      ? l10n.runtimeNone
                       : '${state.selectedId}'
                             '${state.selectedVersion == null ? '' : ' (${state.selectedVersion})'}',
                 ),
-                _row(theme, 'Installed', '${state.installed.length}'),
+                _row(theme, l10n.runtimeInstalled, '${state.installed.length}'),
                 if (state.gateVerdict != null)
                   _row(
                     theme,
-                    'Gate',
-                    '${state.gateVerdict!.name}'
-                        '${state.gateReason == null ? '' : ' — ${state.gateReason}'}',
+                    l10n.runtimeGateLabel,
+                    l10n.runtimeGateValue(
+                      runtimeGateVerdictLabel(l10n, state.gateVerdict!),
+                      state.gateReason ?? '',
+                    ),
                   ),
                 if (installing != null) ...[
                   const SizedBox(height: 12),
@@ -67,8 +81,10 @@ class RuntimeCard extends StatelessWidget {
                     children: [
                       Expanded(
                         child: Text(
-                          'Installing ${installing.displayName}: '
-                          '${(state.progressFraction * 100).floor()}%',
+                          l10n.runtimeInstallingProgress(
+                            installing.displayName,
+                            (state.progressFraction * 100).floor(),
+                          ),
                           style: theme.textTheme.bodySmall,
                         ),
                       ),
@@ -77,7 +93,7 @@ class RuntimeCard extends StatelessWidget {
                         onPressed: () => context.read<RuntimeBloc>().add(
                           const RuntimeCancelRequested(),
                         ),
-                        child: const Text('Cancel'),
+                        child: Text(l10n.cancelAction),
                       ),
                     ],
                   ),
@@ -91,7 +107,7 @@ class RuntimeCard extends StatelessWidget {
                           onPressed: recommended == null || state.busy
                               ? null
                               : () => _install(context, recommended),
-                          child: const Text('Install runtime'),
+                          child: Text(l10n.runtimeInstallRuntime),
                         ),
                         if (state.selectedTag != null &&
                             state.selectedBackend != null) ...[
@@ -105,17 +121,21 @@ class RuntimeCard extends StatelessWidget {
                                     state.selectedTag!,
                                     state.selectedBackend!,
                                   ),
-                            child: const Text('Remove'),
+                            child: Text(l10n.runtimeRemove),
                           ),
                         ],
                       ],
                     ),
                   ),
-                if (state.errorMessage != null)
+                if (state.errorCode != null)
                   Padding(
                     padding: const EdgeInsets.only(top: 8),
                     child: Text(
-                      state.errorMessage!,
+                      runtimeErrorText(
+                        l10n,
+                        state.errorCode!,
+                        state.errorDetail ?? '',
+                      ),
                       key: const ValueKey('runtime-error'),
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: theme.colorScheme.error,
@@ -148,23 +168,22 @@ class RuntimeCard extends StatelessWidget {
     RuntimeBackend backend,
   ) async {
     final RuntimeBloc bloc = context.read<RuntimeBloc>();
+    final AppLocalizations l10n = AppLocalizations.of(context)!;
     final bool? confirmed = await showDialog<bool>(
       context: context,
       builder: (BuildContext context) => AlertDialog(
         key: const ValueKey('runtime-remove-dialog'),
-        title: Text('Remove $tag/${backend.id}?'),
-        content: const Text(
-          'The runtime directory and its manifest are deleted.',
-        ),
+        title: Text(l10n.runtimeRemoveTitle('$tag/${backend.id}')),
+        content: Text(l10n.runtimeRemoveMessage),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
+            child: Text(l10n.cancelAction),
           ),
           FilledButton(
             key: const ValueKey('runtime-remove-confirm'),
             onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Remove'),
+            child: Text(l10n.runtimeRemove),
           ),
         ],
       ),

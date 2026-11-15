@@ -31,11 +31,12 @@ dependency_overrides:
 melos:
   scripts:
     gen:
-      description: Run build_runner in dependency order (core, then app).
+      description: Run build_runner in dependency order (core, then app), then `flutter gen-l10n`. Needs the `flutter` binary on PATH, which CI always provides.
       run: |
         set -e
         cd "$MELOS_ROOT_PATH/packages/llama_pulse_core" && dart run build_runner build
         cd "$MELOS_ROOT_PATH/apps/llama_pulse" && dart run build_runner build
+        cd "$MELOS_ROOT_PATH/apps/llama_pulse" && flutter gen-l10n
     gen:catalog:
       description: Regenerate the llama.cpp parameter catalog from the vendored source.
       run: cd "$MELOS_ROOT_PATH/packages/llama_pulse_core" && dart run tool/args/generate_catalog.dart

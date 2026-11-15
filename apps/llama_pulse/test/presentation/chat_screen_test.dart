@@ -237,7 +237,10 @@ void main() {
     await _tapVisible(tester, 'load-model');
 
     expect(find.byKey(const ValueKey('failure-banner')), findsOneWidget);
-    expect(find.textContaining('libraryNotFound'), findsOneWidget);
+    expect(
+      find.textContaining('No llama.cpp library was found'),
+      findsOneWidget,
+    );
     final String searched = (engine.loadFailure.details ?? '')
         .split('\n')
         .first;
@@ -334,7 +337,10 @@ void main() {
 
     expect(find.text('Error'), findsOneWidget);
     expect(find.byKey(const ValueKey('failure-banner')), findsOneWidget);
-    expect(find.textContaining('nativeError'), findsOneWidget);
+    expect(
+      find.textContaining('The native engine reported an error'),
+      findsOneWidget,
+    );
     expect(_turnText(tester, 0), 'Say hi');
     expect(_turnText(tester, 1), 'Partial');
     expect(find.byKey(const ValueKey('output-text')), findsNothing);

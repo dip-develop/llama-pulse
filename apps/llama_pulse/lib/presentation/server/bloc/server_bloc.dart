@@ -75,10 +75,7 @@ class ServerBloc extends Bloc<ServerEvent, ServerDashboardState> {
       config = await _configRepository.load();
     } on Object catch (error) {
       config = ServerConfig.defaults();
-      loadFailure = _failure(
-        ServerFailureCode.unknown,
-        'Could not load the server configuration: $error',
-      );
+      loadFailure = _failure(ServerFailureCode.configLoadFailed, '$error');
     }
     if (isClosed) {
       return;
@@ -120,10 +117,7 @@ class ServerBloc extends Bloc<ServerEvent, ServerDashboardState> {
         state.rebuild(
           (b) => b
             ..failure.replace(
-              _failure(
-                ServerFailureCode.unknown,
-                'Could not inspect llama-server: $error',
-              ),
+              _failure(ServerFailureCode.binaryInspectionFailed, '$error'),
             ),
         ),
       );
@@ -256,10 +250,7 @@ class ServerBloc extends Bloc<ServerEvent, ServerDashboardState> {
           (b) => b
             ..saving = false
             ..failure.replace(
-              _failure(
-                ServerFailureCode.unknown,
-                'Could not save the server configuration: $error',
-              ),
+              _failure(ServerFailureCode.configSaveFailed, '$error'),
             ),
         ),
       );
@@ -275,10 +266,7 @@ class ServerBloc extends Bloc<ServerEvent, ServerDashboardState> {
     try {
       config = await _configRepository.load();
     } on Object catch (error) {
-      loadFailure = _failure(
-        ServerFailureCode.unknown,
-        'Could not load the server configuration: $error',
-      );
+      loadFailure = _failure(ServerFailureCode.configLoadFailed, '$error');
     }
     if (isClosed) {
       return;
@@ -395,10 +383,7 @@ class ServerBloc extends Bloc<ServerEvent, ServerDashboardState> {
     } on ServerException catch (exception) {
       failure = exception.failure;
     } on Object catch (error) {
-      failure = _failure(
-        ServerFailureCode.unknown,
-        'Could not start llama-server: $error',
-      );
+      failure = _failure(ServerFailureCode.startFailed, '$error');
     }
     _add(ServerStartCompleted(failure: failure));
   }
@@ -447,10 +432,7 @@ class ServerBloc extends Bloc<ServerEvent, ServerDashboardState> {
     } on ServerException catch (exception) {
       failure = exception.failure;
     } on Object catch (error) {
-      failure = _failure(
-        ServerFailureCode.unknown,
-        'Could not stop llama-server: $error',
-      );
+      failure = _failure(ServerFailureCode.stopFailed, '$error');
     }
     _add(ServerStopCompleted(failure: failure));
   }
@@ -600,10 +582,8 @@ class ServerBloc extends Bloc<ServerEvent, ServerDashboardState> {
         (b) => b
           ..failure.replace(
             _failure(
-              ServerFailureCode.unknown,
-              error == null
-                  ? 'the server controller closed its stream'
-                  : '$error',
+              ServerFailureCode.streamEnded,
+              error == null ? '' : '$error',
             ),
           ),
       ),
@@ -656,10 +636,8 @@ class ServerBloc extends Bloc<ServerEvent, ServerDashboardState> {
     _externalPollTimer = null;
   }
 
-  ServerFailure _externalRunFailure() => _failure(
-    ServerFailureCode.unknown,
-    'server was started outside this app; use `llamapulse stop`',
-  );
+  ServerFailure _externalRunFailure() =>
+      _failure(ServerFailureCode.externalRun, 'llamapulse stop');
 
   void _add(ServerEvent event) {
     if (isClosed) {

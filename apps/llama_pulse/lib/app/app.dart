@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../l10n/app_localizations.dart';
 import '../presentation/home/home_shell.dart';
 import 'platform/clipboard_service.dart';
 import 'platform/file_picker.dart';
@@ -20,6 +21,7 @@ class LlamaPulseApp extends StatelessWidget {
     this.clipboard = const SystemClipboardService(),
     this.demoServer = false,
     this.demoEngine = false,
+    this.locale,
   });
 
   /// File dialog used by the model path fields.
@@ -40,6 +42,11 @@ class LlamaPulseApp extends StatelessWidget {
   /// Whether the synthetic stub engine backs this run.
   final bool demoEngine;
 
+  /// Overrides the resolved locale, or `null` to follow the platform.
+  ///
+  /// Tests pin a locale here instead of depending on the host environment.
+  final Locale? locale;
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
@@ -48,6 +55,9 @@ class LlamaPulseApp extends StatelessWidget {
       theme: AppTheme.light,
       darkTheme: AppTheme.dark,
       themeMode: ThemeMode.system,
+      locale: locale,
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
       home: HomeShell(
         picker: picker,
         binaryPicker: binaryPicker,

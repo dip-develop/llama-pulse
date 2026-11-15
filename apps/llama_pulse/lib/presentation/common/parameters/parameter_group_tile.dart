@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../l10n/app_localizations.dart';
 import 'parameter_filter.dart';
 
 /// One collapsible group of the parameter panel.
@@ -45,6 +46,7 @@ class ParameterGroupTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
+    final AppLocalizations l10n = AppLocalizations.of(context)!;
     final String id = group.spec.id;
     final String groupKey = '$keyPrefix-group-$id';
     final String? resetKey = onReset == null ? null : '$groupKey-reset';
@@ -91,7 +93,7 @@ class ParameterGroupTile extends StatelessWidget {
                 if (resetKey != null)
                   IconButton(
                     key: ValueKey(resetKey),
-                    tooltip: 'Reset this group',
+                    tooltip: l10n.paramsResetGroupTooltip,
                     iconSize: 18,
                     visualDensity: VisualDensity.compact,
                     onPressed: onReset,

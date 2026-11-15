@@ -6,6 +6,7 @@ import '../../app/platform/clipboard_service.dart';
 import '../../app/platform/file_picker.dart';
 import '../../app/platform/model_path_picker.dart';
 import '../../app/platform/server_binary_picker.dart';
+import '../../l10n/app_localizations.dart';
 import '../inference/bloc/inference_bloc.dart';
 import '../inference/bloc/inference_event.dart';
 import '../inference/chat_screen.dart';
@@ -81,28 +82,29 @@ class _HomeShellState extends State<HomeShell> {
       child: LayoutBuilder(
         builder: (BuildContext context, BoxConstraints constraints) {
           final bool wide = constraints.maxWidth >= 900;
+          final AppLocalizations l10n = AppLocalizations.of(context)!;
           return Scaffold(
-            appBar: AppBar(title: Text(_title)),
+            appBar: AppBar(title: Text(_title(l10n))),
             body: wide
                 ? Row(
                     children: [
-                      _rail(),
+                      _rail(l10n),
                       const VerticalDivider(width: 1),
                       Expanded(child: _body()),
                     ],
                   )
                 : _body(),
-            bottomNavigationBar: wide ? null : _bar(),
+            bottomNavigationBar: wide ? null : _bar(l10n),
           );
         },
       ),
     );
   }
 
-  String get _title => switch (_index) {
-    _chatTab => 'LlamaPulse — Chat',
-    _runtimeTab => 'LlamaPulse — Runtime',
-    _ => 'LlamaPulse — Server',
+  String _title(AppLocalizations l10n) => switch (_index) {
+    _chatTab => l10n.homeTitleChat,
+    _runtimeTab => l10n.homeTitleRuntime,
+    _ => l10n.homeTitleServer,
   };
 
   Widget _body() {
@@ -134,56 +136,56 @@ class _HomeShellState extends State<HomeShell> {
     );
   }
 
-  Widget _rail() {
+  Widget _rail(AppLocalizations l10n) {
     return NavigationRail(
       selectedIndex: _index,
       onDestinationSelected: _select,
       labelType: NavigationRailLabelType.all,
-      destinations: const [
+      destinations: [
         NavigationRailDestination(
-          icon: Icon(Icons.dns_outlined),
-          selectedIcon: Icon(Icons.dns),
-          label: Text('Server', key: ValueKey('server-tab')),
+          icon: const Icon(Icons.dns_outlined),
+          selectedIcon: const Icon(Icons.dns),
+          label: Text(l10n.navServer, key: const ValueKey('server-tab')),
         ),
         NavigationRailDestination(
           icon: Tooltip(
-            message: 'Chat (experimental)',
-            child: Icon(Icons.chat_bubble_outline),
+            message: l10n.navChatExperimental,
+            child: const Icon(Icons.chat_bubble_outline),
           ),
-          selectedIcon: Icon(Icons.chat_bubble),
-          label: Text('Chat', key: ValueKey('chat-tab')),
+          selectedIcon: const Icon(Icons.chat_bubble),
+          label: Text(l10n.navChat, key: const ValueKey('chat-tab')),
         ),
         NavigationRailDestination(
-          icon: Icon(Icons.memory_outlined),
-          selectedIcon: Icon(Icons.memory),
-          label: Text('Runtime', key: ValueKey('runtime-tab')),
+          icon: const Icon(Icons.memory_outlined),
+          selectedIcon: const Icon(Icons.memory),
+          label: Text(l10n.navRuntime, key: const ValueKey('runtime-tab')),
         ),
       ],
     );
   }
 
-  Widget _bar() {
+  Widget _bar(AppLocalizations l10n) {
     return NavigationBar(
       selectedIndex: _index,
       onDestinationSelected: _select,
-      destinations: const [
+      destinations: [
         NavigationDestination(
-          key: ValueKey('server-tab'),
-          icon: Icon(Icons.dns_outlined),
-          selectedIcon: Icon(Icons.dns),
-          label: 'Server',
+          key: const ValueKey('server-tab'),
+          icon: const Icon(Icons.dns_outlined),
+          selectedIcon: const Icon(Icons.dns),
+          label: l10n.navServer,
         ),
         NavigationDestination(
-          key: ValueKey('chat-tab'),
-          icon: Icon(Icons.chat_bubble_outline),
-          selectedIcon: Icon(Icons.chat_bubble),
-          label: 'Chat (experimental)',
+          key: const ValueKey('chat-tab'),
+          icon: const Icon(Icons.chat_bubble_outline),
+          selectedIcon: const Icon(Icons.chat_bubble),
+          label: l10n.navChatExperimental,
         ),
         NavigationDestination(
-          key: ValueKey('runtime-tab'),
-          icon: Icon(Icons.memory_outlined),
-          selectedIcon: Icon(Icons.memory),
-          label: 'Runtime',
+          key: const ValueKey('runtime-tab'),
+          icon: const Icon(Icons.memory_outlined),
+          selectedIcon: const Icon(Icons.memory),
+          label: l10n.navRuntime,
         ),
       ],
     );
@@ -196,12 +198,13 @@ class _ExperimentalBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
+    final AppLocalizations l10n = AppLocalizations.of(context)!;
     return Container(
       key: const ValueKey('chat-experimental-banner'),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       color: theme.colorScheme.secondaryContainer,
       child: Text(
-        'Experimental — embedded chat. The server is the primary path.',
+        l10n.chatExperimentalBanner,
         style: theme.textTheme.bodySmall?.copyWith(
           color: theme.colorScheme.onSecondaryContainer,
         ),

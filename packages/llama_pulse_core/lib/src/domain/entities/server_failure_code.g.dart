@@ -35,6 +35,25 @@ const ServerFailureCode _$httpError = const ServerFailureCode._('httpError');
 const ServerFailureCode _$stateUnreadable = const ServerFailureCode._(
   'stateUnreadable',
 );
+const ServerFailureCode _$configLoadFailed = const ServerFailureCode._(
+  'configLoadFailed',
+);
+const ServerFailureCode _$configSaveFailed = const ServerFailureCode._(
+  'configSaveFailed',
+);
+const ServerFailureCode _$binaryInspectionFailed = const ServerFailureCode._(
+  'binaryInspectionFailed',
+);
+const ServerFailureCode _$startFailed = const ServerFailureCode._(
+  'startFailed',
+);
+const ServerFailureCode _$stopFailed = const ServerFailureCode._('stopFailed');
+const ServerFailureCode _$streamEnded = const ServerFailureCode._(
+  'streamEnded',
+);
+const ServerFailureCode _$externalRun = const ServerFailureCode._(
+  'externalRun',
+);
 const ServerFailureCode _$unknown = const ServerFailureCode._('unknown');
 
 ServerFailureCode _$valueOf(String name) {
@@ -61,6 +80,20 @@ ServerFailureCode _$valueOf(String name) {
       return _$httpError;
     case 'stateUnreadable':
       return _$stateUnreadable;
+    case 'configLoadFailed':
+      return _$configLoadFailed;
+    case 'configSaveFailed':
+      return _$configSaveFailed;
+    case 'binaryInspectionFailed':
+      return _$binaryInspectionFailed;
+    case 'startFailed':
+      return _$startFailed;
+    case 'stopFailed':
+      return _$stopFailed;
+    case 'streamEnded':
+      return _$streamEnded;
+    case 'externalRun':
+      return _$externalRun;
     case 'unknown':
       return _$unknown;
     default:
@@ -81,6 +114,13 @@ final BuiltSet<ServerFailureCode> _$values = BuiltSet<ServerFailureCode>(
     _$healthCheckFailed,
     _$httpError,
     _$stateUnreadable,
+    _$configLoadFailed,
+    _$configSaveFailed,
+    _$binaryInspectionFailed,
+    _$startFailed,
+    _$stopFailed,
+    _$streamEnded,
+    _$externalRun,
     _$unknown,
   ],
 );

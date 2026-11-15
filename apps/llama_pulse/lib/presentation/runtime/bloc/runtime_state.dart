@@ -3,6 +3,8 @@ import 'package:built_value/built_value.dart';
 import 'package:built_value/serializer.dart';
 import 'package:llama_pulse_core/llama_pulse_core.dart';
 
+import 'runtime_messages.dart';
+
 part 'runtime_state.g.dart';
 
 /// Immutable snapshot rendered by the Runtime tab and the dashboard card.
@@ -18,8 +20,17 @@ abstract class RuntimeState
   /// Whether an install, selection or removal is in flight.
   bool get busy;
 
-  /// One-line description of the detected host, or null before the probe.
-  String? get hardwareSummary;
+  /// The operating system and the architecture of the host, or null before the
+  /// probe.
+  ///
+  /// The text is technical: the UI adds the localized parts around it.
+  String? get operatingSystem;
+
+  /// The detected GPUs and their drivers, or null before the probe.
+  String? get gpuSummary;
+
+  /// Whether the host has at least one GPU.
+  bool get hasGpu;
 
   /// The platform the pinned release offers, or null on an unsupported host.
   RuntimePlatform? get platform;
@@ -67,10 +78,20 @@ abstract class RuntimeState
   double get bytesPerSecond;
 
   /// Why the last action failed, or null when it succeeded.
-  String? get errorMessage;
+  ///
+  /// The code carries the category of the failure and the detail the technical
+  /// text; the UI turns the code into a localized sentence.
+  RuntimeErrorCode? get errorCode;
+
+  /// The technical detail of the last error.
+  String? get errorDetail;
 
   /// Summary of the last successful action, or null.
-  String? get noticeMessage;
+  RuntimeNoticeCode? get noticeCode;
+
+  /// The technical detail of the last notice, such as the backend or the
+  /// `tag/backend` pair it is about.
+  String? get noticeDetail;
 
   /// Whether a download is running.
   bool get installing => installingBackend != null;
@@ -121,7 +142,8 @@ abstract class RuntimeState
       ..installed = ListBuilder<RuntimeInstallRef>()
       ..progressReceived = 0
       ..progressTotal = 0
-      ..bytesPerSecond = 0,
+      ..bytesPerSecond = 0
+      ..hasGpu = false,
   );
 
   RuntimeState._();

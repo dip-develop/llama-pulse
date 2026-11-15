@@ -143,8 +143,8 @@ void main() {
     await _waitUntil(() => bloc.state.binaryInfo != null);
 
     expect(bloc.state.config, ServerConfig.defaults());
-    expect(bloc.state.failure?.code, ServerFailureCode.unknown);
-    expect(bloc.state.failure?.message, contains('Could not load'));
+    expect(bloc.state.failure?.code, ServerFailureCode.configLoadFailed);
+    expect(bloc.state.failure?.message, isNotEmpty);
     await bloc.close();
   });
 
@@ -579,11 +579,8 @@ void main() {
     await controller.closeStates();
     await _waitUntil(() => runningBloc.state.failure != null);
 
-    expect(runningBloc.state.failure?.code, ServerFailureCode.unknown);
-    expect(
-      runningBloc.state.failure?.message,
-      'the server controller closed its stream',
-    );
+    expect(runningBloc.state.failure?.code, ServerFailureCode.streamEnded);
+    expect(runningBloc.state.failure?.message, isEmpty);
     await runningBloc.close();
   });
 

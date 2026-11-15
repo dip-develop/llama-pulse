@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:llama_pulse_core/llama_pulse_core.dart';
 
 import '../../../app/platform/file_picker.dart';
+import '../../../l10n/app_localizations.dart';
 import 'parameter_filter.dart';
 import 'parameter_group_tile.dart';
 import 'parameter_row.dart';
@@ -31,10 +32,8 @@ class ParameterPanel extends StatefulWidget {
     required this.valueForLocked,
     required this.onChanged,
     required this.onReset,
-    this.title = 'Server parameters',
-    this.subtitle =
-        'Every other llama-server flag. The essentials stay in the form '
-        'above and are saved with them.',
+    this.title,
+    this.subtitle,
     this.keyPrefix = 'server-params',
     this.rowKeyPrefix = 'server-param',
   });
@@ -60,11 +59,12 @@ class ParameterPanel extends StatefulWidget {
   /// Called with every id a group reset must remove.
   final void Function(Set<String> ids) onReset;
 
-  /// Heading of the panel.
-  final String title;
+  /// Heading of the panel; `null` uses the localized server heading.
+  final String? title;
 
-  /// One-line explanation rendered under [title].
-  final String subtitle;
+  /// One-line explanation rendered under [title]; `null` uses the localized
+  /// server explanation.
+  final String? subtitle;
 
   /// Prefix of the panel-level keys, for example `server-params`.
   final String keyPrefix;
@@ -90,6 +90,9 @@ class _ParameterPanelState extends State<ParameterPanel> {
 
   String _query = '';
   bool _modifiedOnly = false;
+
+  /// The localized strings of the current locale.
+  AppLocalizations get l10n => AppLocalizations.of(context)!;
 
   @override
   void initState() {
@@ -185,7 +188,7 @@ class _ParameterPanelState extends State<ParameterPanel> {
   void _resetRow(ParameterSpec spec) {
     final String? previous = widget.params[spec.id];
     widget.onChanged(spec.id, null);
-    _showUndo({spec.id: previous}, 'Reset ${spec.displayName}');
+    _showUndo({spec.id: previous}, l10n.paramsResetParameter(spec.displayName));
   }
 
   void _resetGroup(ParameterGroupView group, List<String> ids) {
@@ -199,9 +202,7 @@ class _ParameterPanelState extends State<ParameterPanel> {
     widget.onReset(previous.keys.toSet());
     _showUndo(
       previous,
-      previous.length == 1
-          ? 'Reset 1 parameter in ${group.spec.name}'
-          : 'Reset ${previous.length} parameters in ${group.spec.name}',
+      l10n.paramsResetGroup(previous.length, group.spec.name),
     );
   }
 
@@ -219,7 +220,7 @@ class _ParameterPanelState extends State<ParameterPanel> {
           content: Text(message),
           duration: const Duration(seconds: 5),
           action: SnackBarAction(
-            label: 'Undo',
+            label: l10n.paramsUndo,
             onPressed: () {
               for (final MapEntry<String, String?> entry in previous.entries) {
                 widget.onChanged(entry.key, entry.value);
@@ -233,6 +234,7 @@ class _ParameterPanelState extends State<ParameterPanel> {
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
+    final AppLocalizations l10n = this.l10n;
     final List<ParameterGroupView> groups = _groups(
       query: _query,
       modifiedOnly: _modifiedOnly,
@@ -243,17 +245,20 @@ class _ParameterPanelState extends State<ParameterPanel> {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(widget.title, style: theme.textTheme.titleMedium),
+        Text(
+          widget.title ?? l10n.paramsTitleServer,
+          style: theme.textTheme.titleMedium,
+        ),
         const SizedBox(height: 4),
         Text(
-          widget.subtitle,
+          widget.subtitle ?? l10n.paramsSubtitleServer,
           style: theme.textTheme.bodySmall?.copyWith(
             color: theme.colorScheme.onSurfaceVariant,
           ),
         ),
         const SizedBox(height: 8),
         Text(
-          '$modified modified / $available available',
+          l10n.paramsCount(modified, available),
           key: ValueKey('${widget.keyPrefix}-count'),
           style: theme.textTheme.labelMedium,
         ),
@@ -261,17 +266,20 @@ class _ParameterPanelState extends State<ParameterPanel> {
         TextField(
           key: ValueKey('${widget.keyPrefix}-search'),
           controller: _search,
-          decoration: const InputDecoration(
+          decoration: InputDecoration(
             isDense: true,
-            prefixIcon: Icon(Icons.search, size: 18),
-            hintText: 'Search parameters',
+            prefixIcon: const Icon(Icons.search, size: 18),
+            hintText: l10n.paramsSearchHint,
           ),
           onChanged: (String text) => setState(() => _query = text),
         ),
         Row(
           children: [
             Expanded(
-              child: Text('Modified only', style: theme.textTheme.bodySmall),
+              child: Text(
+                l10n.paramsModifiedOnly,
+                style: theme.textTheme.bodySmall,
+              ),
             ),
             Switch(
               key: ValueKey('${widget.keyPrefix}-modified-only'),
@@ -280,14 +288,14 @@ class _ParameterPanelState extends State<ParameterPanel> {
             ),
             IconButton(
               key: ValueKey('${widget.keyPrefix}-expand-all'),
-              tooltip: 'Expand all',
+              tooltip: l10n.paramsExpandAll,
               iconSize: 18,
               onPressed: () => _expandAll(groups),
               icon: const Icon(Icons.unfold_more),
             ),
             IconButton(
               key: ValueKey('${widget.keyPrefix}-collapse-all'),
-              tooltip: 'Collapse all',
+              tooltip: l10n.paramsCollapseAll,
               iconSize: 18,
               onPressed: () => _collapseAll(groups),
               icon: const Icon(Icons.unfold_less),
@@ -298,7 +306,7 @@ class _ParameterPanelState extends State<ParameterPanel> {
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 12),
             child: Text(
-              'No parameters match',
+              l10n.paramsEmpty,
               key: ValueKey('${widget.keyPrefix}-empty'),
               style: theme.textTheme.bodySmall?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
@@ -364,13 +372,12 @@ class _ParameterPanelState extends State<ParameterPanel> {
     if (override != null) {
       return override;
     }
+    final AppLocalizations l10n = this.l10n;
     return switch (spec.exposure) {
       ParamExposure.managed =>
-        spec.reason ?? 'Managed by ${spec.managedBy ?? 'LlamaPulse'}.',
-      ParamExposure.unsupported =>
-        spec.reason ?? 'llama-server does not accept this parameter.',
-      ParamExposure.removed =>
-        spec.reason ?? 'llama.cpp removed this parameter.',
+        spec.reason ?? l10n.paramsManagedBy(spec.managedBy ?? 'LlamaPulse'),
+      ParamExposure.unsupported => spec.reason ?? l10n.paramsUnsupportedReason,
+      ParamExposure.removed => spec.reason ?? l10n.paramsRemovedReason,
       ParamExposure.configurable => null,
     };
   }

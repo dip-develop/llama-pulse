@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:llama_pulse_core/llama_pulse_core.dart';
 
 import '../../../app/platform/model_path_picker.dart';
+import '../../../l10n/app_localizations.dart';
 import '../bloc/inference_bloc.dart';
 import '../bloc/inference_event.dart';
 import '../bloc/inference_status.dart';
@@ -190,6 +191,7 @@ class _ModelParamsFormState extends State<ModelParamsForm> {
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
+    final AppLocalizations l10n = AppLocalizations.of(context)!;
     return Card(
       key: const ValueKey('parameters-card'),
       child: Padding(
@@ -198,10 +200,10 @@ class _ModelParamsFormState extends State<ModelParamsForm> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Model parameters', style: theme.textTheme.titleMedium),
+            Text(l10n.chatModelParamsTitle, style: theme.textTheme.titleMedium),
             const SizedBox(height: 4),
             Text(
-              'Changes apply to the next load.',
+              l10n.chatModelParamsHint,
               style: theme.textTheme.bodySmall?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
               ),
@@ -212,15 +214,15 @@ class _ModelParamsFormState extends State<ModelParamsForm> {
               controller: _modelPathController,
               focusNode: _modelPathFocus,
               decoration: InputDecoration(
-                labelText: 'Model path',
-                hintText: '/models/model.gguf',
+                labelText: l10n.chatModelPath,
+                hintText: l10n.modelPathExample,
                 isDense: true,
                 suffixIcon: Padding(
                   padding: const EdgeInsets.only(right: 4),
                   child: TextButton(
                     key: const ValueKey('browse-model-path'),
                     onPressed: _browse,
-                    child: const Text('Browse'),
+                    child: Text(l10n.browseAction),
                   ),
                 ),
               ),
@@ -234,7 +236,7 @@ class _ModelParamsFormState extends State<ModelParamsForm> {
                 Expanded(
                   child: _numberField(
                     fieldKey: 'context-size',
-                    label: 'Context size',
+                    label: l10n.chatContextSize,
                     keyboardType: TextInputType.number,
                     onChanged: (String text) {
                       final int? value = int.tryParse(text);
@@ -249,7 +251,7 @@ class _ModelParamsFormState extends State<ModelParamsForm> {
                 Expanded(
                   child: _numberField(
                     fieldKey: 'gpu-layers',
-                    label: 'GPU layers',
+                    label: l10n.chatGpuLayers,
                     keyboardType: TextInputType.number,
                     onChanged: (String text) {
                       final int? value = int.tryParse(text);
@@ -269,7 +271,7 @@ class _ModelParamsFormState extends State<ModelParamsForm> {
                 Expanded(
                   child: _numberField(
                     fieldKey: 'threads',
-                    label: 'Threads',
+                    label: l10n.chatThreads,
                     keyboardType: TextInputType.number,
                     onChanged: (String text) {
                       final int? value = int.tryParse(text);
@@ -284,7 +286,7 @@ class _ModelParamsFormState extends State<ModelParamsForm> {
                 Expanded(
                   child: _numberField(
                     fieldKey: 'temperature',
-                    label: 'Temperature',
+                    label: l10n.chatTemperature,
                     keyboardType: const TextInputType.numberWithOptions(
                       decimal: true,
                     ),
@@ -306,7 +308,7 @@ class _ModelParamsFormState extends State<ModelParamsForm> {
                 Expanded(
                   child: _numberField(
                     fieldKey: 'top-p',
-                    label: 'Top-p',
+                    label: l10n.chatTopP,
                     keyboardType: const TextInputType.numberWithOptions(
                       decimal: true,
                     ),
@@ -323,7 +325,7 @@ class _ModelParamsFormState extends State<ModelParamsForm> {
                 Expanded(
                   child: _numberField(
                     fieldKey: 'top-k',
-                    label: 'Top-k',
+                    label: l10n.chatTopK,
                     keyboardType: TextInputType.number,
                     onChanged: (String text) {
                       final int? value = int.tryParse(text);
@@ -339,7 +341,7 @@ class _ModelParamsFormState extends State<ModelParamsForm> {
             const SizedBox(height: 12),
             _numberField(
               fieldKey: 'max-tokens',
-              label: 'Max tokens',
+              label: l10n.chatMaxTokens,
               keyboardType: TextInputType.number,
               onChanged: (String text) {
                 final int? value = int.tryParse(text);
@@ -354,9 +356,9 @@ class _ModelParamsFormState extends State<ModelParamsForm> {
               key: const ValueKey('chat-template'),
               controller: _chatTemplateController,
               focusNode: _chatTemplateFocus,
-              decoration: const InputDecoration(
-                labelText: 'Chat template',
-                hintText: 'Model default, a built-in name, or "none"',
+              decoration: InputDecoration(
+                labelText: l10n.chatTemplateLabel,
+                hintText: l10n.chatTemplateHint,
                 isDense: true,
               ),
               onChanged: (String text) {
@@ -375,10 +377,9 @@ class _ModelParamsFormState extends State<ModelParamsForm> {
               focusNode: _systemPromptFocus,
               minLines: 2,
               maxLines: 3,
-              decoration: const InputDecoration(
-                labelText: 'System prompt',
-                hintText:
-                    'Prepended as the system message of each chat request',
+              decoration: InputDecoration(
+                labelText: l10n.chatSystemPrompt,
+                hintText: l10n.chatSystemPromptHint,
                 isDense: true,
               ),
               onChanged: (String text) {
@@ -392,10 +393,8 @@ class _ModelParamsFormState extends State<ModelParamsForm> {
             SwitchListTile(
               key: const ValueKey('use-chat-template'),
               contentPadding: EdgeInsets.zero,
-              title: const Text('Apply chat template'),
-              subtitle: const Text(
-                'Off sends the raw prompt even when a template is set.',
-              ),
+              title: Text(l10n.chatApplyTemplate),
+              subtitle: Text(l10n.chatApplyTemplateSubtitle),
               value: widget.params.useChatTemplate ?? true,
               onChanged: (bool value) =>
                   _dispatch(widget.params.copyWith(useChatTemplate: value)),
@@ -412,7 +411,7 @@ class _ModelParamsFormState extends State<ModelParamsForm> {
                       : () => context.read<InferenceBloc>().add(
                           const InferenceSaveRequested(),
                         ),
-                  child: const Text('Save'),
+                  child: Text(l10n.saveAction),
                 ),
                 OutlinedButton(
                   key: const ValueKey('load-model'),
@@ -421,7 +420,7 @@ class _ModelParamsFormState extends State<ModelParamsForm> {
                       : () => context.read<InferenceBloc>().add(
                           const InferenceLoadRequested(),
                         ),
-                  child: const Text('Load model'),
+                  child: Text(l10n.chatLoadModel),
                 ),
                 TextButton(
                   key: const ValueKey('unload-model'),
@@ -430,7 +429,7 @@ class _ModelParamsFormState extends State<ModelParamsForm> {
                           const InferenceUnloadRequested(),
                         )
                       : null,
-                  child: const Text('Unload'),
+                  child: Text(l10n.unloadAction),
                 ),
               ],
             ),

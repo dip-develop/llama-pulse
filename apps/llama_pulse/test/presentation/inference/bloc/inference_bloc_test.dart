@@ -409,7 +409,7 @@ void main() {
       await _waitUntil(() => bloc.state.failure != null);
 
       expect(bloc.state.status, InferenceStatus.failure);
-      expect(bloc.state.failure?.code, InferenceFailureCode.unknown);
+      expect(bloc.state.failure?.code, InferenceFailureCode.streamEnded);
       expect(bloc.state.output, '');
       expect(bloc.state.transcript.last.role, ChatMessage.roleAssistant);
       expect(bloc.state.transcript.last.content, 'par');
@@ -607,7 +607,7 @@ void main() {
       bloc.add(const InferenceGenerateRequested());
       await _waitUntil(() => bloc.state.failure != null);
 
-      expect(bloc.state.failure?.code, InferenceFailureCode.invalidParams);
+      expect(bloc.state.failure?.code, InferenceFailureCode.promptRequired);
       expect(bloc.state.transcript, isEmpty);
       expect(engine.generatedRequests, isEmpty);
 
@@ -693,10 +693,7 @@ void main() {
 
       expect(engine.unloadCalls, 0);
       expect(bloc.state.failure?.code, InferenceFailureCode.engineBusy);
-      expect(
-        bloc.state.failure?.message,
-        'cancel the running generation first',
-      );
+      expect(bloc.state.failure?.message, isEmpty);
       expect(bloc.state.status, InferenceStatus.generating);
       expect(bloc.state.activeRequestId, 1);
       expect(bloc.state.output, 'par');

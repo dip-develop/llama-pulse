@@ -4,6 +4,7 @@ import 'package:llama_pulse_core/llama_pulse_core.dart';
 
 import '../../app/platform/file_picker.dart';
 import '../../app/platform/model_path_picker.dart';
+import '../../l10n/app_localizations.dart';
 import 'bloc/inference_bloc.dart';
 import 'bloc/inference_state.dart';
 import 'bloc/inference_status.dart';
@@ -76,12 +77,13 @@ class _DemoEngineBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
+    final AppLocalizations l10n = AppLocalizations.of(context)!;
     return Container(
       key: const ValueKey('demo-engine-banner'),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       color: theme.colorScheme.tertiaryContainer,
       child: Text(
-        'Demo engine — output is synthetic.',
+        l10n.chatDemoBanner,
         style: theme.textTheme.bodySmall?.copyWith(
           color: theme.colorScheme.onTertiaryContainer,
         ),

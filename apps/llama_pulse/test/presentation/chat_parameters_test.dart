@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:llama_pulse/app/di/injection.dart';
+import 'package:llama_pulse/l10n/app_localizations.dart';
 import 'package:llama_pulse/presentation/inference/bloc/inference_bloc.dart';
 import 'package:llama_pulse/presentation/inference/bloc/inference_event.dart';
 import 'package:llama_pulse/presentation/inference/widgets/chat_parameters_card.dart';
@@ -103,7 +104,14 @@ void main() {
       find.byKey(const ValueKey('chat-param-cont-batching-control')),
       findsNothing,
     );
-    expect(find.text(chatServerOnlyReason), findsOneWidget);
+    expect(
+      find.text(
+        AppLocalizations.of(
+          tester.element(find.byKey(const ValueKey('chat-params-panel'))),
+        )!.chatServerOnlyReason,
+      ),
+      findsOneWidget,
+    );
   });
 
   testWidgets('a search narrows the groups and clearing restores them', (

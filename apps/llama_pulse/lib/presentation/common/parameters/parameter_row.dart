@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:llama_pulse_core/llama_pulse_core.dart';
 
 import '../../../app/platform/file_picker.dart';
+import '../../../l10n/app_localizations.dart';
 import 'parameter_control.dart';
 import 'parameter_tooltip.dart';
 
@@ -127,7 +128,8 @@ class _ParameterRowState extends State<ParameterRow> {
 
   Future<void> _browse() async {
     final String? path = await widget.filePicker.pickFile(
-      dialogTitle: 'Select ${widget.spec.displayName}',
+      dialogTitle: AppLocalizations.of(context)!
+          .paramsSelectFile(widget.spec.displayName),
     );
     if (!mounted || path == null) {
       return;
@@ -144,6 +146,7 @@ class _ParameterRowState extends State<ParameterRow> {
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
+    final AppLocalizations l10n = AppLocalizations.of(context)!;
     final String prefix = '${widget.keyPrefix}-${widget.spec.id}';
     return Padding(
       key: ValueKey(prefix),
@@ -167,7 +170,7 @@ class _ParameterRowState extends State<ParameterRow> {
                     const SizedBox(width: 4),
                     Tooltip(
                       key: ValueKey('$prefix-tooltip'),
-                      message: parameterTooltip(widget.spec),
+                      message: parameterTooltip(l10n, widget.spec),
                       waitDuration: const Duration(milliseconds: 400),
                       child: Icon(
                         Icons.info_outline,
@@ -188,7 +191,7 @@ class _ParameterRowState extends State<ParameterRow> {
               else
                 IconButton(
                   key: ValueKey('$prefix-reset'),
-                  tooltip: 'Reset to default',
+                  tooltip: l10n.paramsResetToDefault,
                   iconSize: 18,
                   visualDensity: VisualDensity.compact,
                   onPressed: _canReset ? _reset : null,
@@ -197,7 +200,7 @@ class _ParameterRowState extends State<ParameterRow> {
             ],
           ),
           if (widget.locked)
-            _lockedDetails(theme)
+            _lockedDetails(l10n, theme)
           else
             ParameterControl(
               spec: widget.spec,
@@ -216,8 +219,8 @@ class _ParameterRowState extends State<ParameterRow> {
     );
   }
 
-  Widget _lockedDetails(ThemeData theme) {
-    final String reason = _reason();
+  Widget _lockedDetails(AppLocalizations l10n, ThemeData theme) {
+    final String reason = _reason(l10n);
     final String? value = _effectiveValue();
     final TextStyle? style = theme.textTheme.bodySmall?.copyWith(
       color: theme.colorScheme.onSurfaceVariant,
@@ -228,7 +231,7 @@ class _ParameterRowState extends State<ParameterRow> {
         if (reason.isNotEmpty) Text(reason, style: style),
         if (value != null)
           Text(
-            'Effective value: $value',
+            l10n.paramsEffectiveValue(value),
             key: ValueKey('${widget.keyPrefix}-${widget.spec.id}-effective'),
             style: style,
           ),
@@ -236,13 +239,13 @@ class _ParameterRowState extends State<ParameterRow> {
     );
   }
 
-  String _reason() {
+  String _reason(AppLocalizations l10n) {
     final String reason = (widget.lockReason ?? widget.spec.reason ?? '')
         .trim();
     final String? replacement = widget.spec.replacement?.trim();
     final String hint = replacement == null || replacement.isEmpty
         ? ''
-        : 'Use $replacement instead.';
+        : l10n.paramsUseReplacement(replacement);
     if (reason.isEmpty) {
       return hint;
     }

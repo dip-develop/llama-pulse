@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:llama_pulse_core/llama_pulse_core.dart';
 
+import '../../../l10n/app_localizations.dart';
+
 /// Editable control for one catalog parameter.
 ///
 /// The shape follows the catalog type: a switch for booleans, a dropdown for
@@ -48,10 +50,11 @@ class ParameterControl extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final AppLocalizations l10n = AppLocalizations.of(context)!;
     return switch (spec.type) {
       ParamValueType.bool => _switch(),
-      ParamValueType.enumeration => _dropdown(),
-      _ => _field(),
+      ParamValueType.enumeration => _dropdown(l10n),
+      _ => _field(l10n),
     };
   }
 
@@ -78,7 +81,7 @@ class ParameterControl extends StatelessWidget {
     );
   }
 
-  Widget _dropdown() {
+  Widget _dropdown(AppLocalizations l10n) {
     final String? current = value != null && spec.allowed.contains(value)
         ? value
         : null;
@@ -93,7 +96,7 @@ class ParameterControl extends StatelessWidget {
         isExpanded: true,
         isDense: true,
         underline: const SizedBox.shrink(),
-        hint: const Text('default'),
+        hint: Text(l10n.paramsDefaultHint),
         items: [
           for (final String allowed in spec.allowed)
             DropdownMenuItem<String>(value: allowed, child: Text(allowed)),
@@ -107,7 +110,7 @@ class ParameterControl extends StatelessWidget {
     );
   }
 
-  Widget _field() {
+  Widget _field(AppLocalizations l10n) {
     final bool multiline = spec.arity == 2 || spec.repeatable;
     return TextFormField(
       key: ValueKey('$keyPrefix-control'),
@@ -130,7 +133,7 @@ class ParameterControl extends StatelessWidget {
                 child: TextButton(
                   key: ValueKey('$keyPrefix-browse'),
                   onPressed: onBrowse,
-                  child: const Text('Browse'),
+                  child: Text(l10n.browseAction),
                 ),
               ),
       ),

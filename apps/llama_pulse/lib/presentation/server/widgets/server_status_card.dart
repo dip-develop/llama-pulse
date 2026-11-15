@@ -2,9 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:llama_pulse_core/llama_pulse_core.dart';
 
+import '../../../l10n/app_localizations.dart';
 import '../bloc/server_bloc.dart';
 import '../bloc/server_dashboard_state.dart';
 import '../bloc/server_event.dart';
+import '../server_failure_labels.dart';
+import '../server_phase_labels.dart';
 
 /// Lifecycle card: what the supervisor runs, where it runs and how to control
 /// it.
@@ -51,6 +54,7 @@ class _Card extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
+    final AppLocalizations l10n = AppLocalizations.of(context)!;
     final ServerBinaryInfo? info = binaryInfo;
     final String binaryPath = info != null && info.path.isNotEmpty
         ? info.path
@@ -69,30 +73,40 @@ class _Card extends StatelessWidget {
             Row(
               children: [
                 Expanded(
-                  child: Text('Server', style: theme.textTheme.titleMedium),
+                  child: Text(
+                    l10n.serverStatusTitle,
+                    style: theme.textTheme.titleMedium,
+                  ),
                 ),
                 _StatusChip(serverState: serverState),
               ],
             ),
             const SizedBox(height: 12),
-            _row(theme, 'Health', serverState.health.name),
+            _row(theme, l10n.serverStatusHealth, serverState.health.name),
             _row(
               theme,
-              'Supervisor pid',
+              l10n.serverStatusSupervisorPid,
               serverState.supervisorPid?.toString() ?? '—',
             ),
-            _row(theme, 'Server pid', serverState.serverPid?.toString() ?? '—'),
             _row(
               theme,
-              'Model',
+              l10n.serverStatusServerPid,
+              serverState.serverPid?.toString() ?? '—',
+            ),
+            _row(
+              theme,
+              l10n.serverStatusModel,
               serverState.modelPath.isEmpty ? '—' : serverState.modelPath,
             ),
             _row(
               theme,
-              'Binary',
-              binaryPath.isEmpty ? 'not located' : binaryPath,
+              l10n.serverStatusBinary,
+              binaryPath.isEmpty
+                  ? l10n.serverStatusBinaryNotLocated
+                  : binaryPath,
             ),
-            if (binaryVersion.isNotEmpty) _row(theme, 'Version', binaryVersion),
+            if (binaryVersion.isNotEmpty)
+              _row(theme, l10n.serverStatusVersion, binaryVersion),
             if (warning != null) ...[
               const SizedBox(height: 8),
               Text(
@@ -107,24 +121,24 @@ class _Card extends StatelessWidget {
               Padding(
                 padding: const EdgeInsets.only(top: 8),
                 child: Text(
-                  'Started outside this app — stop it with llamapulse stop.',
+                  l10n.serverStatusExternalRun,
                   key: const ValueKey('server-external-run'),
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
                   ),
                 ),
               ),
-            _row(theme, 'Uptime', _uptime(serverState)),
+            _row(theme, l10n.serverStatusUptime, _uptime(serverState)),
             _row(
               theme,
-              'Last exit code',
+              l10n.serverStatusLastExitCode,
               serverState.lastExitCode?.toString() ?? '—',
             ),
             if (failure != null)
               _row(
                 theme,
-                'Last failure',
-                '${failure.code.name}: ${failure.message}',
+                l10n.serverStatusLastFailure,
+                serverFailureText(l10n, failure),
               ),
             const SizedBox(height: 16),
             Wrap(
@@ -142,7 +156,7 @@ class _Card extends StatelessWidget {
                             )
                           : null,
                       icon: const Icon(Icons.play_arrow),
-                      label: const Text('Start'),
+                      label: Text(l10n.serverStatusStart),
                     );
                   },
                 ),
@@ -157,7 +171,7 @@ class _Card extends StatelessWidget {
                             )
                           : null,
                       icon: const Icon(Icons.stop),
-                      label: const Text('Stop'),
+                      label: Text(l10n.serverStatusStop),
                     );
                   },
                 ),
@@ -222,7 +236,9 @@ class _StatusChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
+    final AppLocalizations l10n = AppLocalizations.of(context)!;
     final (String label, Color background, Color foreground) = _appearance(
+      l10n,
       serverState.phase,
       theme.colorScheme,
     );
@@ -241,29 +257,27 @@ class _StatusChip extends StatelessWidget {
   }
 
   static (String, Color, Color) _appearance(
+    AppLocalizations l10n,
     ServerPhase phase,
     ColorScheme scheme,
-  ) => switch (phase) {
-    ServerPhase.running => (
-      'Running',
-      scheme.primaryContainer,
-      scheme.onPrimaryContainer,
-    ),
-    ServerPhase.starting => (
-      'Starting',
-      scheme.tertiaryContainer,
-      scheme.onTertiaryContainer,
-    ),
-    ServerPhase.stopping => (
-      'Stopping',
-      scheme.tertiaryContainer,
-      scheme.onTertiaryContainer,
-    ),
-    ServerPhase.failed => (
-      'Failed',
-      scheme.errorContainer,
-      scheme.onErrorContainer,
-    ),
-    _ => ('Stopped', scheme.surfaceContainerHighest, scheme.onSurfaceVariant),
-  };
+  ) {
+    final String label = serverPhaseLabel(l10n, phase);
+    final (Color background, Color foreground) = switch (phase) {
+      ServerPhase.running => (
+        scheme.primaryContainer,
+        scheme.onPrimaryContainer,
+      ),
+      ServerPhase.starting => (
+        scheme.tertiaryContainer,
+        scheme.onTertiaryContainer,
+      ),
+      ServerPhase.stopping => (
+        scheme.tertiaryContainer,
+        scheme.onTertiaryContainer,
+      ),
+      ServerPhase.failed => (scheme.errorContainer, scheme.onErrorContainer),
+      _ => (scheme.surfaceContainerHighest, scheme.onSurfaceVariant),
+    };
+    return (label, background, foreground);
+  }
 }

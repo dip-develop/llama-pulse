@@ -4,6 +4,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:llama_pulse_core/llama_pulse_core.dart';
 
 import 'runtime_event.dart';
+import 'runtime_messages.dart';
 import 'runtime_state.dart';
 
 /// Drives the Runtime tab and the dashboard card.
@@ -49,11 +50,7 @@ class RuntimeBloc extends Bloc<RuntimeEvent, RuntimeState> {
       if (isClosed) {
         return;
       }
-      add(
-        RuntimeStatusReceived(
-          error: 'Could not read the runtime status: $error',
-        ),
-      );
+      add(RuntimeStatusReceived(error: '$error'));
     }
   }
 
@@ -67,7 +64,8 @@ class RuntimeBloc extends Bloc<RuntimeEvent, RuntimeState> {
         state.rebuild(
           (b) => b
             ..loading = false
-            ..errorMessage = event.error,
+            ..errorCode = RuntimeErrorCode.statusReadFailed
+            ..errorDetail = event.error,
         ),
       );
       return;
@@ -79,8 +77,11 @@ class RuntimeBloc extends Bloc<RuntimeEvent, RuntimeState> {
       state.rebuild((b) {
         b
           ..loading = false
-          ..errorMessage = null
-          ..hardwareSummary = _describeHardware(status.detection)
+          ..errorCode = null
+          ..errorDetail = null
+          ..operatingSystem = _operatingSystem(status.detection)
+          ..gpuSummary = _gpuSummary(status.detection)
+          ..hasGpu = hardware.gpus.isNotEmpty
           ..platform = hardware.platform
           ..supports.replace(status.detection.supports)
           ..recommendedBackend = status.recommendedBackend
@@ -111,8 +112,8 @@ class RuntimeBloc extends Bloc<RuntimeEvent, RuntimeState> {
       emit(
         state.rebuild(
           (b) => b
-            ..errorMessage =
-                '${event.backend.displayName} is not available on this host',
+            ..errorCode = RuntimeErrorCode.unavailableOnHost
+            ..errorDetail = event.backend.displayName,
         ),
       );
       return;
@@ -129,8 +130,10 @@ class RuntimeBloc extends Bloc<RuntimeEvent, RuntimeState> {
           ..progressTotal =
               asset.sizeBytes + (asset.cudartAsset?.sizeBytes ?? 0)
           ..bytesPerSecond = 0
-          ..errorMessage = null
-          ..noticeMessage = null,
+          ..errorCode = null
+          ..errorDetail = null
+          ..noticeCode = null
+          ..noticeDetail = null,
       ),
     );
 
@@ -172,7 +175,13 @@ class RuntimeBloc extends Bloc<RuntimeEvent, RuntimeState> {
 
   void _onCancel(RuntimeCancelRequested event, Emitter<RuntimeState> emit) {
     _cancelToken?.cancel();
-    emit(state.rebuild((b) => b..noticeMessage = 'Cancelling the download…'));
+    emit(
+      state.rebuild(
+        (b) => b
+          ..noticeCode = RuntimeNoticeCode.cancelling
+          ..noticeDetail = null,
+      ),
+    );
   }
 
   void _onProgress(RuntimeProgressReceived event, Emitter<RuntimeState> emit) {
@@ -200,12 +209,16 @@ class RuntimeBloc extends Bloc<RuntimeEvent, RuntimeState> {
           ..busy = false
           ..installingBackend = null
           ..bytesPerSecond = 0
-          ..errorMessage = event.cancelled ? null : event.error
-          ..noticeMessage = event.cancelled
-              ? 'The install was cancelled.'
+          ..errorCode = event.cancelled || event.error == null
+              ? null
+              : RuntimeErrorCode.installFailed
+          ..errorDetail = event.cancelled ? null : event.error
+          ..noticeCode = event.cancelled
+              ? RuntimeNoticeCode.installCancelled
               : event.error == null && backend != null
-              ? 'Installed ${backend.displayName}.'
-              : null,
+              ? RuntimeNoticeCode.installed
+              : null
+          ..noticeDetail = backend?.displayName,
       ),
     );
     if (event.error == null && !event.cancelled) {
@@ -226,7 +239,8 @@ class RuntimeBloc extends Bloc<RuntimeEvent, RuntimeState> {
       if (!isClosed) {
         add(
           RuntimeActionCompleted(
-            notice: 'Selected ${event.tag}/${event.backend.id}.',
+            noticeCode: RuntimeNoticeCode.selected,
+            noticeDetail: '${event.tag}/${event.backend.id}',
           ),
         );
       }
@@ -250,7 +264,8 @@ class RuntimeBloc extends Bloc<RuntimeEvent, RuntimeState> {
       if (!isClosed) {
         add(
           RuntimeActionCompleted(
-            notice: 'Removed ${event.tag}/${event.backend.id}.',
+            noticeCode: RuntimeNoticeCode.removed,
+            noticeDetail: '${event.tag}/${event.backend.id}',
           ),
         );
       }
@@ -269,8 +284,12 @@ class RuntimeBloc extends Bloc<RuntimeEvent, RuntimeState> {
       state.rebuild(
         (b) => b
           ..busy = false
-          ..errorMessage = event.error
-          ..noticeMessage = event.notice,
+          ..errorCode = event.error == null
+              ? null
+              : RuntimeErrorCode.actionFailed
+          ..errorDetail = event.error
+          ..noticeCode = event.noticeCode
+          ..noticeDetail = event.noticeDetail,
       ),
     );
     if (event.error == null) {
@@ -285,20 +304,18 @@ class RuntimeBloc extends Bloc<RuntimeEvent, RuntimeState> {
     add(const RuntimeRefreshed());
   }
 
-  static String _describeHardware(RuntimeDetection detection) {
+  /// The operating system and the architecture of the host.
+  static String _operatingSystem(RuntimeDetection detection) {
     final hardware = detection.hardware;
-    final platform = hardware.platform?.id ?? 'unsupported host';
-    final parts = <String>[
-      '${hardware.operatingSystem} ${hardware.arch}',
-      platform,
-    ];
-    for (final gpu in hardware.gpus) {
-      parts.add('${gpu.name} (${gpu.vendor} ${gpu.driverVersion})');
-    }
-    if (hardware.gpus.isEmpty) {
-      parts.add('no GPU detected');
-    }
-    return parts.join(' · ');
+    return '${hardware.operatingSystem} ${hardware.arch}';
+  }
+
+  /// The detected GPUs and their drivers.
+  static String _gpuSummary(RuntimeDetection detection) {
+    final hardware = detection.hardware;
+    return hardware.gpus
+        .map((gpu) => '${gpu.name} (${gpu.vendor} ${gpu.driverVersion})')
+        .join(' · ');
   }
 
   /// Convenience for tests and the card: the pinned release's asset for

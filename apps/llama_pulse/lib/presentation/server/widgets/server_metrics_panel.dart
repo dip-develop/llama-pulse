@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:llama_pulse_core/llama_pulse_core.dart';
 
+import '../../../l10n/app_localizations.dart';
 import '../bloc/server_bloc.dart';
 import '../bloc/server_dashboard_state.dart';
 
@@ -13,6 +14,7 @@ class ServerMetricsPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
+    final AppLocalizations l10n = AppLocalizations.of(context)!;
     return Card(
       key: const ValueKey('server-metrics-card'),
       child: Padding(
@@ -21,7 +23,7 @@ class ServerMetricsPanel extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text('Metrics', style: theme.textTheme.titleMedium),
+            Text(l10n.serverMetricsTitle, style: theme.textTheme.titleMedium),
             const SizedBox(height: 12),
             BlocSelector<
               ServerBloc,
@@ -33,7 +35,7 @@ class ServerMetricsPanel extends StatelessWidget {
                   (BuildContext context, BuiltList<ServerMetrics> history) {
                     if (history.isEmpty) {
                       return Text(
-                        'Metrics appear once the server is running.',
+                        l10n.serverMetricsEmpty,
                         style: theme.textTheme.bodyMedium?.copyWith(
                           color: theme.colorScheme.onSurfaceVariant,
                         ),
@@ -57,45 +59,47 @@ class _MetricsList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final double? contextUsage = metrics.contextUsageRatio;
+    final AppLocalizations l10n = AppLocalizations.of(context)!;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
         _MetricRow(
-          label: 'Generation',
+          label: l10n.serverMetricsGeneration,
           valueKey: 'server-metric-tokens-per-second',
           value: '${metrics.tokensPerSecond.toStringAsFixed(1)} tok/s',
         ),
         _MetricRow(
-          label: 'Prompt',
+          label: l10n.serverMetricsPrompt,
           valueKey: 'server-metric-prompt-tokens-per-second',
           value: '${metrics.promptTokensPerSecond.toStringAsFixed(1)} tok/s',
         ),
         _MetricRow(
-          label: 'Active slots',
+          label: l10n.serverMetricsActiveSlots,
           valueKey: 'server-metric-active-slots',
           value: '${metrics.activeSlots}/${metrics.totalSlots}',
         ),
         _MetricRow(
-          label: 'Requests',
+          label: l10n.serverMetricsRequests,
           valueKey: 'server-metric-requests',
-          value:
-              '${metrics.requestsProcessing} processing · '
-              '${metrics.requestsDeferred} deferred',
+          value: l10n.serverMetricsRequestsValue(
+            metrics.requestsProcessing,
+            metrics.requestsDeferred,
+          ),
         ),
         _MetricRow(
-          label: 'Predicted tokens',
+          label: l10n.serverMetricsPredictedTokens,
           valueKey: 'server-metric-predicted-tokens',
           value: '${metrics.tokensPredictedTotal}',
         ),
         _MetricRow(
-          label: 'Uptime',
+          label: l10n.serverStatusUptime,
           valueKey: 'server-metric-uptime',
           value: _duration(metrics.uptimeSeconds),
         ),
         const SizedBox(height: 8),
         Text(
-          'Context usage',
+          l10n.serverMetricsContextUsage,
           style: Theme.of(context).textTheme.bodyMedium
               ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
         ),
@@ -106,7 +110,7 @@ class _MetricsList extends StatelessWidget {
           children: [
             if (contextUsage == null)
               Text(
-                'not exposed',
+                l10n.serverMetricsContextNotExposed,
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
                   color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),

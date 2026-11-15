@@ -5,6 +5,7 @@ import 'package:llama_pulse_core/llama_pulse_core.dart';
 
 import '../../../app/platform/model_path_picker.dart';
 import '../../../app/platform/server_binary_picker.dart';
+import '../../../l10n/app_localizations.dart';
 import '../bloc/server_bloc.dart';
 import '../bloc/server_event.dart';
 
@@ -283,6 +284,7 @@ class _ServerConfigFormState extends State<ServerConfigForm> {
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
+    final AppLocalizations l10n = AppLocalizations.of(context)!;
     return Card(
       key: const ValueKey('server-config-card'),
       child: Padding(
@@ -295,13 +297,13 @@ class _ServerConfigFormState extends State<ServerConfigForm> {
               children: [
                 Expanded(
                   child: Text(
-                    'Server configuration',
+                    l10n.serverConfigTitle,
                     style: theme.textTheme.titleMedium,
                   ),
                 ),
                 if (widget.dirty)
                   Text(
-                    'Unsaved changes',
+                    l10n.serverConfigUnsavedChanges,
                     style: theme.textTheme.labelMedium?.copyWith(
                       color: theme.colorScheme.tertiary,
                     ),
@@ -310,7 +312,7 @@ class _ServerConfigFormState extends State<ServerConfigForm> {
             ),
             const SizedBox(height: 4),
             Text(
-              'Changes apply on the next start.',
+              l10n.serverConfigApplyOnNextStart,
               style: theme.textTheme.bodySmall?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
               ),
@@ -319,8 +321,8 @@ class _ServerConfigFormState extends State<ServerConfigForm> {
             _pathField(
               fieldKey: 'server-model-path',
               controller: _modelPathController,
-              label: 'Model path',
-              hint: '/models/model.gguf',
+              label: l10n.serverConfigModelPath,
+              hint: l10n.modelPathExample,
               browseKey: 'server-model-browse',
               onBrowse: _browseModel,
               onChanged: (String text) =>
@@ -330,8 +332,8 @@ class _ServerConfigFormState extends State<ServerConfigForm> {
             _pathField(
               fieldKey: 'server-binary-path',
               controller: _binaryPathController,
-              label: 'llama-server binary',
-              hint: 'auto-detected when empty',
+              label: l10n.serverConfigBinaryPath,
+              hint: l10n.serverConfigBinaryPathHint,
               browseKey: 'server-binary-browse',
               onBrowse: _browseBinary,
               onChanged: (String text) =>
@@ -345,7 +347,7 @@ class _ServerConfigFormState extends State<ServerConfigForm> {
                   child: _field(
                     fieldKey: 'server-host',
                     controller: _hostController,
-                    label: 'Host',
+                    label: l10n.serverConfigHost,
                     onChanged: (String text) =>
                         _dispatch(widget.config.copyWith(host: text)),
                   ),
@@ -355,7 +357,7 @@ class _ServerConfigFormState extends State<ServerConfigForm> {
                   child: _field(
                     fieldKey: 'server-port',
                     controller: _portController,
-                    label: 'Port',
+                    label: l10n.serverConfigPort,
                     keyboardType: TextInputType.number,
                     onChanged: (String text) => _applyInt(
                       text,
@@ -374,7 +376,7 @@ class _ServerConfigFormState extends State<ServerConfigForm> {
                   child: _field(
                     fieldKey: 'server-context-size',
                     controller: _contextSizeController,
-                    label: 'Context size',
+                    label: l10n.serverConfigContextSize,
                     keyboardType: TextInputType.number,
                     onChanged: (String text) => _applyInt(
                       text,
@@ -388,7 +390,7 @@ class _ServerConfigFormState extends State<ServerConfigForm> {
                   child: _field(
                     fieldKey: 'server-threads',
                     controller: _threadsController,
-                    label: 'Threads',
+                    label: l10n.serverConfigThreads,
                     keyboardType: TextInputType.number,
                     onChanged: (String text) => _applyInt(
                       text,
@@ -407,7 +409,7 @@ class _ServerConfigFormState extends State<ServerConfigForm> {
                   child: _field(
                     fieldKey: 'server-gpu-layers',
                     controller: _gpuLayersController,
-                    label: 'GPU layers',
+                    label: l10n.serverConfigGpuLayers,
                     keyboardType: TextInputType.number,
                     onChanged: (String text) => _applyInt(
                       text,
@@ -421,7 +423,7 @@ class _ServerConfigFormState extends State<ServerConfigForm> {
                   child: _field(
                     fieldKey: 'server-parallel-slots',
                     controller: _parallelSlotsController,
-                    label: 'Parallel slots',
+                    label: l10n.serverConfigParallelSlots,
                     keyboardType: TextInputType.number,
                     onChanged: (String text) => _applyInt(
                       text,
@@ -436,7 +438,7 @@ class _ServerConfigFormState extends State<ServerConfigForm> {
             _field(
               fieldKey: 'server-alias',
               controller: _aliasController,
-              label: 'Model alias',
+              label: l10n.serverConfigModelAlias,
               onChanged: (String text) =>
                   _dispatch(widget.config.copyWith(modelAlias: text)),
             ),
@@ -444,14 +446,16 @@ class _ServerConfigFormState extends State<ServerConfigForm> {
             _field(
               fieldKey: 'server-api-key',
               controller: _apiKeyController,
-              label: 'API key',
-              hint: 'empty disables authentication',
+              label: l10n.serverConfigApiKey,
+              hint: l10n.serverConfigApiKeyHint,
               obscureText: _obscureApiKey,
               onChanged: (String text) =>
                   _dispatch(widget.config.copyWith(apiKey: text)),
               suffix: IconButton(
                 key: const ValueKey('server-api-key-reveal'),
-                tooltip: _obscureApiKey ? 'Reveal' : 'Hide',
+                tooltip: _obscureApiKey
+                    ? l10n.serverConfigReveal
+                    : l10n.serverConfigHide,
                 icon: Icon(
                   _obscureApiKey
                       ? Icons.visibility_outlined
@@ -470,8 +474,8 @@ class _ServerConfigFormState extends State<ServerConfigForm> {
                 // `initialValue` is only applied when the state is created.
                 key: ValueKey(widget.config.flashAttention),
                 initialValue: widget.config.flashAttention,
-                decoration: const InputDecoration(
-                  labelText: 'Flash attention',
+                decoration: InputDecoration(
+                  labelText: l10n.serverConfigFlashAttention,
                   isDense: true,
                 ),
                 items: const [
@@ -501,7 +505,7 @@ class _ServerConfigFormState extends State<ServerConfigForm> {
               key: const ValueKey('server-mlock'),
               contentPadding: EdgeInsets.zero,
               title: const Text('mlock'),
-              subtitle: const Text('Lock the model in RAM'),
+              subtitle: Text(l10n.serverConfigMlockSubtitle),
               value: widget.config.mlock,
               onChanged: (bool value) =>
                   _dispatch(widget.config.copyWith(mlock: value)),
@@ -510,7 +514,7 @@ class _ServerConfigFormState extends State<ServerConfigForm> {
               key: const ValueKey('server-mmap'),
               contentPadding: EdgeInsets.zero,
               title: const Text('mmap'),
-              subtitle: const Text('Memory-map the model file'),
+              subtitle: Text(l10n.serverConfigMmapSubtitle),
               value: widget.config.mmap,
               onChanged: (bool value) =>
                   _dispatch(widget.config.copyWith(mmap: value)),
@@ -522,9 +526,9 @@ class _ServerConfigFormState extends State<ServerConfigForm> {
               focusNode: _focusNodes['server-extra-args'],
               minLines: 2,
               maxLines: 4,
-              decoration: const InputDecoration(
-                labelText: 'Extra arguments',
-                hintText: 'one argument per line',
+              decoration: InputDecoration(
+                labelText: l10n.serverConfigExtraArgs,
+                hintText: l10n.serverConfigExtraArgsHint,
                 alignLabelWithHint: true,
                 isDense: true,
               ),
@@ -534,7 +538,7 @@ class _ServerConfigFormState extends State<ServerConfigForm> {
             _field(
               fieldKey: 'server-startup-timeout',
               controller: _startupTimeoutController,
-              label: 'Startup timeout (s)',
+              label: l10n.serverConfigStartupTimeout,
               keyboardType: TextInputType.number,
               onChanged: (String text) => _applyInt(
                 text,
@@ -554,14 +558,14 @@ class _ServerConfigFormState extends State<ServerConfigForm> {
                       : () => context.read<ServerBloc>().add(
                           const ServerSaveRequested(),
                         ),
-                  child: const Text('Save'),
+                  child: Text(l10n.saveAction),
                 ),
                 OutlinedButton(
                   key: const ValueKey('server-reload'),
                   onPressed: () => context.read<ServerBloc>().add(
                     const ServerReloadRequested(),
                   ),
-                  child: const Text('Reload'),
+                  child: Text(l10n.reloadAction),
                 ),
               ],
             ),
@@ -617,7 +621,7 @@ class _ServerConfigFormState extends State<ServerConfigForm> {
         child: TextButton(
           key: ValueKey(browseKey),
           onPressed: onBrowse,
-          child: const Text('Browse'),
+          child: Text(AppLocalizations.of(context)!.browseAction),
         ),
       ),
     );

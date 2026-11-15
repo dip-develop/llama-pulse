@@ -39,6 +39,28 @@ class ServerFailureCode extends EnumClass {
   /// The stored state document could not be read.
   static const ServerFailureCode stateUnreadable = _$stateUnreadable;
 
+  /// The configuration document could not be read.
+  static const ServerFailureCode configLoadFailed = _$configLoadFailed;
+
+  /// The configuration document could not be written.
+  static const ServerFailureCode configSaveFailed = _$configSaveFailed;
+
+  /// The `llama-server` executable could not be inspected.
+  static const ServerFailureCode binaryInspectionFailed =
+      _$binaryInspectionFailed;
+
+  /// The server could not be started.
+  static const ServerFailureCode startFailed = _$startFailed;
+
+  /// The server could not be stopped.
+  static const ServerFailureCode stopFailed = _$stopFailed;
+
+  /// The controller closed its stream without a terminal event.
+  static const ServerFailureCode streamEnded = _$streamEnded;
+
+  /// The server was started outside this application.
+  static const ServerFailureCode externalRun = _$externalRun;
+
   /// The failure could not be classified.
   static const ServerFailureCode unknown = _$unknown;
 

@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:llama_pulse/app/app.dart';
 import 'package:llama_pulse/app/di/injection.dart';
@@ -41,6 +42,7 @@ Future<void> pumpLlamaPulse(
   RuntimeRelease? runtimeRelease,
   bool demoServer = false,
   bool demoEngine = false,
+  Locale? locale,
 }) async {
   // Synchronous I/O: `testWidgets` runs in a fake-async zone, where awaiting
   // real file-system futures deadlocks.
@@ -92,6 +94,7 @@ Future<void> pumpLlamaPulse(
       clipboard: clipboard ?? FakeClipboardService(),
       demoServer: demoServer,
       demoEngine: demoEngine,
+      locale: locale,
     ),
   );
   // One pump renders the first frame, the next flush `Started` for both blocs,

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:llama_pulse_core/llama_pulse_core.dart';
 
+import '../../../l10n/app_localizations.dart';
 import '../bloc/inference_bloc.dart';
 import '../bloc/inference_event.dart';
 import '../bloc/inference_state.dart';
@@ -20,6 +21,7 @@ class ConversationView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
+    final AppLocalizations l10n = AppLocalizations.of(context)!;
     return Card(
       key: const ValueKey('output-card'),
       child: Padding(
@@ -53,7 +55,7 @@ class ConversationView extends StatelessWidget {
                           children: [
                             Expanded(
                               child: Text(
-                                'Conversation',
+                                l10n.chatConversationTitle,
                                 style: theme.textTheme.titleMedium,
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
@@ -67,16 +69,16 @@ class ConversationView extends StatelessWidget {
                                   : () => context.read<InferenceBloc>().add(
                                       const InferenceConversationCleared(),
                                     ),
-                              child: const Text('Clear conversation'),
+                              child: Text(l10n.chatClearConversation),
                             ),
                           ],
                         ),
                         const SizedBox(height: 12),
                         Expanded(
                           child: transcript.isEmpty && chunks.isEmpty
-                              ? const _EmptyState(
+                              ? _EmptyState(
                                   icon: Icons.forum_outlined,
-                                  message: 'No messages yet.',
+                                  message: l10n.chatNoMessages,
                                 )
                               : _TranscriptList(
                                   transcript: transcript,
@@ -201,6 +203,7 @@ class _Bubble extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
+    final AppLocalizations l10n = AppLocalizations.of(context)!;
     final ColorScheme scheme = theme.colorScheme;
     final bool isUser = role == ChatMessage.roleUser;
     final Color background = isUser
@@ -225,7 +228,7 @@ class _Bubble extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                _roleLabel(role),
+                _roleLabel(l10n, role),
                 style: theme.textTheme.labelSmall?.copyWith(
                   color: foreground.withValues(alpha: 0.72),
                 ),
@@ -243,12 +246,13 @@ class _Bubble extends StatelessWidget {
     );
   }
 
-  static String _roleLabel(String role) => switch (role) {
-    ChatMessage.roleUser => 'You',
-    ChatMessage.roleAssistant => 'Assistant',
-    ChatMessage.roleTool => 'Tool',
-    _ => role,
-  };
+  static String _roleLabel(AppLocalizations l10n, String role) =>
+      switch (role) {
+        ChatMessage.roleUser => l10n.chatRoleYou,
+        ChatMessage.roleAssistant => l10n.chatRoleAssistant,
+        ChatMessage.roleTool => l10n.chatRoleTool,
+        _ => role,
+      };
 }
 
 class _EmptyState extends StatelessWidget {

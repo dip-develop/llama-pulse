@@ -1,5 +1,7 @@
 import 'package:llama_pulse_core/llama_pulse_core.dart';
 
+import 'runtime_messages.dart';
+
 /// Commands accepted by the runtime bloc.
 ///
 /// Events are transient UI commands: they never cross the isolate boundary and
@@ -97,11 +99,18 @@ final class RuntimeInstallCompleted extends RuntimeEvent {
 ///
 /// UI code never adds it.
 final class RuntimeActionCompleted extends RuntimeEvent {
-  const RuntimeActionCompleted({this.error, this.notice});
+  const RuntimeActionCompleted({
+    this.error,
+    this.noticeCode,
+    this.noticeDetail,
+  });
 
   /// Why the action failed, or null on success.
   final String? error;
 
-  /// Summary of the successful action.
-  final String? notice;
+  /// The category of the successful action, or null.
+  final RuntimeNoticeCode? noticeCode;
+
+  /// The backend or the `tag/backend` pair the action was about.
+  final String? noticeDetail;
 }
