@@ -46,6 +46,8 @@ add a locale.
   detail a user can copy into a bug report.
 - Identifiers: parameter ids, flags, environment variables, enum wire names,
   file paths and units (`ms`, `tok/s`, `MiB`, `GiB`).
+- The `GGUF models` filter label of the native file dialog: it names a file
+  type, and the platform layer has no `BuildContext` to read the catalog from.
 
 ## Adding a locale
 
