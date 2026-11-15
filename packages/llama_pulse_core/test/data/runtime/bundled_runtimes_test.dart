@@ -59,4 +59,69 @@ void main() {
       p.join('/opt/llama-pulse', 'runtime'),
     );
   });
+
+  group('macOS bundle', () {
+    late Directory executableDirectory;
+
+    Future<String> resources(String relative) async {
+      final created = Directory(
+        p.join(
+          root.path,
+          'X.app',
+          'Contents',
+          'Resources',
+          'runtime',
+          relative,
+        ),
+      );
+      await created.create(recursive: true);
+      return p.normalize(created.path);
+    }
+
+    setUp(() async {
+      executableDirectory = Directory(
+        p.join(root.path, 'X.app', 'Contents', 'MacOS'),
+      );
+      await executableDirectory.create(recursive: true);
+    });
+
+    test('resources root points at Contents/Resources/runtime', () {
+      expect(
+        BundledRuntimes.macOsResourcesRootFor(executableDirectory.path),
+        p.normalize(
+          p.join(root.path, 'X.app', 'Contents', 'Resources', 'runtime'),
+        ),
+      );
+    });
+
+    test('lists Contents/Resources only when asked for a bundle', () async {
+      final metal = await resources(p.join('v0.8.0', 'metal'));
+      await File(p.join(metal, 'libllama.dylib')).writeAsString('');
+
+      expect(BundledRuntimes.directories(executableDirectory.path), isEmpty);
+      expect(
+        BundledRuntimes.directories(
+          executableDirectory.path,
+          macOsBundle: true,
+        ),
+        [metal],
+      );
+    });
+
+    test('Resources wins over MacOS when both carry a runtime', () async {
+      final fromMacOs = Directory(
+        p.join(executableDirectory.path, 'runtime', 'v0.8.0', 'cpu'),
+      );
+      await fromMacOs.create(recursive: true);
+      final fromResources = await resources(p.join('v0.8.0', 'cpu'));
+
+      expect(
+        BundledRuntimes.directories(
+          executableDirectory.path,
+          macOsBundle: true,
+        ),
+        [fromResources, p.normalize(fromMacOs.path)],
+      );
+    });
+  });
 }

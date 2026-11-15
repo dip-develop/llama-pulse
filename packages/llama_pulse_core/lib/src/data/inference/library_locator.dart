@@ -14,6 +14,12 @@ import '../serialization/serializers.dart' as core;
 ///
 /// Every input is injectable so the resolution order can be tested without a
 /// native library on disk. Nothing here opens the library; the worker does.
+///
+/// Tests may pass a [pathContext] for a foreign host to exercise Windows or
+/// macOS candidate shapes on Linux; the bundled runtime roots are rendered with
+/// the same context. Production must leave it null so the host's path context
+/// is used; the file existence checks in [resolveExisting] still run against
+/// the real filesystem.
 final class LlamaLibraryLocator {
   LlamaLibraryLocator({
     String? explicitPath,
@@ -21,19 +27,22 @@ final class LlamaLibraryLocator {
     String? operatingSystem,
     String? executablePath,
     String? configDirectory,
+    p.Context? pathContext,
   }) : _explicitPath = explicitPath == null ? null : _requirePath(explicitPath),
        _environment = environment ?? Platform.environment,
        _operatingSystem = operatingSystem ?? Platform.operatingSystem,
        _executablePath = executablePath ?? Platform.resolvedExecutable,
        _configDirectory =
            configDirectory ??
-           _defaultConfigDirectory(environment, operatingSystem);
+           _defaultConfigDirectory(environment, operatingSystem),
+       _path = pathContext ?? p.context;
 
   final String? _explicitPath;
   final Map<String, String> _environment;
   final String _operatingSystem;
   final String? _executablePath;
   final String? _configDirectory;
+  final p.Context _path;
 
   /// The platform's shared-library file name.
   String get libraryFileName => switch (_operatingSystem) {
@@ -48,7 +57,9 @@ final class LlamaLibraryLocator {
   /// `<config>/lib`, with the selected runtime first and the others newest
   /// first. A runtime shipped beside the executable
   /// (`<exeDir>/runtime/<tag>/<backend>`) is the fallback after those and
-  /// before `<config>/lib`. The last entry is the bare file name: it is never
+  /// before `<config>/lib`; a macOS bundle also looks in
+  /// `<exeDir>/../Resources/runtime/<tag>/<backend>`, which wins over
+  /// `<exeDir>/runtime`. The last entry is the bare file name: it is never
   /// checked for existence here because `dlopen` may still resolve it through
   /// the loader.
   List<String> get candidates {
@@ -74,11 +85,11 @@ final class LlamaLibraryLocator {
 
     final executableDirectory = _executablePath == null
         ? null
-        : _absolute(p.dirname(_executablePath));
+        : _absolute(_path.dirname(_executablePath));
     if (executableDirectory != null) {
-      add(p.join(executableDirectory, 'lib', libraryFileName));
-      add(p.join(executableDirectory, libraryFileName));
-      add(p.join(executableDirectory, '..', 'Frameworks', libraryFileName));
+      add(_path.join(executableDirectory, 'lib', libraryFileName));
+      add(_path.join(executableDirectory, libraryFileName));
+      add(_path.join(executableDirectory, '..', 'Frameworks', libraryFileName));
     }
 
     final configDirectory = _configDirectory;
@@ -86,7 +97,7 @@ final class LlamaLibraryLocator {
       final absoluteConfig = _absolute(configDirectory);
       for (final install in _runtimeInstalls(absoluteConfig)) {
         add(
-          p.join(
+          _path.join(
             absoluteConfig,
             'runtime',
             install.tag,
@@ -100,13 +111,15 @@ final class LlamaLibraryLocator {
     if (executableDirectory != null) {
       for (final directory in BundledRuntimes.directories(
         executableDirectory,
+        macOsBundle: _isMacOs,
+        pathContext: _path,
       )) {
-        add(p.join(directory, libraryFileName));
+        add(_path.join(directory, libraryFileName));
       }
     }
 
     if (configDirectory != null) {
-      add(p.join(_absolute(configDirectory), 'lib', libraryFileName));
+      add(_path.join(_absolute(configDirectory), 'lib', libraryFileName));
     }
 
     add(libraryFileName);
@@ -120,7 +133,7 @@ final class LlamaLibraryLocator {
   /// resolves once at startup; a corrupt index reads as "none installed".
   Iterable<RuntimeInstallRef> _runtimeInstalls(String absoluteConfig) {
     final indexFile = File(
-      RuntimeIndexFile.pathFor(p.join(absoluteConfig, 'runtime')),
+      RuntimeIndexFile.pathFor(_path.join(absoluteConfig, 'runtime')),
     );
     return RuntimeIndexFile.readSync(
       indexFile,
@@ -153,6 +166,8 @@ final class LlamaLibraryLocator {
       ..details = candidates.join('\n'),
   );
 
+  bool get _isMacOs => _operatingSystem == 'macos';
+
   static String _requirePath(String path) {
     if (path.trim().isEmpty) {
       throw ArgumentError.value(path, 'explicitPath', 'must not be empty');
@@ -160,11 +175,11 @@ final class LlamaLibraryLocator {
     return path;
   }
 
-  static bool _isBare(String path) =>
-      !p.isAbsolute(path) && !path.contains(p.separator);
+  bool _isBare(String path) =>
+      !_path.isAbsolute(path) && !path.contains(_path.separator);
 
-  static String _absolute(String path) => p.normalize(
-    p.isAbsolute(path) ? path : p.join(Directory.current.path, path),
+  String _absolute(String path) => _path.normalize(
+    _path.isAbsolute(path) ? path : _path.join(Directory.current.path, path),
   );
 
   static String? _defaultConfigDirectory(

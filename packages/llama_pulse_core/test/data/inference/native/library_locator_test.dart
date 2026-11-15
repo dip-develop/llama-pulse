@@ -31,12 +31,14 @@ void main() {
     String operatingSystem = 'linux',
     String? executablePath,
     String? configDirectory,
+    p.Context? pathContext,
   }) => LlamaLibraryLocator(
     explicitPath: explicitPath,
     environment: environment,
     operatingSystem: operatingSystem,
     executablePath: executablePath ?? p.join(temp.path, 'bin', 'llamapulse'),
     configDirectory: configDirectory ?? p.join(temp.path, 'config'),
+    pathContext: pathContext,
   );
 
   String exeDir() => p.join(temp.path, 'bin');
@@ -141,6 +143,45 @@ void main() {
       final paths = locator(operatingSystem: 'macos').candidates;
 
       expect(paths, everyElement(endsWith('libllama.dylib')));
+    });
+  });
+
+  group('path contexts', () {
+    test('lists Windows candidates with a Windows context', () {
+      const executable = r'C:\Program Files\LlamaPulse\llama_pulse.exe';
+      const config = r'C:\Users\you\AppData\Roaming\LlamaPulse';
+
+      final paths = locator(
+        operatingSystem: 'windows',
+        executablePath: executable,
+        configDirectory: config,
+        pathContext: p.Context(style: p.Style.windows),
+      ).candidates;
+
+      expect(paths.take(3), [
+        r'C:\Program Files\LlamaPulse\lib\llama.dll',
+        r'C:\Program Files\LlamaPulse\llama.dll',
+        r'C:\Program Files\Frameworks\llama.dll',
+      ]);
+      expect(
+        paths,
+        contains(r'C:\Users\you\AppData\Roaming\LlamaPulse\lib\llama.dll'),
+      );
+      expect(paths.last, 'llama.dll');
+    });
+
+    test('lists the macOS Frameworks dylib with a posix context', () {
+      const app = '/Applications/LlamaPulse.app';
+
+      final paths = locator(
+        operatingSystem: 'macos',
+        executablePath: '$app/Contents/MacOS/llama_pulse',
+        configDirectory: '/tmp/llama-pulse-config',
+        pathContext: p.Context(style: p.Style.posix),
+      ).candidates;
+
+      expect(paths, contains('$app/Contents/Frameworks/libllama.dylib'));
+      expect(paths.last, 'libllama.dylib');
     });
   });
 
@@ -321,6 +362,114 @@ void main() {
         paths.indexOf(bundledLibrary),
         lessThan(paths.indexOf(configLibrary)),
       );
+    });
+
+    test('resolves a macOS bundle library under Contents/Resources', () {
+      final library = touch(
+        p.join(
+          'X.app',
+          'Contents',
+          'Resources',
+          'runtime',
+          'v0.8.0',
+          'metal',
+          'libllama.dylib',
+        ),
+      );
+      final executable = p.join(
+        temp.path,
+        'X.app',
+        'Contents',
+        'MacOS',
+        'llama_pulse',
+      );
+
+      final found = locator(
+        operatingSystem: 'macos',
+        executablePath: executable,
+      ).resolveExisting();
+
+      expect(found, library);
+    });
+
+    test(
+      'Contents/Resources wins over Contents/MacOS for the same library',
+      () {
+        final fromMacOs = touch(
+          p.join(
+            'X.app',
+            'Contents',
+            'MacOS',
+            'runtime',
+            'v0.8.0',
+            'metal',
+            'libllama.dylib',
+          ),
+        );
+        final fromResources = touch(
+          p.join(
+            'X.app',
+            'Contents',
+            'Resources',
+            'runtime',
+            'v0.8.0',
+            'metal',
+            'libllama.dylib',
+          ),
+        );
+        final executable = p.join(
+          temp.path,
+          'X.app',
+          'Contents',
+          'MacOS',
+          'llama_pulse',
+        );
+
+        final paths = locator(
+          operatingSystem: 'macos',
+          executablePath: executable,
+        ).candidates;
+
+        expect(paths.indexOf(fromResources), greaterThanOrEqualTo(0));
+        expect(
+          paths.indexOf(fromResources),
+          lessThan(paths.indexOf(fromMacOs)),
+        );
+      },
+    );
+
+    test('a config runtime wins over a macOS bundle library', () {
+      writeIndex(
+        indexWith(selectedTag: 'v0.8.0', selectedBackend: RuntimeBackend.cpu),
+      );
+      final configLibrary = touch(
+        p.join('config', 'runtime', 'v0.8.0', 'cpu', 'libllama.dylib'),
+      );
+      touch(
+        p.join(
+          'X.app',
+          'Contents',
+          'Resources',
+          'runtime',
+          'v0.8.0',
+          'metal',
+          'libllama.dylib',
+        ),
+      );
+      final executable = p.join(
+        temp.path,
+        'X.app',
+        'Contents',
+        'MacOS',
+        'llama_pulse',
+      );
+
+      final found = locator(
+        operatingSystem: 'macos',
+        executablePath: executable,
+      ).resolveExisting();
+
+      expect(found, configLibrary);
     });
   });
 

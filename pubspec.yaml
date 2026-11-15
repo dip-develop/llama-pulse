@@ -63,6 +63,15 @@ melos:
       # is not valid PowerShell; tool/build_cli.dart creates it and picks the
       # `.exe` suffix on Windows.
       run: cd "$MELOS_ROOT_PATH/apps/llama_pulse_cli" && dart run tool/build_cli.dart
+    package:linux:
+      description: Stage and archive a Linux desktop bundle.
+      run: dart run packages/llama_pulse_core/tool/package_app.dart --os linux
+    package:windows:
+      description: Stage and archive a Windows desktop bundle.
+      run: dart run packages/llama_pulse_core/tool/package_app.dart --os windows
+    package:macos:
+      description: Stage and archive a macOS desktop bundle.
+      run: dart run packages/llama_pulse_core/tool/package_app.dart --os macos
     check:
       description: Local gate - gen, analyze, test, format check, CLI build.
       run: |

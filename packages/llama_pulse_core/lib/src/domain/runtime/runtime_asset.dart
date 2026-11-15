@@ -15,12 +15,25 @@ class RuntimeAsset {
     required this.assetName,
     required this.sha256,
     required this.sizeBytes,
+    this.assetTag,
     this.additionalBackends = const <RuntimeBackend>[],
     this.cudartAsset,
   });
 
-  /// The release tag the archive is downloaded from, for example `v0.8.0`.
+  /// The release tag that identifies this install, for example `v0.8.0`.
+  ///
+  /// This is the install identity: manifests, attestation, the CLI `--tag`
+  /// option and the `<config>/runtime/<tag>/<backend>` layout all use it. It is
+  /// not necessarily the GitHub release that holds the archive; see [assetTag].
   final String tag;
+
+  /// The GitHub release tag that physically holds the archive, if it differs
+  /// from [tag].
+  ///
+  /// Upstream can publish a tag that only carries `nightly-tag.txt` and put the
+  /// binaries on the nightly build it names. A null value means the archive
+  /// lives on [tag] itself.
+  final String? assetTag;
 
   /// The compute backend this archive is built for.
   final RuntimeBackend backend;
@@ -50,8 +63,12 @@ class RuntimeAsset {
   final RuntimeAsset? cudartAsset;
 
   /// The GitHub release download URL for this archive.
+  ///
+  /// Built from [assetTag] when it is set, so the URL points at the release
+  /// that actually carries the archive rather than the install tag.
   String get url =>
-      'https://github.com/ggml-org/llama.cpp/releases/download/$tag/$assetName';
+      'https://github.com/ggml-org/llama.cpp/releases/download/'
+      '${assetTag ?? tag}/$assetName';
 
   /// Rough unpacked size, used to check free disk space before downloading.
   ///
