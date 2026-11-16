@@ -452,8 +452,11 @@
       }
     }
   },
-  "runtimeHardware": "Hardware",
+  "runtimeHardware": "Detected hardware",
   "runtimeNone": "none",
+  "runtimeHeaderSubtitle": "LlamaPulse runs a pinned llama.cpp build; the detected hardware decides which backends it can install.",
+  "runtimeManagedTitle": "Managed runtimes",
+  "runtimeManagedNote": "Installs a pinned llama.cpp build. A system-wide llama.cpp is not used.",
   "runtimeInstallRuntime": "Install runtime",
   "runtimeInstallTitle": "Install {backend}",
   "@runtimeInstallTitle": {

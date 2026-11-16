@@ -717,9 +717,9 @@ APIs, no `!` on nullable values, no empty `catch` blocks.
 
 From the root, `dart run melos test`. Melos picks `flutter test` for the app and
 `dart test` for core and CLI. Test the critical seams, not every line. Coverage
-is not a target. The suites hold 1302 tests today: 894 core (plus two
+is not a target. The suites hold 1303 tests today: 894 core (plus two
 host/env-gated skips: `native_integration_test` and the real macOS `ditto`
-archive test), 233 CLI, 175 app.
+archive test), 233 CLI, 176 app.
 
 Must test today:
 

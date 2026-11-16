@@ -147,6 +147,15 @@ and passes only with a matching runtime manifest (see
 [Version gate](#version-gate)). The recipe and the output layout are in
 [third_party/llama_cpp/v0.8.0/BUILD.md](third_party/llama_cpp/v0.8.0/BUILD.md).
 
+A llama.cpp that is already installed system-wide is **not** used unless it
+reports exactly `0.8.0` (or an attested `0.8.0-dev`): the bindings are vendored
+against that one release. Any other version fails with
+`libraryVersionMismatch`, which names both the expected pin and the version that
+was found. The same rule is why the Runtime tab separates **detected hardware**
+(what the host can run) from **managed runtimes** (the verified archives
+LlamaPulse downloads); `runtime install` never looks at a system-wide
+llama.cpp.
+
 ## Embedded native engine
 
 The Chat tab and the CLI `run`/`bench` commands use `NativeLlamaSession`, which
@@ -351,8 +360,11 @@ app:stub-server` opens the same dashboard with a synthetic controller and a
 demo banner, and starts no process; use it when no llama.cpp binary is
 installed. The Chat tab is reached from the rail and carries an `Experimental`
 banner; it runs the embedded native engine and needs a matching `libllama`
-shared library (export `LLAMA_PULSE_LIB` or place it next to the executable).
-Without one it reports `libraryNotFound` and lists every path it tried.
+shared library (export `LLAMA_PULSE_LIB`, place it next to the executable, or
+install a managed runtime).
+Without one it reports `libraryNotFound` and lists every path it tried; with one
+that is not the pinned `v0.8.0` it reports `libraryVersionMismatch` and names
+both the pin and the version it found.
 
 For a headless server:
 

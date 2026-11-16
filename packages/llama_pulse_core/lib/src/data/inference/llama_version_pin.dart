@@ -32,9 +32,13 @@ abstract final class LlamaVersionPin {
   static bool isDev(String actual) => actual.trim() == devVersion;
 
   /// A `libraryVersionMismatch` failure naming what the library reported.
+  ///
+  /// The message names the pin so a user who found a system-wide llama.cpp
+  /// understands why it was refused: LlamaPulse binds one release only.
   static InferenceFailure mismatch(String actual) => InferenceFailure(
     (b) => b
       ..code = InferenceFailureCode.libraryVersionMismatch
-      ..message = 'expected llama.cpp $version, found "$actual"',
+      ..message =
+          'expected llama.cpp $version (the pinned $tag), found "$actual"',
   );
 }

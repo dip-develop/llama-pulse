@@ -474,15 +474,17 @@ void main() {
   });
 
   group('notFoundFailure', () {
-    test('lists every candidate one per line', () {
+    test('lists every candidate one per line under a header', () {
       final failure = locator().notFoundFailure();
 
       expect(failure.code, InferenceFailureCode.libraryNotFound);
       expect(failure.details, isNotNull);
       final lines = failure.details!.split('\n');
-      expect(lines, locator().candidates);
+      expect(lines.first, 'searched, in order:');
+      expect(lines.skip(1), locator().candidates);
       expect(failure.message, contains('libllama.so'));
       expect(failure.message, contains('LLAMA_PULSE_LIB'));
+      expect(failure.message, contains('pinned runtime'));
     });
   });
 
@@ -494,11 +496,14 @@ void main() {
       expect(LlamaVersionPin.matches('0.7.0'), isFalse);
     });
 
-    test('describes a mismatch with both versions', () {
+    test('describes a mismatch with both versions and the pin', () {
       final failure = LlamaVersionPin.mismatch('0.7.0-dev');
 
       expect(failure.code, InferenceFailureCode.libraryVersionMismatch);
-      expect(failure.message, 'expected llama.cpp 0.8.0, found "0.7.0-dev"');
+      expect(
+        failure.message,
+        'expected llama.cpp 0.8.0 (the pinned v0.8.0), found "0.7.0-dev"',
+      );
     });
   });
 
