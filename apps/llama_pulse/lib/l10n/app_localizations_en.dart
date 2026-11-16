@@ -674,10 +674,21 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get runtimeHardware => 'Hardware';
+  String get runtimeHardware => 'Detected hardware';
 
   @override
   String get runtimeNone => 'none';
+
+  @override
+  String get runtimeHeaderSubtitle =>
+      'LlamaPulse runs a pinned llama.cpp build; the detected hardware decides which backends it can install.';
+
+  @override
+  String get runtimeManagedTitle => 'Managed runtimes';
+
+  @override
+  String get runtimeManagedNote =>
+      'Installs a pinned llama.cpp build. A system-wide llama.cpp is not used.';
 
   @override
   String get runtimeInstallRuntime => 'Install runtime';

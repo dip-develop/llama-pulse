@@ -114,6 +114,13 @@ class _Header extends StatelessWidget {
                 ),
               ],
             ),
+            const SizedBox(height: 4),
+            Text(
+              l10n.runtimeHeaderSubtitle,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
             const SizedBox(height: 8),
             Text(
               runtimeHardwareSummary(l10n, state),
@@ -359,7 +366,7 @@ class _Installed extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(l10n.runtimeInstalled, style: theme.textTheme.titleSmall),
+            Text(l10n.runtimeManagedTitle, style: theme.textTheme.titleSmall),
             const SizedBox(height: 12),
             if (state.installed.isEmpty)
               Text(l10n.runtimeNoRuntimesInstalled)
@@ -382,6 +389,15 @@ class _Installed extends StatelessWidget {
                   ),
                 ),
               ),
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text(
+                l10n.runtimeManagedNote,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
           ],
         ),
       ),

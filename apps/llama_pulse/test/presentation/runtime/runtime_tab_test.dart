@@ -41,6 +41,8 @@ void main() {
       find.byKey(const ValueKey('runtime-install-button')),
       findsOneWidget,
     );
+    expect(find.text('Detected hardware'), findsOneWidget);
+    expect(find.byKey(const ValueKey('runtime-managed-note')), findsOneWidget);
   });
 
   testWidgets('the runtime tab lists the backends and the gate', (
@@ -57,10 +59,19 @@ void main() {
     expect(find.text('LlamaPulse — Runtime'), findsOneWidget);
     expect(find.byKey(const ValueKey('runtime-screen')), findsOneWidget);
     expect(
+      find.textContaining('LlamaPulse runs a pinned llama.cpp build'),
+      findsOneWidget,
+    );
+    expect(
       find.byKey(const ValueKey('runtime-hardware-summary')),
       findsOneWidget,
     );
     expect(find.textContaining('RTX 4090'), findsWidgets);
+    expect(find.text('Managed runtimes'), findsOneWidget);
+    expect(
+      find.textContaining('A system-wide llama.cpp is not used.'),
+      findsWidgets,
+    );
     expect(find.byKey(const ValueKey('runtime-backend-cpu')), findsOneWidget);
     expect(
       find.byKey(const ValueKey('runtime-backend-cuda13')),
