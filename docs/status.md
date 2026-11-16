@@ -5,17 +5,17 @@ named here, not copied from memory. The rules live in `AGENT.md`; this file is
 a snapshot and goes stale, so check `git branch -a`, `gh pr list` and
 `gh issue list` before trusting it. Its GitHub mirror is the pinned issue #16.
 
-- Baseline: `origin/main` = `fddef4d` ("Merge pull request #42 from
-  dip-develop/chore/status-checkpoint", 2026-11-16), which merged the localization
-  work of PR #44 (`119b56c`) and this checkpoint.
+- Baseline: `origin/main` = `c30b166` ("Merge pull request #46 from
+  dip-develop/fix/runtime-detection", 2026-11-16), which merged the runtime
+  wording fix. The two merges before it are PR #42 (this checkpoint, `fddef4d`)
+  and PR #44 (localization, `119b56c`).
 - Suite on `origin/main`, measured 2026-11-16 after `flutter pub get` and
-  `melos run gen` twice: `melos test` exit `0`, **1302 tests** — 894 core (plus
+  `melos run gen` twice: `melos test` exit `0`, **1303 tests** — 894 core (plus
   two host/env-gated skips: `native_integration_test`, and the real macOS
-  `ditto` archive test on a non-macOS host), 233 CLI, 175 app. PR #46 (the
-  runtime wording fix) adds one app test: 1303 in total.
+  `ditto` archive test on a non-macOS host), 233 CLI, 176 app.
 - `melos run check` (gen twice, catalog check, analyze, tests, format, CLI AOT)
   is green on `origin/main`, as is `melos run format:check` and
-  `gen:catalog:check` (362 parameters). The CI run for `fddef4d` was green on
+  `gen:catalog:check` (362 parameters). The CI run for `c30b166` was green on
   all seven jobs: `Workspace gate`, the `test` matrix on Ubuntu, macOS and
   Windows, `Compile the CLI (Windows)`, `Package (macos)` and `Package
   (windows)`.
@@ -150,6 +150,15 @@ a snapshot and goes stale, so check `git branch -a`, `gh pr list` and
   technical detail below it. The generated llama.cpp catalog and the free-text
   detail of core stay English on purpose. `docs/localization.md` records the
   policy; the app suite grew to 175 tests.
+- **Runtime wording (PR #46, issue #45).** Merged into `main` as `c30b166`.
+  Detected hardware and managed runtimes are named apart in the GUI, so a host
+  with a working GPU no longer reads as "detected but not installed": the card
+  row is *Detected hardware*, the tab card is *Managed runtimes*, and a note
+  says an install downloads a pinned llama.cpp build while a system-wide
+  llama.cpp is not used. The library failures name the pin:
+  `libraryVersionMismatch` says `expected llama.cpp 0.8.0 (the pinned v0.8.0),
+  found "0.7.0-dev"` and explains the refusal, and `libraryNotFound` lists the
+  searched paths under a `searched, in order:` header.
 - **Build helper.** `tool/build_llama_cpp.sh [tag]` (default `v0.8.0`) clones,
   configures with `-DBUILD_SHARED_LIBS=ON -DLLAMA_BUILD_IS_DEV=OFF
   -DLLAMA_BUILD_APP=OFF -DGGML_NATIVE=ON`, builds and prints the
@@ -161,28 +170,24 @@ a snapshot and goes stale, so check `git branch -a`, `gh pr list` and
 
 ## In flight
 
-- **Runtime wording (PR #46, issue #45).** Detected hardware and managed
-  runtimes are named apart in the GUI, and the library failures name the pin:
-  `libraryVersionMismatch` says `expected llama.cpp 0.8.0 (the pinned v0.8.0)`
-  and explains that a different system-wide llama.cpp is not used. The English
-  output is unchanged; the app suite grows to 176 tests.
 - **Checkpoint refresh (this branch, issue #16).** It brings the checkpoint up
-  to date after PR #44 merged and files the remaining plan as issues #47-#51.
-- Nothing else is in flight: the packaging work (PR #40, PR #41, issue #39) and
-  the localization work (PR #44, issue #43) are merged, and the earlier
-  checkpoint PR #42 is merged.
+  to date after PR #44 and PR #46 merged and files the remaining plan as issues
+  #47-#51.
+- Nothing else is in flight: the runtime wording fix (PR #46, issue #45), the
+  localization work (PR #44, issue #43), the packaging work (PR #40, PR #41,
+  issue #39) and the earlier checkpoint PR #42 are all merged.
 
 ## Open issues (2026-11-16)
 
 - #16 — pinned status checkpoint (this file mirrors it).
-- #45 — runtime wording; open until PR #46 merges.
 - #47 — packaging follow-ups: icons, installers, macOS signing.
 - #48 — Jinja chat templates for the embedded path.
 - #49 — Windows/macOS and real-GPU validation, including the supervisor flake.
 - #50 — localization follow-ups: structured validation issues, a translated
   catalog, an in-app language picker, RTL/CJK.
 - #51 — report a system-wide llama.cpp in the Runtime tab.
-- #43 is closed after PR #44 merged as `119b56c`; #39 is closed after PR #40 and
+- #45 is closed after PR #46 merged as `c30b166`; #43 is closed after PR #44
+  merged as `119b56c`; #39 is closed after PR #40 and
   PR #41 merged as `10c0369`; #37 is closed after PR #38 merged as `c72c5ec`;
   #33 is closed after PR #35 merged; #27 (packaging), #25 (stop `--json`), #23
   (Windows test portability), #22 (CI), #15 (runtime) and #13 (catalog) are
@@ -214,19 +219,18 @@ a snapshot and goes stale, so check `git branch -a`, `gh pr list` and
 
 ## Remaining plan, in order
 
-1. **Operator: merge PR #46** (issue #45), close #45 and refresh pinned #16.
-2. **Packaging follow-ups** (issue #47): icons and artwork (needs operator
+1. **Packaging follow-ups** (issue #47): icons and artwork (needs operator
    artwork), installers (`.deb`, AppImage, MSIX, `.dmg`; needs new tooling and
    dependencies), and macOS signing/notarisation.
-3. **Jinja chat templates** (issue #48): the built-in, named, `none` and
+2. **Jinja chat templates** (issue #48): the built-in, named, `none` and
    per-message rendering already ship; a Jinja engine is the remaining work.
-4. **Windows, macOS and GPU validation** (issue #49), including the supervisor
+3. **Windows, macOS and GPU validation** (issue #49), including the supervisor
    flake.
-5. **Localization follow-ups** (issue #50): structured validation issues in
+4. **Localization follow-ups** (issue #50): structured validation issues in
    core, a translated parameter catalog, an in-app language picker, RTL/CJK.
-6. **Report a system-wide llama.cpp** (issue #51) in the Runtime tab instead of
+5. **Report a system-wide llama.cpp** (issue #51) in the Runtime tab instead of
    leaving it invisible until a chat load fails.
-7. **Out of scope for now**: a server "router mode" (multi-model proxy).
+6. **Out of scope for now**: a server "router mode" (multi-model proxy).
 
 ## Open landmines
 
@@ -290,14 +294,12 @@ a snapshot and goes stale, so check `git branch -a`, `gh pr list` and
 ```sh
 git fetch origin
 git branch -a                  # merged feature/fix branches may linger locally
-gh pr list                     # PR #46 (runtime wording)
-gh issue list                  # #16 (pinned status), #45 (until #46 merges),
-                               # #47-#51 (planned work)
+gh pr list                     # PR #52 (this checkpoint)
+gh issue list                  # #16 (pinned status), #47-#51 (planned work)
 ```
 
 Then read `AGENT.md`, this file and pinned issue #16, and run
 `dart run melos run check` on a fresh branch cut from `origin/main`. The next
-concrete step is the operator merging PR #46, closing #45 and refreshing
-checkpoint #16 and this file, then the tracked follow-ups (#47 packaging, #48
-Jinja templates, #49 validation, #50 localization, #51 system-wide llama.cpp).
-The pinned checkpoint mirror is #16.
+concrete step is the operator merging PR #52 and refreshing pinned #16, then the
+tracked follow-ups (#47 packaging, #48 Jinja templates, #49 validation, #50
+localization, #51 system-wide llama.cpp). The pinned checkpoint mirror is #16.

@@ -78,12 +78,12 @@ A new session needs four things before it changes anything:
    multi-message prompts in core and the CLI (PR #31) have shipped. The Chat tab
    transcript and stored system prompt shipped in PR #34, with the review
    follow-up in PR #35. The Windows and macOS bundles shipped in PR #40 and
-   PR #41 (issue #39, closed), and the localized desktop UI in PR #44 (issue
-   #43, closed). Issue #45 (runtime wording) is open until PR #46 merges. The
-   remaining plan is tracked as issues #47-#51: packaging follow-ups (icons,
-   installers, macOS signing), Jinja chat templates, Windows/macOS and GPU
-   validation, localization follow-ups, and reporting a system-wide llama.cpp in
-   the Runtime tab.
+   PR #41 (issue #39, closed), the localized desktop UI in PR #44 (issue #43,
+   closed) and the runtime wording in PR #46 (issue #45, closed). The remaining
+   plan is tracked as issues #47-#51: packaging follow-ups (icons, installers,
+   macOS signing), Jinja chat templates, Windows/macOS and GPU validation,
+   localization follow-ups, and reporting a system-wide llama.cpp in the Runtime
+   tab.
 
 Rules for this repo: never merge, tag, force-push or delete branches — the
 operator does those, and no PR goes to anything but `main`. Before opening a
