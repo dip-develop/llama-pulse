@@ -127,6 +127,16 @@ class RuntimeCard extends StatelessWidget {
                       ],
                     ),
                   ),
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(
+                    l10n.runtimeManagedNote,
+                    key: const ValueKey('runtime-managed-note'),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
                 if (state.errorCode != null)
                   Padding(
                     padding: const EdgeInsets.only(top: 8),
@@ -199,7 +209,7 @@ class RuntimeCard extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         SizedBox(
-          width: 90,
+          width: 118,
           child: Text(label, style: theme.textTheme.bodySmall),
         ),
         Expanded(child: Text(value)),

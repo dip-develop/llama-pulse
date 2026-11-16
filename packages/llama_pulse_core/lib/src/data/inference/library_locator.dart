@@ -157,13 +157,16 @@ final class LlamaLibraryLocator {
   }
 
   /// A `libraryNotFound` failure listing every path that was tried.
+  ///
+  /// The details start with a one-line header so the failure banner reads as a
+  /// sentence before the list; the CLI prints the same list.
   InferenceFailure notFoundFailure() => InferenceFailure(
     (b) => b
       ..code = InferenceFailureCode.libraryNotFound
       ..message =
-          'could not locate $libraryFileName; set LLAMA_PULSE_LIB '
-          'or place it next to the executable'
-      ..details = candidates.join('\n'),
+          'could not locate $libraryFileName; set LLAMA_PULSE_LIB, place it '
+          'next to the executable, or install a pinned runtime'
+      ..details = ['searched, in order:', ...candidates].join('\n'),
   );
 
   bool get _isMacOs => _operatingSystem == 'macos';

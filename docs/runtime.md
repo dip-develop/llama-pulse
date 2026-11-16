@@ -194,9 +194,18 @@ source reports `0.8.0-dev`. The gate accepts that string only with an
 
 Anything else, including `/opt/llama.cpp-rocm`, an Unsloth fork that reports
 `0.7.0-dev`, fails with `libraryVersionMismatch` and the reported version. The
-gate never accepts a library on an unreadable manifest, and `runtime status`
-prints the verdict it would reach (`exact`, `attested`, `unknown`, `rejected`,
-`notInstalled`) with its reason.
+failure names the pin too — `expected llama.cpp 0.8.0 (the pinned v0.8.0),
+found "0.7.0-dev"` — because a perfectly usable system-wide llama.cpp of another
+version is refused on purpose, not overlooked. The gate never accepts a library
+on an unreadable manifest, and `runtime status` prints the verdict it would
+reach (`exact`, `attested`, `unknown`, `rejected`, `notInstalled`) with its
+reason.
+
+The GUI keeps the two ideas apart: the Runtime tab reports **detected hardware**
+(what the host can run) separately from **managed runtimes** (the verified
+archives LlamaPulse downloads). A host with a working GPU therefore shows the
+GPU as detected and still offers an install, because no managed runtime has been
+downloaded yet; a system-wide llama.cpp is never counted as installed.
 
 ## CLI
 

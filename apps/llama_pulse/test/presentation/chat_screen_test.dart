@@ -241,11 +241,40 @@ void main() {
       find.textContaining('No llama.cpp library was found'),
       findsOneWidget,
     );
-    final String searched = (engine.loadFailure.details ?? '')
-        .split('\n')
-        .first;
+    // The details start with a header and then list every searched path.
+    final List<String> lines = (engine.loadFailure.details ?? '').split('\n');
+    expect(lines.first, 'searched, in order:');
+    final String searched = lines[1];
     expect(searched, isNotEmpty);
     expect(find.textContaining(searched), findsOneWidget);
+  });
+
+  testWidgets('explains the pin when the found library is another version', (
+    tester,
+  ) async {
+    _useView(tester, const Size(1400, 1000));
+    final ScriptedLlamaEngine engine = ScriptedLlamaEngine()
+      ..loadSucceeds = false
+      ..loadFailure = LlamaVersionPin.mismatch('0.7.0-dev');
+    await pumpLlamaPulse(tester, engine: engine);
+    await _openChat(tester);
+
+    await tester.enterText(
+      find.byKey(const ValueKey('model-path')),
+      '/models/model.gguf',
+    );
+    await tester.pump();
+    await _tapVisible(tester, 'load-model');
+
+    expect(find.byKey(const ValueKey('failure-banner')), findsOneWidget);
+    expect(
+      find.textContaining('The llama.cpp library is not the pinned version'),
+      findsOneWidget,
+    );
+    expect(
+      find.textContaining('expected llama.cpp 0.8.0 (the pinned v0.8.0)'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('loads, streams tokens, shows metrics and completes', (

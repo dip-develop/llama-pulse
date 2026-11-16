@@ -1243,7 +1243,7 @@ abstract class AppLocalizations {
   /// No description provided for @runtimeHardware.
   ///
   /// In en, this message translates to:
-  /// **'Hardware'**
+  /// **'Detected hardware'**
   String get runtimeHardware;
 
   /// No description provided for @runtimeNone.
@@ -1251,6 +1251,24 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'none'**
   String get runtimeNone;
+
+  /// No description provided for @runtimeHeaderSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'LlamaPulse runs a pinned llama.cpp build; the detected hardware decides which backends it can install.'**
+  String get runtimeHeaderSubtitle;
+
+  /// No description provided for @runtimeManagedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Managed runtimes'**
+  String get runtimeManagedTitle;
+
+  /// No description provided for @runtimeManagedNote.
+  ///
+  /// In en, this message translates to:
+  /// **'Installs a pinned llama.cpp build. A system-wide llama.cpp is not used.'**
+  String get runtimeManagedNote;
 
   /// No description provided for @runtimeInstallRuntime.
   ///

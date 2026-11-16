@@ -148,6 +148,12 @@ final class LlamaLibrary {
         if (attestation != null) {
           details.write('; ${attestation.reason}');
         }
+        // The pin is the reason a perfectly usable system-wide llama.cpp is
+        // refused; say so instead of leaving the user with a bare version.
+        details.write(
+          '; LlamaPulse is pinned to llama.cpp ${LlamaVersionPin.tag}, so a '
+          'different llama.cpp on this host is not used',
+        );
         return LlamaLibrary._(
           bindings: bindings,
           path: path,

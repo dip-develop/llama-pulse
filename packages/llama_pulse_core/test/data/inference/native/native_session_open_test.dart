@@ -84,6 +84,11 @@ void main() {
         expect(failure.details, isNotNull);
         expect(failure.details, contains(actual));
         expect(failure.message, contains(actual.isEmpty ? '""' : actual));
+        expect(
+          failure.details,
+          contains('pinned to llama.cpp v0.8.0'),
+          reason: 'the banner must explain why a system library was refused',
+        );
         expect(fake.backendInitCount, 0);
       });
     }
